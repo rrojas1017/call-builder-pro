@@ -14,16 +14,481 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      agent_projects: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          org_id: string
+          source_text: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          org_id: string
+          source_text?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          org_id?: string
+          source_text?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_projects_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_specs: {
+        Row: {
+          business_hours: Json | null
+          consent_required: boolean
+          disclosure_text: string | null
+          disqualification_rules: Json | null
+          from_number: string | null
+          id: string
+          language: string
+          must_collect_fields: Json | null
+          project_id: string
+          qualification_rules: Json | null
+          retry_policy: Json | null
+          tone_style: string | null
+          transfer_phone_number: string | null
+          updated_at: string
+          use_case: string
+          version: number
+        }
+        Insert: {
+          business_hours?: Json | null
+          consent_required?: boolean
+          disclosure_text?: string | null
+          disqualification_rules?: Json | null
+          from_number?: string | null
+          id?: string
+          language?: string
+          must_collect_fields?: Json | null
+          project_id: string
+          qualification_rules?: Json | null
+          retry_policy?: Json | null
+          tone_style?: string | null
+          transfer_phone_number?: string | null
+          updated_at?: string
+          use_case?: string
+          version?: number
+        }
+        Update: {
+          business_hours?: Json | null
+          consent_required?: boolean
+          disclosure_text?: string | null
+          disqualification_rules?: Json | null
+          from_number?: string | null
+          id?: string
+          language?: string
+          must_collect_fields?: Json | null
+          project_id?: string
+          qualification_rules?: Json | null
+          retry_policy?: Json | null
+          tone_style?: string | null
+          transfer_phone_number?: string | null
+          updated_at?: string
+          use_case?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_specs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calls: {
+        Row: {
+          bland_call_id: string | null
+          campaign_id: string | null
+          contact_id: string | null
+          cost_estimate_usd: number | null
+          created_at: string
+          direction: string
+          duration_seconds: number | null
+          ended_at: string | null
+          extracted_data: Json | null
+          id: string
+          org_id: string
+          outcome: string | null
+          project_id: string
+          started_at: string | null
+          summary: Json | null
+          transcript: string | null
+          version: number
+        }
+        Insert: {
+          bland_call_id?: string | null
+          campaign_id?: string | null
+          contact_id?: string | null
+          cost_estimate_usd?: number | null
+          created_at?: string
+          direction?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          extracted_data?: Json | null
+          id?: string
+          org_id: string
+          outcome?: string | null
+          project_id: string
+          started_at?: string | null
+          summary?: Json | null
+          transcript?: string | null
+          version?: number
+        }
+        Update: {
+          bland_call_id?: string | null
+          campaign_id?: string | null
+          contact_id?: string | null
+          cost_estimate_usd?: number | null
+          created_at?: string
+          direction?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          extracted_data?: Json | null
+          id?: string
+          org_id?: string
+          outcome?: string | null
+          project_id?: string
+          started_at?: string | null
+          summary?: Json | null
+          transcript?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calls_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calls_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calls_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calls_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaigns: {
+        Row: {
+          created_at: string
+          id: string
+          max_concurrent_calls: number
+          name: string
+          project_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          max_concurrent_calls?: number
+          name: string
+          project_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          max_concurrent_calls?: number
+          name?: string
+          project_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contacts: {
+        Row: {
+          attempts: number
+          bland_call_id: string | null
+          called_at: string | null
+          campaign_id: string
+          created_at: string
+          id: string
+          last_error: string | null
+          name: string
+          phone: string
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          bland_call_id?: string | null
+          called_at?: string | null
+          campaign_id: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          name: string
+          phone: string
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          bland_call_id?: string | null
+          called_at?: string | null
+          campaign_id?: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          name?: string
+          phone?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contacts_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      evaluations: {
+        Row: {
+          approved: boolean
+          approved_by: string | null
+          call_id: string
+          created_at: string
+          id: string
+          issues: Json | null
+          overall_score: number | null
+          recommended_fixes: Json | null
+          rubric: Json | null
+        }
+        Insert: {
+          approved?: boolean
+          approved_by?: string | null
+          call_id: string
+          created_at?: string
+          id?: string
+          issues?: Json | null
+          overall_score?: number | null
+          recommended_fixes?: Json | null
+          rubric?: Json | null
+        }
+        Update: {
+          approved?: boolean
+          approved_by?: string | null
+          call_id?: string
+          created_at?: string
+          id?: string
+          issues?: Json | null
+          overall_score?: number | null
+          recommended_fixes?: Json | null
+          rubric?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evaluations_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: true
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      improvements: {
+        Row: {
+          change_summary: string | null
+          created_at: string
+          from_version: number
+          id: string
+          patch: Json | null
+          project_id: string
+          to_version: number
+        }
+        Insert: {
+          change_summary?: string | null
+          created_at?: string
+          from_version: number
+          id?: string
+          patch?: Json | null
+          project_id: string
+          to_version: number
+        }
+        Update: {
+          change_summary?: string | null
+          created_at?: string
+          from_version?: number
+          id?: string
+          patch?: Json | null
+          project_id?: string
+          to_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "improvements_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string | null
+          id: string
+          org_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          full_name?: string | null
+          id: string
+          org_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          org_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      wizard_questions: {
+        Row: {
+          answer: string | null
+          created_at: string
+          id: string
+          order_index: number
+          project_id: string
+          question: string
+        }
+        Insert: {
+          answer?: string | null
+          created_at?: string
+          id?: string
+          order_index?: number
+          project_id: string
+          question: string
+        }
+        Update: {
+          answer?: string | null
+          created_at?: string
+          id?: string
+          order_index?: number
+          project_id?: string
+          question?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wizard_questions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_org_id: { Args: { _user_id: string }; Returns: string }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "super_admin" | "admin" | "analyst" | "viewer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +615,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["super_admin", "admin", "analyst", "viewer"],
+    },
   },
 } as const
