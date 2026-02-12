@@ -37,11 +37,9 @@ serve(async (req) => {
     let outcome = contactStatus;
     let extractedData: any = null;
 
-    // Try to parse summary for extracted data
     if (summary) {
       try {
         if (typeof summary === "string") {
-          // Try to find JSON in the summary
           const jsonMatch = summary.match(/\{[\s\S]*\}/);
           if (jsonMatch) extractedData = JSON.parse(jsonMatch[0]);
         } else {
@@ -54,7 +52,7 @@ serve(async (req) => {
     else if (extractedData?.qualified === false) outcome = "disqualified";
 
     // Upsert call record
-    const callData = {
+    const callData: any = {
       org_id: metadata.org_id,
       project_id: metadata.project_id,
       campaign_id: metadata.campaign_id || null,
@@ -71,9 +69,11 @@ serve(async (req) => {
       version: metadata.version || 1,
     };
 
-    const { error: callErr } = await supabase
+    const { data: upsertedCall, error: callErr } = await supabase
       .from("calls")
-      .upsert(callData, { onConflict: "bland_call_id" });
+      .upsert(callData, { onConflict: "bland_call_id" })
+      .select("id")
+      .single();
     if (callErr) console.error("Error upserting call:", callErr);
 
     // Update contact status
@@ -82,6 +82,19 @@ serve(async (req) => {
         .from("contacts")
         .update({ status: contactStatus, bland_call_id: blandCallId })
         .eq("id", metadata.contact_id);
+    }
+
+    // Trigger evaluate-call for completed calls with transcripts
+    if (upsertedCall?.id && transcript && contactStatus === "completed") {
+      const evalUrl = `${supabaseUrl}/functions/v1/evaluate-call`;
+      fetch(evalUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({ call_id: upsertedCall.id }),
+      }).catch((e) => console.error("Error triggering evaluate-call:", e));
     }
 
     // Trigger tick-campaign to continue processing

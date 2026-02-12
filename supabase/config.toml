@@ -14,3 +14,12 @@ verify_jwt = false
 
 [functions.tick-campaign]
 verify_jwt = false
+
+[functions.ingest-agent-source]
+verify_jwt = false
+
+[functions.evaluate-call]
+verify_jwt = false
+
+[functions.apply-improvement]
+verify_jwt = false
