@@ -49,18 +49,40 @@ Return JSON only with this exact structure:
   "compliance_score": 0-100,
   "objective_score": 0-100,
   "overall_score": 0-100,
+  "naturalness_score": 0-100,
   "issues_detected": [],
+  "delivery_issues": [],
   "missed_fields": [],
   "incorrect_logic": [],
   "hallucination_detected": true/false,
   "recommended_improvements": []
 }
 
+NATURALNESS SCORING (0-100):
+Analyze the transcript for signs of AI voice quality problems:
+- Mispronounced or garbled words (words that don't make sense in context)
+- Repeated words or phrases ("I I", "the the", stuttering patterns)
+- Unnatural sentence structure or robotic transitions between topics
+- Cut-off or incomplete sentences mid-thought
+- "[inaudible]" or unclear segments
+- Filler word overuse ("um", "uh") or complete absence of natural fillers
+- Rushed or unnaturally slow pacing (sentences crammed together or overly drawn out)
+- Awkward pauses or lack of appropriate pauses
+- Robotic cadence (every sentence has same rhythm/length)
+Score 90-100: Sounds completely natural, conversational
+Score 70-89: Mostly natural with minor issues
+Score 40-69: Noticeable AI artifacts, somewhat robotic
+Score 0-39: Very robotic, multiple pronunciation/pacing errors
+
+List specific delivery problems in "delivery_issues" (e.g. "Mispronounced 'qualification' as 'qualifiation'", "Repeated 'your' twice in a row", "Sentence cut off mid-word").
+
 Each recommended_improvement should be an object with:
 - "field": the agent_spec field to change
 - "current_value": what it is now
 - "suggested_value": what it should be
-- "reason": why this change would help`;
+- "reason": why this change would help
+
+For delivery issues, suggest improvements to the agent spec that could help (e.g. simplifying complex words, shortening sentences, adding pause markers).`;
 
     const userPrompt = `AGENT SPECIFICATION:
 ${JSON.stringify(spec, null, 2)}
@@ -91,7 +113,9 @@ ${call.transcript}`;
                 compliance_score: { type: "number" },
                 objective_score: { type: "number" },
                 overall_score: { type: "number" },
+                naturalness_score: { type: "number" },
                 issues_detected: { type: "array", items: { type: "string" } },
+                delivery_issues: { type: "array", items: { type: "string" } },
                 missed_fields: { type: "array", items: { type: "string" } },
                 incorrect_logic: { type: "array", items: { type: "string" } },
                 hallucination_detected: { type: "boolean" },
@@ -109,7 +133,7 @@ ${call.transcript}`;
                   },
                 },
               },
-              required: ["compliance_score", "objective_score", "overall_score", "issues_detected", "missed_fields", "incorrect_logic", "hallucination_detected", "recommended_improvements"],
+              required: ["compliance_score", "objective_score", "overall_score", "naturalness_score", "issues_detected", "delivery_issues", "missed_fields", "incorrect_logic", "hallucination_detected", "recommended_improvements"],
               additionalProperties: false,
             },
           },
@@ -156,9 +180,11 @@ ${call.transcript}`;
       rubric: {
         compliance_score: evaluation.compliance_score,
         objective_score: evaluation.objective_score,
+        naturalness_score: evaluation.naturalness_score,
         missed_fields: evaluation.missed_fields,
         incorrect_logic: evaluation.incorrect_logic,
         hallucination_detected: evaluation.hallucination_detected,
+        delivery_issues: evaluation.delivery_issues,
       },
     }, { onConflict: "call_id" });
 

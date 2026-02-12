@@ -25,6 +25,7 @@ serve(async (req) => {
     const summary = body.summary || body.analysis || null;
     const status = body.status || body.call_status || "completed";
     const duration = body.call_length || body.duration || null;
+    const recordingUrl = body.recording_url || body.recordingUrl || null;
 
     // Map Bland status to our contact status
     let contactStatus = "completed";
@@ -66,6 +67,7 @@ serve(async (req) => {
           outcome,
           extracted_data: extractedData,
           called_at: new Date().toISOString(),
+          recording_url: recordingUrl,
         })
         .eq("id", metadata.test_run_contact_id);
 
@@ -85,6 +87,7 @@ serve(async (req) => {
         summary: typeof summary === "object" ? summary : { raw: summary },
         extracted_data: extractedData,
         version: metadata.spec_version || 1,
+        recording_url: recordingUrl,
       };
 
       const { data: upsertedCall, error: callErr } = await supabase
@@ -143,6 +146,7 @@ serve(async (req) => {
       summary: typeof summary === "object" ? summary : { raw: summary },
       extracted_data: extractedData,
       version: metadata.version || 1,
+      recording_url: recordingUrl,
     };
 
     const { data: upsertedCall, error: callErr } = await supabase

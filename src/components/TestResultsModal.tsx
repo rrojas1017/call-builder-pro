@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface TestContact {
@@ -18,6 +18,7 @@ interface TestContact {
   outcome: string | null;
   error: string | null;
   extracted_data: any;
+  recording_url?: string | null;
 }
 
 interface TestResultsModalProps {
@@ -34,6 +35,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
   const [loading, setLoading] = useState(true);
   const [applyingFixId, setApplyingFixId] = useState<string | null>(null);
   const [appliedFixes, setAppliedFixes] = useState<string[]>([]);
+  const [applyingAll, setApplyingAll] = useState(false);
 
   const handleApplyFix = async (improvement: any) => {
     try {
@@ -65,6 +67,17 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
     }
   };
 
+  const handleApplyAllFixes = async (improvements: any[]) => {
+    const unapplied = improvements.filter((imp: any) => !appliedFixes.includes(imp.field));
+    if (!unapplied.length) return;
+    setApplyingAll(true);
+    for (const imp of unapplied) {
+      await handleApplyFix(imp);
+    }
+    setApplyingAll(false);
+    toast({ title: "All fixes applied!", description: "Agent spec has been updated with all recommended improvements." });
+  };
+
   // Poll for updates
   useEffect(() => {
     if (!open) return;
@@ -83,7 +96,6 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
 
     fetchContacts();
 
-    // Subscribe to realtime changes
     const channel = supabase
       .channel(`test-run-${testRunId}`)
       .on(
@@ -98,7 +110,6 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
       )
       .subscribe();
 
-    // Also poll every 5s as backup
     const interval = setInterval(fetchContacts, 5000);
 
     return () => {
@@ -170,6 +181,17 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                 </div>
               </div>
 
+              {selected.recording_url && (
+                <div className="space-y-1">
+                  <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <Play className="h-3 w-3" /> Recording
+                  </h5>
+                  <audio controls className="w-full h-8" src={selected.recording_url}>
+                    Your browser does not support the audio element.
+                  </audio>
+                </div>
+              )}
+
               {selected.error && (
                 <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
                   {selected.error}
@@ -190,11 +212,26 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
               {selected.evaluation && (
                 <div className="space-y-2">
                   <h5 className="text-xs font-medium text-muted-foreground">Evaluation</h5>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-4 gap-2">
                     <ScoreCard label="Compliance" score={selected.evaluation.compliance_score} />
                     <ScoreCard label="Objective" score={selected.evaluation.objective_score} />
+                    <ScoreCard label="Naturalness" score={selected.evaluation.naturalness_score} />
                     <ScoreCard label="Overall" score={selected.evaluation.overall_score} />
                   </div>
+
+                  {selected.evaluation.delivery_issues?.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Delivery Issues</p>
+                      <ul className="text-xs text-foreground space-y-1">
+                        {selected.evaluation.delivery_issues.map((issue: string, i: number) => (
+                          <li key={i} className="flex items-start gap-1">
+                            <XCircle className="h-3 w-3 mt-0.5 text-yellow-400 shrink-0" />
+                            {issue}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   {selected.evaluation.issues_detected?.length > 0 && (
                     <div className="space-y-1">
@@ -212,7 +249,24 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
 
                   {selected.evaluation.recommended_improvements?.length > 0 && (
                     <div className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Recommended Improvements</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium text-muted-foreground">Recommended Improvements</p>
+                        {selected.evaluation.recommended_improvements.length > 1 && (
+                          <Button
+                            onClick={() => handleApplyAllFixes(selected.evaluation.recommended_improvements)}
+                            disabled={applyingAll || selected.evaluation.recommended_improvements.every((imp: any) => appliedFixes.includes(imp.field))}
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                          >
+                            {applyingAll ? (
+                              <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Applying...</>
+                            ) : (
+                              <><Wand2 className="mr-1 h-3 w-3" /> Apply All Fixes</>
+                            )}
+                          </Button>
+                        )}
+                      </div>
                       <ul className="text-xs text-foreground space-y-2">
                         {selected.evaluation.recommended_improvements.map((imp: any, i: number) => (
                           <li key={i} className="rounded-lg bg-muted/30 border border-border p-3">
@@ -220,7 +274,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                               <div className="flex-1">
                                 <p className="font-medium">{imp.field}</p>
                                 <p className="text-muted-foreground text-xs mt-1">{imp.reason}</p>
-                                <p className="mt-2">Suggested: <span className="text-primary">{imp.suggested_value}</span></p>
+                                <p className="mt-2">Suggested: <span className="text-primary">{typeof imp.suggested_value === 'object' ? JSON.stringify(imp.suggested_value) : imp.suggested_value}</span></p>
                               </div>
                               <Button
                                 onClick={() => handleApplyFix(imp)}
