@@ -29,7 +29,17 @@ serve(async (req) => {
     // Update agent_specs based on answers
     const updates: Record<string, any> = {};
     for (const ans of answers) {
-      if (ans.order_index === 0 && ans.answer) updates.transfer_phone_number = ans.answer;
+      if (ans.order_index === 0 && ans.answer) {
+        // Only store as transfer_phone_number if it looks like a phone number
+        const digits = ans.answer.replace(/\D/g, "");
+        if (digits.length >= 10) {
+          updates.transfer_phone_number = digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
+          updates.transfer_required = true;
+        } else {
+          // It's descriptive text, not a phone number — store as a qualification rule
+          updates.qualification_rules = { description: ans.answer };
+        }
+      }
       if (ans.order_index === 1 && ans.answer) updates.disclosure_text = ans.answer;
       if (ans.order_index === 2 && ans.answer) {
         updates.qualification_rules = { income_range: ans.answer, eligible_coverage: ["uninsured", "private"] };
