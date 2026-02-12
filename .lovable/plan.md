@@ -1,74 +1,40 @@
 
 
-# Simplified "Quick Test" Flow
+# Fix Bland API Error in Quick Test
 
-## The Idea
-Replace the multi-step Test Lab with a dead-simple experience: **Pick agent -> Enter phone number -> Click Test**. One screen, three actions, done.
+## Problem
+The Quick Test call fails with a generic "Bland API error" message. The edge function doesn't log the actual Bland API response, making debugging impossible.
 
-## What Changes
+## Root Cause Investigation
+The `run-test-run` edge function sends the call to Bland AI but when it fails:
+1. It only checks for `blandData.call_id` to determine success
+2. On failure, it saves `blandData.message || "Bland API error"` -- but Bland may return the error in a different field
+3. The actual Bland response is never logged, hiding the real error
 
-### 1. New Page: `/test` (QuickTestPage.tsx)
+## Fix
 
-A clean, focused page with just three elements:
+### 1. Add logging to `run-test-run` edge function
+- Log the full Bland API response body when a call fails
+- Log the HTTP status code from Bland
+- Store the full error details (not just `blandData.message`) in the `error` field
 
-```text
-+-----------------------------------------------+
-|  Quick Test                                    |
-|                                                |
-|  Agent:  [ Select an agent        v ]          |
-|                                                |
-|  Phone:  [ +1 555 123 4567          ]          |
-|                                                |
-|  [ Run Test Call ]                             |
-|                                                |
-|  --- After clicking: ---                       |
-|                                                |
-|  Status: Calling...  (spinner)                 |
-|  Transcript: (streams in live)                 |
-|  Score: 87 / Outcome: Qualified                |
-|  [Recommended fixes with Apply Fix buttons]    |
-+-----------------------------------------------+
+### 2. Improve error capture
+Change the error storage to capture more detail:
+```typescript
+// Before:
+error: blandData.message || "Bland API error"
+
+// After: 
+error: blandData.message || blandData.error || JSON.stringify(blandData)
 ```
 
-- **Agent dropdown**: Loads all `agent_projects` for the user's org
-- **Phone input**: Single phone number field with auto-normalization
-- **Run Test Call**: Creates a 1-contact test run, fires the call, shows results inline (no modal needed)
-- Results appear on the same page below the button -- transcript, evaluation, and Apply Fix buttons
-
-### 2. Navigation
-- Add "Test" item to the sidebar (between "Agents" and "Campaigns")
-- Add a "Test" button on each agent card in the Agents page for quick access (`/test?agent=<id>`)
-
-### 3. Reuse Existing Backend
-No new edge functions needed. The flow calls:
-1. `create-test-run` with 1 contact
-2. `run-test-run` to fire the Bland call
-3. Subscribes to Realtime updates on `test_run_contacts` for live status
-4. Shows evaluation + Apply Fix buttons (reusing existing `apply-improvement` function)
-
-### 4. Keep Existing Test Lab in Wizard
-The current Test Lab in Step 3 of the wizard stays as-is for bulk testing during agent creation. This new page is for quick one-off tests anytime.
-
----
-
-## Technical Details
-
-### Files to Create
-- `src/pages/QuickTestPage.tsx` -- the main page component
+Also add `console.log` to capture the response for debugging:
+```typescript
+console.log("Bland API response:", blandResp.status, JSON.stringify(blandData));
+```
 
 ### Files to Modify
-- `src/App.tsx` -- add `/test` route
-- `src/components/AppSidebar.tsx` -- add "Test" nav item
-- `src/pages/AgentsPage.tsx` -- add "Test" button on each agent card
+- `supabase/functions/run-test-run/index.ts` -- Add logging and better error capture
 
-### QuickTestPage.tsx Structure
-- Loads agents from `agent_projects` on mount
-- If `?agent=<id>` query param exists, pre-selects that agent
-- Single phone input with normalization (strip non-digits, prepend +1 if 10 digits)
-- On "Run Test Call":
-  1. Call `create-test-run` with 1 contact (name defaults to "Quick Test")
-  2. Call `run-test-run`
-  3. Subscribe to Realtime on `test_run_contacts` for that test_run_id
-  4. Show inline results: status, transcript, evaluation scores, recommended improvements with Apply Fix buttons
-- Apply Fix reuses the same `apply-improvement` edge function call pattern from `TestResultsModal`
-
+## Technical Details
+The change is minimal: add a `console.log` for the Bland response and expand the error field to capture the actual error message regardless of which field Bland returns it in. This will let us see the real error in the edge function logs and display it to the user.
