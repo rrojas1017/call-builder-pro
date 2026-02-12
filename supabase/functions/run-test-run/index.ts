@@ -18,57 +18,77 @@ interface AgentSpec {
   opening_line?: string | null;
   transfer_required?: boolean | null;
   mode?: string | null;
+  use_case?: string | null;
+  success_definition?: string | null;
 }
 
 function buildTaskPrompt(spec: AgentSpec): string {
-  const discl = spec.disclosure_text || "This call may be recorded for quality and compliance purposes.";
+  const purpose = spec.use_case || spec.success_definition || "Conduct a professional outbound call.";
+  const discl = spec.disclosure_text || "";
+  const tone = spec.tone_style || "Friendly, professional, empathetic";
+
   const rawFields = spec.must_collect_fields;
-  const defaultFields = ["consent", "state", "age", "household_size", "income_est_annual", "coverage_type"];
-  let fields: string[] = defaultFields;
+  let fields: string[] = [];
   if (Array.isArray(rawFields)) {
     fields = rawFields;
   } else if (typeof rawFields === "string") {
-    try { const p = JSON.parse(rawFields); if (Array.isArray(p)) fields = p; } catch { /* use default */ }
+    try { const p = JSON.parse(rawFields); if (Array.isArray(p)) fields = p; } catch { /* skip */ }
   }
+
+  const qualRules = spec.qualification_rules
+    ? (typeof spec.qualification_rules === "string" ? spec.qualification_rules : JSON.stringify(spec.qualification_rules, null, 2))
+    : null;
+  const disqualRules = spec.disqualification_rules
+    ? (typeof spec.disqualification_rules === "string" ? spec.disqualification_rules : JSON.stringify(spec.disqualification_rules, null, 2))
+    : null;
+
   const transferNum = spec.transfer_phone_number || "";
+  const transferDigits = transferNum.replace(/\D/g, "");
 
-  const formatField = (field: string): string => {
-    const labels: Record<string, string> = {
-      consent: "Confirm they requested information and obtain verbal consent for screening",
-      state: "What state do you live in?",
-      age: "How old are you?",
-      household_size: "How many people are in your household?",
-      income_est_annual: "What is your estimated annual household income?",
-      coverage_type: "Do you currently have health insurance? (uninsured, private, employer, Medicare, Medicaid)",
-    };
-    return labels[field] || field;
-  };
+  let prompt = `You are a professional outbound calling agent.
 
-  return `You are a professional, friendly ACA pre-qualification screening agent.
-
-DISCLOSURE (read verbatim at the start):
-"${discl}"
+PURPOSE: ${purpose}
 
 RULES:
-- You MUST obtain verbal consent before asking any screening questions.
-- If the caller declines consent, politely end the call.
-- NEVER give insurance advice, plan details, or pricing.
+- Tone: ${tone}
 - Keep the conversation concise and professional.
-- Tone: ${spec.tone_style || "Friendly, professional, empathetic"}
+- Never guess or assume answers the caller hasn't given.`;
 
-SCREENING QUESTIONS (collect in this order):
-${fields.map((f, i) => `${i + 1}. ${formatField(f)}`).join("\n")}
+  if (discl) {
+    prompt += `\n\nDISCLOSURE (read at the start of the call):\n"${discl}"`;
+  }
 
-QUALIFICATION LOGIC:
-- If the caller has employer-sponsored insurance or Medicare → DISQUALIFY.
-- If the caller has Medicaid → Tag as Medicaid.
-- If qualified, say: "Great news! Let me connect you with a licensed agent."
-${transferNum ? `- Transfer to: ${transferNum}` : "- No transfer number configured."}
+  if (fields.length > 0) {
+    prompt += `\n\nINFORMATION TO COLLECT (in this order):\n${fields.map((f, i) => `${i + 1}. ${f}`).join("\n")}`;
+  }
 
-FALLBACK:
-- If you cannot collect required information after 2 attempts, note what's missing and end politely.
+  if (qualRules) {
+    prompt += `\n\nQUALIFICATION CRITERIA:\n${qualRules}`;
+  }
+  if (disqualRules) {
+    prompt += `\n\nDISQUALIFICATION CRITERIA:\n${disqualRules}`;
+  }
 
-SUMMARY: After the call, provide a JSON summary with collected fields.`;
+  if (transferDigits.length >= 10) {
+    const formattedNum = transferDigits.startsWith("1") ? `+${transferDigits}` : `+1${transferDigits}`;
+    prompt += `\n\nTRANSFER: If the caller qualifies, transfer them to ${formattedNum}.`;
+  }
+
+  prompt += `\n\nFALLBACK: If you cannot collect required information after 2 attempts, note what's missing and end politely.`;
+  prompt += `\n\nSUMMARY: After the call, provide a JSON summary with all collected fields.`;
+
+  return prompt;
+}
+
+function replaceTemplateVars(text: string, contact: { name: string; phone: string }): string {
+  const parts = (contact.name || "").trim().split(/\s+/);
+  const firstName = parts[0] || "";
+  const lastName = parts.length > 1 ? parts[parts.length - 1] : "";
+  return text
+    .replace(/\{\{first_name\}\}/gi, firstName)
+    .replace(/\{\{last_name\}\}/gi, lastName)
+    .replace(/\{\{name\}\}/gi, contact.name || "")
+    .replace(/\{\{phone\}\}/gi, contact.phone || "");
 }
 
 serve(async (req) => {
@@ -146,17 +166,20 @@ serve(async (req) => {
       .eq("project_id", testRun.project_id)
       .single();
 
-    const task = testRun.agent_instructions_text || (spec ? buildTaskPrompt(spec) : "Conduct a professional screening call.");
+    const baseTask = testRun.agent_instructions_text || (spec ? buildTaskPrompt(spec) : "Conduct a professional outbound call.");
     const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
 
     const callIds: string[] = [];
 
     for (const contact of queuedContacts) {
       try {
+        const contactTask = replaceTemplateVars(baseTask, contact);
+        const contactFirstSentence = spec?.opening_line ? replaceTemplateVars(spec.opening_line, contact) : undefined;
+
         const blandPayload: any = {
           phone_number: contact.phone,
-          task,
-          first_sentence: spec?.opening_line || undefined,
+          task: contactTask,
+          first_sentence: contactFirstSentence,
           voice: spec?.voice_id || "maya",
           model: "base",
           record: true,
