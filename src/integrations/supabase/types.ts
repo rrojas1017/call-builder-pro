@@ -80,6 +80,7 @@ export type Database = {
           updated_at: string
           use_case: string
           version: number
+          voice_id: string | null
         }
         Insert: {
           business_hours?: Json | null
@@ -105,6 +106,7 @@ export type Database = {
           updated_at?: string
           use_case?: string
           version?: number
+          voice_id?: string | null
         }
         Update: {
           business_hours?: Json | null
@@ -130,6 +132,7 @@ export type Database = {
           updated_at?: string
           use_case?: string
           version?: number
+          voice_id?: string | null
         }
         Relationships: [
           {

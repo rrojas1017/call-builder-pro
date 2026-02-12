@@ -150,6 +150,8 @@ serve(async (req) => {
           phone_number: contact.phone,
           task,
           first_sentence: spec?.opening_line || undefined,
+          voice: spec?.voice_id || "maya",
+          model: "base",
           record: true,
           webhook: webhookUrl,
           metadata: {
