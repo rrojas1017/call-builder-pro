@@ -66,14 +66,18 @@ export type Database = {
           escalation_rules: Json | null
           from_number: string | null
           id: string
+          interruption_threshold: number | null
           language: string
           mode: string | null
           must_collect_fields: Json | null
           opening_line: string | null
           project_id: string
+          pronunciation_guide: Json | null
           qualification_rules: Json | null
           retry_policy: Json | null
+          speaking_speed: number | null
           success_definition: string | null
+          temperature: number | null
           tone_style: string | null
           transfer_phone_number: string | null
           transfer_required: boolean | null
@@ -92,14 +96,18 @@ export type Database = {
           escalation_rules?: Json | null
           from_number?: string | null
           id?: string
+          interruption_threshold?: number | null
           language?: string
           mode?: string | null
           must_collect_fields?: Json | null
           opening_line?: string | null
           project_id: string
+          pronunciation_guide?: Json | null
           qualification_rules?: Json | null
           retry_policy?: Json | null
+          speaking_speed?: number | null
           success_definition?: string | null
+          temperature?: number | null
           tone_style?: string | null
           transfer_phone_number?: string | null
           transfer_required?: boolean | null
@@ -118,14 +126,18 @@ export type Database = {
           escalation_rules?: Json | null
           from_number?: string | null
           id?: string
+          interruption_threshold?: number | null
           language?: string
           mode?: string | null
           must_collect_fields?: Json | null
           opening_line?: string | null
           project_id?: string
+          pronunciation_guide?: Json | null
           qualification_rules?: Json | null
           retry_policy?: Json | null
+          speaking_speed?: number | null
           success_definition?: string | null
+          temperature?: number | null
           tone_style?: string | null
           transfer_phone_number?: string | null
           transfer_required?: boolean | null

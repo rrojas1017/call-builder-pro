@@ -8,7 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Rocket, Eye, Pencil, FileText, Phone, Shield, Target, Users, Mic } from "lucide-react";
+import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Rocket, Eye, Pencil, FileText, Phone, Shield, Target, Users, Mic, Plus, Trash2, SlidersHorizontal } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import TestLabSection from "@/components/TestLabSection";
 
@@ -50,6 +52,12 @@ export default function CreateAgentPage() {
   const [file, setFile] = useState<File | null>(null);
   const [selectedVoice, setSelectedVoice] = useState("maya");
   const [customVoiceId, setCustomVoiceId] = useState("");
+  const [temperature, setTemperature] = useState(0.7);
+  const [interruptionThreshold, setInterruptionThreshold] = useState(100);
+  const [speakingSpeed, setSpeakingSpeed] = useState(1.0);
+  const [pronunciationGuide, setPronunciationGuide] = useState<{ word: string; pronunciation: string }[]>([]);
+  const [newWord, setNewWord] = useState("");
+  const [newPronunciation, setNewPronunciation] = useState("");
 
   // Campaign launch state (integrated into Step 3)
   const [campaignName, setCampaignName] = useState("");
@@ -345,6 +353,113 @@ export default function CreateAgentPage() {
               )}
             </div>
 
+          {/* Voice Tuning */}
+          <div className="surface-elevated rounded-xl p-6 space-y-5">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4 text-primary" /> Voice Tuning
+            </h3>
+            <p className="text-xs text-muted-foreground">Fine-tune how your agent sounds and responds.</p>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Temperature</Label>
+                <span className="text-xs text-muted-foreground font-mono">{temperature.toFixed(1)}</span>
+              </div>
+              <Slider
+                value={[temperature]}
+                onValueChange={async ([v]) => {
+                  setTemperature(v);
+                  if (projectId) await supabase.from("agent_specs").update({ temperature: v }).eq("project_id", projectId);
+                }}
+                min={0} max={1} step={0.1}
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Predictable</span><span>Natural / Varied</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Interruption Threshold</Label>
+                <span className="text-xs text-muted-foreground font-mono">{interruptionThreshold}ms</span>
+              </div>
+              <Slider
+                value={[interruptionThreshold]}
+                onValueChange={async ([v]) => {
+                  setInterruptionThreshold(v);
+                  if (projectId) await supabase.from("agent_specs").update({ interruption_threshold: v }).eq("project_id", projectId);
+                }}
+                min={50} max={300} step={10}
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Quick response</span><span>Patient listener</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Speaking Speed</Label>
+                <span className="text-xs text-muted-foreground font-mono">{speakingSpeed.toFixed(1)}x</span>
+              </div>
+              <Slider
+                value={[speakingSpeed]}
+                onValueChange={async ([v]) => {
+                  setSpeakingSpeed(v);
+                  if (projectId) await supabase.from("agent_specs").update({ speaking_speed: v }).eq("project_id", projectId);
+                }}
+                min={0.7} max={1.2} step={0.05}
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Slower</span><span>Faster</span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label>Pronunciation Guide</Label>
+              <p className="text-xs text-muted-foreground">Add words your agent mispronounces with their correct phonetic spelling.</p>
+              {pronunciationGuide.length > 0 && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Word</TableHead>
+                      <TableHead>Pronunciation</TableHead>
+                      <TableHead className="w-10"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pronunciationGuide.map((entry, i) => (
+                      <TableRow key={i}>
+                        <TableCell className="font-mono text-sm">{entry.word}</TableCell>
+                        <TableCell className="font-mono text-sm">{entry.pronunciation}</TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="sm" onClick={async () => {
+                            const updated = pronunciationGuide.filter((_, idx) => idx !== i);
+                            setPronunciationGuide(updated);
+                            if (projectId) await supabase.from("agent_specs").update({ pronunciation_guide: updated }).eq("project_id", projectId);
+                          }}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+              <div className="flex gap-2">
+                <Input value={newWord} onChange={(e) => setNewWord(e.target.value)} placeholder="Word (e.g. ACA)" className="flex-1" />
+                <Input value={newPronunciation} onChange={(e) => setNewPronunciation(e.target.value)} placeholder="Say as (e.g. A-C-A)" className="flex-1" />
+                <Button variant="outline" size="sm" disabled={!newWord.trim() || !newPronunciation.trim()} onClick={async () => {
+                  const updated = [...pronunciationGuide, { word: newWord.trim(), pronunciation: newPronunciation.trim() }];
+                  setPronunciationGuide(updated);
+                  setNewWord("");
+                  setNewPronunciation("");
+                  if (projectId) await supabase.from("agent_specs").update({ pronunciation_guide: updated }).eq("project_id", projectId);
+                }}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
           {showRawSpec && (
             <div className="surface-elevated rounded-xl p-4">
               <Textarea value={rawSpecText} onChange={(e) => setRawSpecText(e.target.value)} rows={14} className="font-mono text-xs" />

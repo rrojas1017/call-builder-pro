@@ -82,7 +82,15 @@ Each recommended_improvement should be an object with:
 - "suggested_value": what it should be
 - "reason": why this change would help
 
-For delivery issues, suggest improvements to the agent spec that could help (e.g. simplifying complex words, shortening sentences, adding pause markers).`;
+For delivery issues, suggest improvements to the agent spec that could help (e.g. simplifying complex words, shortening sentences, adding pause markers).
+
+VOICE TUNING RECOMMENDATIONS:
+When delivery issues are detected, also suggest voice parameter changes:
+- If repeated words or stuttering detected → suggest lowering "temperature" (e.g. from 0.7 to 0.5)
+- If rushed pacing or sentences crammed together → suggest lowering "speaking_speed" (e.g. from 1.0 to 0.9)
+- If AI interrupts the caller too quickly → suggest raising "interruption_threshold" (e.g. from 100 to 200)
+- If specific words are mispronounced → suggest adding entries to "pronunciation_guide" as [{"word":"term","pronunciation":"phonetic"}]
+These are valid agent_spec fields that can be patched directly.`;
 
     const userPrompt = `AGENT SPECIFICATION:
 ${JSON.stringify(spec, null, 2)}
