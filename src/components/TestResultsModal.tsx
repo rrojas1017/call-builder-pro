@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface TestContact {
   id: string;
@@ -21,14 +22,48 @@ interface TestContact {
 
 interface TestResultsModalProps {
   testRunId: string;
+  projectId: string;
   open: boolean;
   onClose: () => void;
 }
 
-export default function TestResultsModal({ testRunId, open, onClose }: TestResultsModalProps) {
+export default function TestResultsModal({ testRunId, projectId, open, onClose }: TestResultsModalProps) {
+  const { toast } = useToast();
   const [contacts, setContacts] = useState<TestContact[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [applyingFixId, setApplyingFixId] = useState<string | null>(null);
+  const [appliedFixes, setAppliedFixes] = useState<string[]>([]);
+
+  const handleApplyFix = async (improvement: any) => {
+    try {
+      setApplyingFixId(improvement.field);
+      const { data, error } = await supabase.functions.invoke("apply-improvement", {
+        body: {
+          project_id: projectId,
+          improvement: {
+            field: improvement.field,
+            suggested_value: improvement.suggested_value,
+            reason: improvement.reason,
+          },
+        },
+      });
+      if (error) throw error;
+      setAppliedFixes((prev) => [...prev, improvement.field]);
+      toast({
+        title: "Fix applied!",
+        description: `Agent spec updated to version ${data.to_version}.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Failed to apply fix",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setApplyingFixId(null);
+    }
+  };
 
   // Poll for updates
   useEffect(() => {
@@ -180,10 +215,28 @@ export default function TestResultsModal({ testRunId, open, onClose }: TestResul
                       <p className="text-xs font-medium text-muted-foreground">Recommended Improvements</p>
                       <ul className="text-xs text-foreground space-y-2">
                         {selected.evaluation.recommended_improvements.map((imp: any, i: number) => (
-                          <li key={i} className="rounded-lg bg-muted/30 border border-border p-2">
-                            <p className="font-medium">{imp.field}</p>
-                            <p className="text-muted-foreground">{imp.reason}</p>
-                            <p className="mt-1">Suggested: <span className="text-primary">{imp.suggested_value}</span></p>
+                          <li key={i} className="rounded-lg bg-muted/30 border border-border p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className="font-medium">{imp.field}</p>
+                                <p className="text-muted-foreground text-xs mt-1">{imp.reason}</p>
+                                <p className="mt-2">Suggested: <span className="text-primary">{imp.suggested_value}</span></p>
+                              </div>
+                              <Button
+                                onClick={() => handleApplyFix(imp)}
+                                disabled={applyingFixId === imp.field || appliedFixes.includes(imp.field)}
+                                size="sm"
+                                variant={appliedFixes.includes(imp.field) ? "ghost" : "default"}
+                                className="shrink-0"
+                              >
+                                {applyingFixId === imp.field && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                                {appliedFixes.includes(imp.field) ? (
+                                  <><CheckCircle className="mr-1 h-3 w-3" /> Applied</>
+                                ) : (
+                                  "Apply Fix"
+                                )}
+                              </Button>
+                            </div>
                           </li>
                         ))}
                       </ul>

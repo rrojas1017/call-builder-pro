@@ -169,6 +169,7 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
       {showResults && testRunId && (
         <TestResultsModal
           testRunId={testRunId}
+          projectId={projectId}
           open={showResults}
           onClose={() => setShowResults(false)}
         />
