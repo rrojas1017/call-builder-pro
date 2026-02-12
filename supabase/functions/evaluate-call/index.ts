@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { call_id } = await req.json();
+    const { call_id, test_run_contact_id } = await req.json();
     if (!call_id) throw new Error("call_id required");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -161,6 +161,14 @@ ${call.transcript}`;
         hallucination_detected: evaluation.hallucination_detected,
       },
     }, { onConflict: "call_id" });
+
+    // If this is a test lab call, store evaluation in test_run_contacts
+    if (test_run_contact_id) {
+      await supabase
+        .from("test_run_contacts")
+        .update({ evaluation })
+        .eq("id", test_run_contact_id);
+    }
 
     return new Response(JSON.stringify({ evaluation }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

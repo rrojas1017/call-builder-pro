@@ -51,7 +51,83 @@ serve(async (req) => {
     if (extractedData?.qualified === true) outcome = "qualified";
     else if (extractedData?.qualified === false) outcome = "disqualified";
 
-    // Upsert call record
+    // ===== TEST LAB FLOW =====
+    if (metadata.test_run_contact_id) {
+      console.log("Test lab flow for contact:", metadata.test_run_contact_id);
+
+      // Update test_run_contacts row
+      const { error: updateErr } = await supabase
+        .from("test_run_contacts")
+        .update({
+          transcript,
+          status: contactStatus,
+          bland_call_id: blandCallId,
+          duration_seconds: typeof duration === "number" ? Math.round(duration) : null,
+          outcome,
+          extracted_data: extractedData,
+          called_at: new Date().toISOString(),
+        })
+        .eq("id", metadata.test_run_contact_id);
+
+      if (updateErr) console.error("Error updating test_run_contacts:", updateErr);
+
+      // Also upsert into calls table for evaluate-call compatibility
+      const callData: any = {
+        org_id: metadata.org_id,
+        project_id: metadata.project_id,
+        direction: "outbound",
+        bland_call_id: blandCallId,
+        started_at: body.created_at || new Date().toISOString(),
+        ended_at: body.end_at || new Date().toISOString(),
+        duration_seconds: typeof duration === "number" ? Math.round(duration) : null,
+        outcome,
+        transcript,
+        summary: typeof summary === "object" ? summary : { raw: summary },
+        extracted_data: extractedData,
+        version: metadata.spec_version || 1,
+      };
+
+      const { data: upsertedCall, error: callErr } = await supabase
+        .from("calls")
+        .upsert(callData, { onConflict: "bland_call_id" })
+        .select("id")
+        .single();
+      if (callErr) console.error("Error upserting call:", callErr);
+
+      // Trigger evaluate-call for completed calls
+      if (upsertedCall?.id && transcript && contactStatus === "completed") {
+        const evalUrl = `${supabaseUrl}/functions/v1/evaluate-call`;
+        fetch(evalUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            call_id: upsertedCall.id,
+            test_run_contact_id: metadata.test_run_contact_id,
+          }),
+        }).catch((e) => console.error("Error triggering evaluate-call:", e));
+      }
+
+      // Trigger run-test-run to pick next queued contact
+      if (metadata.test_run_id) {
+        fetch(`${supabaseUrl}/functions/v1/run-test-run`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({ test_run_id: metadata.test_run_id }),
+        }).catch((e) => console.error("Error triggering run-test-run:", e));
+      }
+
+      return new Response(JSON.stringify({ success: true, flow: "test_lab" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ===== STANDARD CAMPAIGN FLOW =====
     const callData: any = {
       org_id: metadata.org_id,
       project_id: metadata.project_id,

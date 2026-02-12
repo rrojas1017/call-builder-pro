@@ -23,3 +23,12 @@ verify_jwt = false
 
 [functions.apply-improvement]
 verify_jwt = false
+
+[functions.parse-dial-list]
+verify_jwt = false
+
+[functions.create-test-run]
+verify_jwt = false
+
+[functions.run-test-run]
+verify_jwt = false

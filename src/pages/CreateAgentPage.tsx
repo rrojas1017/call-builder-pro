@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Rocket, Eye, Pencil, FileText, Phone, Shield, Target, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import TestLabSection from "@/components/TestLabSection";
 
 const STEPS = ["Build Your Agent", "Clarify Details", "Review & Launch"];
 
@@ -278,6 +279,9 @@ export default function CreateAgentPage() {
             {showRawSpec ? <Eye className="mr-2 h-4 w-4" /> : <Pencil className="mr-2 h-4 w-4" />}
             {showRawSpec ? "View Summary" : "Edit Details"}
           </Button>
+
+          {/* Test Lab */}
+          {projectId && <TestLabSection projectId={projectId} />}
 
           {/* Integrated campaign launch */}
           <div className="surface-elevated rounded-xl p-6 space-y-4">

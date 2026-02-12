@@ -444,6 +444,122 @@ export type Database = {
           },
         ]
       }
+      test_run_contacts: {
+        Row: {
+          bland_call_id: string | null
+          called_at: string | null
+          created_at: string | null
+          duration_seconds: number | null
+          error: string | null
+          evaluation: Json | null
+          extracted_data: Json | null
+          id: string
+          name: string
+          outcome: string | null
+          phone: string
+          status: string
+          test_run_id: string
+          transcript: string | null
+        }
+        Insert: {
+          bland_call_id?: string | null
+          called_at?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          error?: string | null
+          evaluation?: Json | null
+          extracted_data?: Json | null
+          id?: string
+          name: string
+          outcome?: string | null
+          phone: string
+          status?: string
+          test_run_id: string
+          transcript?: string | null
+        }
+        Update: {
+          bland_call_id?: string | null
+          called_at?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          error?: string | null
+          evaluation?: Json | null
+          extracted_data?: Json | null
+          id?: string
+          name?: string
+          outcome?: string | null
+          phone?: string
+          status?: string
+          test_run_id?: string
+          transcript?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_run_contacts_test_run_id_fkey"
+            columns: ["test_run_id"]
+            isOneToOne: false
+            referencedRelation: "test_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_runs: {
+        Row: {
+          agent_instructions_text: string | null
+          completed_at: string | null
+          concurrency: number
+          created_at: string | null
+          id: string
+          max_calls: number
+          name: string
+          org_id: string
+          project_id: string
+          spec_version: number | null
+          status: string
+        }
+        Insert: {
+          agent_instructions_text?: string | null
+          completed_at?: string | null
+          concurrency?: number
+          created_at?: string | null
+          id?: string
+          max_calls?: number
+          name: string
+          org_id: string
+          project_id: string
+          spec_version?: number | null
+          status?: string
+        }
+        Update: {
+          agent_instructions_text?: string | null
+          completed_at?: string | null
+          concurrency?: number
+          created_at?: string | null
+          id?: string
+          max_calls?: number
+          name?: string
+          org_id?: string
+          project_id?: string
+          spec_version?: number | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_runs_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_runs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
