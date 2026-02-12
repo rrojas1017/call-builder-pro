@@ -28,8 +28,10 @@ serve(async (req) => {
     const fromVersion = spec.version;
     const toVersion = fromVersion + 1;
 
-    // Build patch
-    const field = improvement.field as string;
+    // Build patch — strip parenthetical descriptions from field names
+    // e.g. "must_collect_fields (household_size prompt)" → "must_collect_fields"
+    const rawField = (improvement.field as string).trim();
+    const field = rawField.replace(/\s*\(.*\)$/, "").trim();
     const patch: Record<string, any> = {};
 
     // Handle dot-notation fields (e.g. "qualification_rules.income_range")
