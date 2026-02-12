@@ -49,6 +49,8 @@ export default function CreateAgentPage() {
   const [selectedVoice, setSelectedVoice] = useState("maya");
   const [customVoiceId, setCustomVoiceId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [transferEnabled, setTransferEnabled] = useState(false);
+  const [transferPhone, setTransferPhone] = useState("");
 
   // Step 1: Create project + generate spec
   const handleGenerateSpec = async () => {
@@ -103,6 +105,8 @@ export default function CreateAgentPage() {
       if (error) throw error;
       setSpec(data.spec);
       setRawSpecText(JSON.stringify(data.spec, null, 2));
+      setTransferEnabled(!!data.spec?.transfer_required);
+      setTransferPhone(data.spec?.transfer_phone_number || "");
       setStep(2);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -117,9 +121,20 @@ export default function CreateAgentPage() {
     setSaving(true);
     try {
       const voiceId = selectedVoice === "custom" ? customVoiceId.trim() : selectedVoice;
-      if (voiceId) {
-        await supabase.from("agent_specs").update({ voice_id: voiceId }).eq("project_id", projectId);
+      const phoneDigits = transferPhone.replace(/\D/g, "");
+      if (transferEnabled && phoneDigits.length < 10) {
+        toast({ title: "Invalid phone number", description: "Please enter at least 10 digits for the transfer number.", variant: "destructive" });
+        setSaving(false);
+        return;
       }
+      const formattedPhone = transferEnabled && phoneDigits.length >= 10
+        ? (phoneDigits.startsWith("1") ? `+${phoneDigits}` : `+1${phoneDigits}`)
+        : null;
+      await supabase.from("agent_specs").update({
+        voice_id: voiceId || undefined,
+        transfer_required: transferEnabled,
+        transfer_phone_number: formattedPhone,
+      }).eq("project_id", projectId);
       toast({ title: "Agent saved!", description: "Run test calls to fine-tune voice and delivery." });
       navigate("/agents");
     } catch (err: any) {
@@ -238,7 +253,7 @@ export default function CreateAgentPage() {
               <SummaryCard icon={<Phone className="h-5 w-5" />} title="What it says" value={spec.opening_line || "Standard greeting"} />
               <SummaryCard icon={<FileText className="h-5 w-5" />} title="What it collects" value={Array.isArray(spec.must_collect_fields) ? (spec.must_collect_fields as string[]).join(", ") : "Standard fields"} />
               <SummaryCard icon={<Shield className="h-5 w-5" />} title="Qualification logic" value={spec.qualification_rules ? JSON.stringify(spec.qualification_rules) : "No specific rules"} />
-              <SummaryCard icon={<ArrowRight className="h-5 w-5" />} title="Transfer logic" value={spec.transfer_required ? `Transfers to ${spec.transfer_phone_number || "configured number"}` : "No live transfer"} />
+              <SummaryCard icon={<ArrowRight className="h-5 w-5" />} title="Transfer logic" value={transferEnabled ? `Transfers to ${transferPhone || "number below"}` : "Ends call normally"} />
               <SummaryCard icon={<Target className="h-5 w-5" />} title="Success definition" value={spec.success_definition || "Complete the call objectives"} />
               <SummaryCard icon={<Mic className="h-5 w-5" />} title="Voice" value={
                 selectedVoice === "custom" 
@@ -247,6 +262,47 @@ export default function CreateAgentPage() {
               } />
             </div>
           )}
+
+          {/* Call Ending / Transfer */}
+          <div className="surface-elevated rounded-xl p-6 space-y-4">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <Phone className="h-4 w-4 text-primary" /> Call Ending
+            </h3>
+            <p className="text-xs text-muted-foreground">Choose what happens when your agent finishes the conversation.</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                onClick={() => setTransferEnabled(false)}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition-colors",
+                  !transferEnabled ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                )}
+              >
+                <p className="text-sm font-medium text-foreground">End call normally</p>
+                <p className="text-xs text-muted-foreground">Agent wraps up and hangs up</p>
+              </button>
+              <button
+                onClick={() => setTransferEnabled(true)}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition-colors",
+                  transferEnabled ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                )}
+              >
+                <p className="text-sm font-medium text-foreground">Transfer to live agent</p>
+                <p className="text-xs text-muted-foreground">Transfers qualified callers to a phone number</p>
+              </button>
+            </div>
+            {transferEnabled && (
+              <div className="space-y-2">
+                <Label>Transfer Phone Number</Label>
+                <Input
+                  value={transferPhone}
+                  onChange={(e) => setTransferPhone(e.target.value)}
+                  placeholder="e.g. (555) 123-4567"
+                  type="tel"
+                />
+              </div>
+            )}
+          </div>
 
           {/* Voice Selection */}
           <div className="surface-elevated rounded-xl p-6 space-y-4">
