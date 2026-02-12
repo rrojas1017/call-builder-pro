@@ -1,53 +1,74 @@
 
 
-# Improve Call Voice Quality and Reduce Robotic Sound
+# Simplify Agent Creation: Save Agent + Move Tuning to Test Lab
 
 ## Problem
-Calls sound robotic and pacing feels unnatural. The current Bland API payload only sends `voice` and `model` but misses several key parameters that control naturalness, pacing, and pronunciation.
+Step 3 (Review) is overloaded with voice selection, voice tuning sliders, pronunciation guide, test lab, AND campaign launch -- all on one screen. There's no "Save Agent" button, so users feel forced to either test or launch. Voice tuning controls belong in the testing phase, not the creation phase.
 
 ## Solution
-Add Bland AI voice tuning parameters to the call payload and expose them in the agent settings UI so users can dial in the right sound per agent.
+Restructure the flow into two clear phases:
+1. **Create and Save** -- configure the basics, then save the agent
+2. **Test and Improve** -- tune voice settings based on actual test call feedback
 
 ## Changes
 
-### 1. Add voice tuning columns to `agent_specs`
-New nullable columns:
-- `temperature` (numeric, default 0.7) -- controls creativity/variability in responses (lower = more predictable, higher = more natural/varied)
-- `interruption_threshold` (integer, default 100) -- how patient the AI is before speaking (higher = waits longer, less robotic interruptions)
-- `pronunciation_guide` (jsonb, default null) -- array of word/pronunciation pairs for commonly mispronounced terms
-- `speaking_speed` (numeric, default 1.0) -- speech rate multiplier
+### 1. Simplify Step 3 (Review) to focus on saving
+Remove from Step 3:
+- Voice Tuning section (temperature, interruption threshold, speaking speed sliders)
+- Pronunciation Guide table
+- Test Lab section
+- Campaign Launch section (users can launch from the Campaigns page)
 
-### 2. Update `run-test-run/index.ts` Bland payload
-Pass these new parameters to the Bland API:
-- `temperature` from spec (default 0.7)
-- `interruption_threshold` from spec (default 100)
-- `pronunciation_guide` from spec (default empty)
-- `noise_cancellation: true` (always on per Bland best practices)
-- Keep `model: "base"` (best for natural delivery)
+Keep in Step 3:
+- Agent summary cards (who it calls, what it says, etc.)
+- Voice selection (pick a voice preset or custom ID -- this is a basic config choice)
+- "Edit Details" toggle for raw spec
 
-### 3. Add Voice Tuning UI on CreateAgentPage
-On the Review step, alongside the existing voice picker, add:
-- **Temperature slider** (0.0 - 1.0) with labels "Predictable" to "Natural/Varied"
-- **Interruption Threshold slider** (50 - 300) with labels "Quick response" to "Patient listener"
-- **Speaking Speed slider** (0.7 - 1.2)
-- **Pronunciation Guide** -- a simple table where users can add word/pronunciation pairs (e.g., "ACA" -> "A-C-A")
+Replace the bottom buttons with:
+- **"Save Agent"** button (primary) -- saves the agent and navigates to the agent's detail/test page
+- "Back" button
 
-All sliders save to the `agent_specs` table and are read by the edge function at call time.
+### 2. Move voice tuning into the Test Lab
+Update `TestLabSection` to include an expandable "Voice Tuning" panel with:
+- Temperature, Interruption Threshold, Speaking Speed sliders
+- Pronunciation Guide manager
+- These load current values from `agent_specs` on mount
+- Changes save immediately to DB so the next test call uses them
 
-### 4. Auto-suggest voice settings from evaluation
-When the evaluate-call function detects delivery issues (low naturalness score), include voice tuning recommendations in the `recommended_improvements` output. For example:
-- If repeated words detected, suggest lowering temperature
-- If rushed pacing detected, suggest lowering speaking speed
-- If mispronunciations detected, suggest adding pronunciation guide entries
+This way, users configure tuning **after hearing test calls**, not before. The test-then-tune loop becomes the natural workflow.
 
-This connects the existing "Apply Fix" flow to automatically tune these new parameters.
+### 3. Add "Save Agent" functionality
+Create a `handleSaveAgent` function that:
+- Updates the voice selection in `agent_specs` (already happens on click)
+- Shows a success toast: "Agent saved! Run test calls to fine-tune."
+- Navigates to `/agents` (or a future agent detail page)
+
+### 4. Use creator's phone for test calls
+Update the Test Lab to pre-populate with the logged-in user's phone number (from profiles table if available), making it clear the creator will receive the test calls. Add a note: "You'll receive the test call on your phone to evaluate quality."
 
 ## Technical Details
 
-- Bland API `temperature` (0-1): Controls how creative/varied the AI responses are. Default 0.7 is a good balance.
-- Bland API `interruption_threshold` (ms): How long the AI waits before responding. Higher values = fewer awkward interruptions. Default 100.
-- Bland API `pronunciation_guide`: Array of `{ word: string, pronunciation: string }` objects for custom pronunciations.
-- Bland API `noise_cancellation`: Boolean, reduces background noise artifacts.
-- No new API keys needed -- these are all existing Bland API parameters.
-- The evaluation prompt already scores naturalness; we just need it to map delivery issues to specific voice parameter suggestions.
+### Files to modify:
+- **`src/pages/CreateAgentPage.tsx`**: Remove voice tuning, pronunciation guide, test lab, and campaign launch sections from Step 3. Add "Save Agent" button with navigation.
+- **`src/components/TestLabSection.tsx`**: Add collapsible voice tuning panel that loads/saves `temperature`, `interruption_threshold`, `speaking_speed`, and `pronunciation_guide` from `agent_specs`. Import Slider and related UI components.
+- No database changes needed -- all columns already exist.
+- No edge function changes needed.
+
+### New flow summary:
+```text
+Step 1: Describe Agent --> Step 2: Answer Questions --> Step 3: Review + Save
+                                                              |
+                                                              v
+                                                     Agents List Page
+                                                              |
+                                                              v
+                                                    Test Lab (per agent)
+                                                     - Run test calls
+                                                     - Adjust voice tuning
+                                                     - Apply AI-recommended fixes
+                                                     - Repeat until satisfied
+                                                              |
+                                                              v
+                                                     Launch Campaign
+```
 
