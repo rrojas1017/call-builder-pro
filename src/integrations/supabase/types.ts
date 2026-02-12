@@ -160,6 +160,7 @@ export type Database = {
           org_id: string
           outcome: string | null
           project_id: string
+          recording_url: string | null
           started_at: string | null
           summary: Json | null
           transcript: string | null
@@ -180,6 +181,7 @@ export type Database = {
           org_id: string
           outcome?: string | null
           project_id: string
+          recording_url?: string | null
           started_at?: string | null
           summary?: Json | null
           transcript?: string | null
@@ -200,6 +202,7 @@ export type Database = {
           org_id?: string
           outcome?: string | null
           project_id?: string
+          recording_url?: string | null
           started_at?: string | null
           summary?: Json | null
           transcript?: string | null
@@ -460,6 +463,7 @@ export type Database = {
           name: string
           outcome: string | null
           phone: string
+          recording_url: string | null
           status: string
           test_run_id: string
           transcript: string | null
@@ -476,6 +480,7 @@ export type Database = {
           name: string
           outcome?: string | null
           phone: string
+          recording_url?: string | null
           status?: string
           test_run_id: string
           transcript?: string | null
@@ -492,6 +497,7 @@ export type Database = {
           name?: string
           outcome?: string | null
           phone?: string
+          recording_url?: string | null
           status?: string
           test_run_id?: string
           transcript?: string | null
