@@ -1,40 +1,48 @@
 
 
-# Fix Bland API Error in Quick Test
+# Fix Robotic-Sounding Test Calls
 
 ## Problem
-The Quick Test call fails with a generic "Bland API error" message. The edge function doesn't log the actual Bland API response, making debugging impossible.
+The `run-test-run` edge function sends calls to Bland AI without specifying a `voice` or `model`, so it defaults to whatever Bland's default is -- which can sound robotic.
 
-## Root Cause Investigation
-The `run-test-run` edge function sends the call to Bland AI but when it fails:
-1. It only checks for `blandData.call_id` to determine success
-2. On failure, it saves `blandData.message || "Bland API error"` -- but Bland may return the error in a different field
-3. The actual Bland response is never logged, hiding the real error
+## Solution
+Add voice and model configuration to the Bland API payload in `run-test-run/index.ts`, and optionally allow these to be stored in the agent spec.
 
-## Fix
+## Changes
 
-### 1. Add logging to `run-test-run` edge function
-- Log the full Bland API response body when a call fails
-- Log the HTTP status code from Bland
-- Store the full error details (not just `blandData.message`) in the `error` field
+### 1. Update `run-test-run/index.ts` Bland payload (lines 149-162)
+Add these parameters to the `blandPayload` object:
+- `voice`: Set to a natural-sounding preset (e.g. `"maya"`) -- can be overridden from the agent spec
+- `model`: Set to `"base"` (recommended by Bland for best script-following and natural sound)
+- `voice_settings`: Optional stability/speed tuning
 
-### 2. Improve error capture
-Change the error storage to capture more detail:
-```typescript
-// Before:
-error: blandData.message || "Bland API error"
-
-// After: 
-error: blandData.message || blandData.error || JSON.stringify(blandData)
+The payload will look like:
+```text
+blandPayload = {
+  phone_number: contact.phone,
+  task,
+  first_sentence: spec?.opening_line || undefined,
+  voice: spec?.voice_id || "maya",
+  model: "base",
+  record: true,
+  webhook: webhookUrl,
+  metadata: { ... },
+}
 ```
 
-Also add `console.log` to capture the response for debugging:
-```typescript
-console.log("Bland API response:", blandResp.status, JSON.stringify(blandData));
+### 2. Add `voice_id` column to `agent_specs` table
+Add a nullable `voice_id` text column so each agent can have its own voice configured:
+```text
+ALTER TABLE agent_specs ADD COLUMN voice_id text DEFAULT NULL;
 ```
 
-### Files to Modify
-- `supabase/functions/run-test-run/index.ts` -- Add logging and better error capture
+### 3. Update Create Agent / Agent Settings UI
+Add a voice selection dropdown on the agent creation or settings page so users can pick from Bland's preset voices (e.g. maya, josh, matt, rachel, etc.) or paste a custom voice clone ID.
 
 ## Technical Details
-The change is minimal: add a `console.log` for the Bland response and expand the error field to capture the actual error message regardless of which field Bland returns it in. This will let us see the real error in the edge function logs and display it to the user.
+
+- The `voice` parameter accepts preset names like `"maya"`, `"josh"`, `"matt"` or custom voice clone IDs
+- The `model` parameter should be `"base"` for best quality (follows scripts most effectively and sounds more natural)
+- If no `voice_id` is set in the spec, it defaults to `"maya"` which is one of Bland's most natural-sounding voices
+- No new secrets or API keys are needed -- these are just additional body parameters in the existing Bland API call
+
