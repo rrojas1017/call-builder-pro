@@ -1,413 +1,192 @@
 
-# Test Lab Integration into Create Agent Wizard - Step 3
+# Add "Apply Fix" Button to Test Results Modal
 
 ## Overview
-Integrate the Test Lab feature directly into **Step 3 of the CreateAgentPage.tsx wizard**, allowing users to test their agent with real Bland API calls (5 sample contacts, 1 default concurrency) before launching the full campaign. Users can provide contacts via **manual entry (textarea)** OR **file upload (CSV/XLSX)**, but not both in one test.
+Enhance the `TestResultsModal.tsx` component to allow users to apply recommended improvements from evaluation results, automatically patch the agent spec, and re-run tests with the updated configuration.
 
----
+## Architecture & Flow
 
-## 1. Database Schema: New Tables
+### Current State
+- `TestResultsModal.tsx` displays evaluation results with recommended improvements
+- Each improvement has: `field`, `reason`, `suggested_value`
+- `apply-improvement` edge function already exists and handles spec versioning
+- Test runs are isolated from campaigns via metadata routing
 
-### `test_runs`
-```sql
-CREATE TABLE test_runs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id uuid NOT NULL REFERENCES agent_projects(id) ON DELETE CASCADE,
-  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  name text NOT NULL,
-  status text NOT NULL CHECK (status IN ('draft', 'running', 'completed', 'failed')) DEFAULT 'draft',
-  max_calls int NOT NULL DEFAULT 5,
-  concurrency int NOT NULL DEFAULT 1,
-  agent_instructions_text text,
-  spec_version int DEFAULT 1,
-  created_at timestamp DEFAULT now(),
-  completed_at timestamp
-);
-```
+### Proposed Changes
 
-### `test_run_contacts`
-```sql
-CREATE TABLE test_run_contacts (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  test_run_id uuid NOT NULL REFERENCES test_runs(id) ON DELETE CASCADE,
-  name text NOT NULL,
-  phone text NOT NULL,
-  status text NOT NULL CHECK (status IN ('queued', 'calling', 'completed', 'failed', 'no_answer', 'voicemail', 'busy')) DEFAULT 'queued',
-  bland_call_id text,
-  transcript text,
-  extracted_data jsonb,
-  evaluation jsonb,
-  duration_seconds int,
-  outcome text,
-  error text,
-  created_at timestamp DEFAULT now(),
-  called_at timestamp
-);
-```
+#### 1. **TestResultsModal.tsx Enhancements**
+**Add state variables:**
+- `applyingFixId`: Track which improvement is being applied (show loading state)
+- `appliedFixes`: Track applied fixes to prevent duplicate clicks
+- Need reference to `projectId` (passed via props)
+- Need reference to `testRunId` (already available)
 
-### RLS Policies
-- Both tables use org_id isolation via the test_runs table
-- Users can only view/edit test runs within their organization
-
----
-
-## 2. Edge Functions
-
-### A. `parse-dial-list` (NEW)
-**Purpose**: Parse CSV/XLSX files and normalize phone numbers  
-**Input**:
-```typescript
-{
-  file_content: string,  // Base64-encoded or raw text
-  file_type: 'csv' | 'xlsx'
-}
-```
-**Output**:
-```typescript
-[
-  { name: string, phone: string },
-  ...
-]
-```
-**Logic**:
-- For CSV: split by lines, split each line by comma, extract name (col 0) and phone (col 1)
-- For XLSX: use lightweight SheetJS from esm.sh to parse
-- Normalize phone: strip non-digits, prepend +1 if 10 digits, validate length (10-15)
-- Return normalized array or error
-
----
-
-### B. `create-test-run` (NEW)
-**Purpose**: Initialize test run with contacts  
-**Input**:
-```typescript
-{
-  project_id: string,
-  name: string,
-  max_calls: number (default 5),
-  concurrency: number (default 1),
-  contacts: { name: string, phone: string }[],
-  agent_instructions_text?: string  // optional override
-}
-```
-**Output**:
-```typescript
-{
-  test_run_id: string,
-  contacts_count: number
-}
-```
-**Logic**:
-- Load org_id from project_id
-- Insert test_run record with status='draft'
-- Insert test_run_contacts rows (limited to max_calls)
-- Return test_run_id
-
----
-
-### C. `run-test-run` (NEW)
-**Purpose**: Initiate real Bland calls for queued contacts  
-**Input**:
-```typescript
-{
-  test_run_id: string
-}
-```
-**Output**:
-```typescript
-{
-  initiated_count: number,
-  call_ids: string[]
-}
-```
-**Logic**:
-- Load test_run and its queued contacts
-- Load agent_spec for the project
-- For each contact (up to `concurrency`):
-  - Build Bland API payload:
-    - phone_number: contact.phone
-    - task: agent_instructions_text OR buildTaskPrompt(spec)
-    - first_sentence: spec.opening_line
-    - transfer_phone_number: spec.transfer_phone_number (if needed)
-    - record: true
-    - webhook_url: `{SUPABASE_URL}/functions/v1/receive-bland-webhook`
-    - metadata: { test_run_id, test_run_contact_id, org_id, project_id, spec_version }
-  - POST to https://api.bland.ai/v1/calls
-  - Update contact status to 'calling', set called_at
-- Update test_run status to 'running'
-- Return call count
-
----
-
-### D. Update `receive-bland-webhook` (MODIFY)
-**Logic Change**: Route by metadata presence
-```typescript
-if (metadata.test_run_contact_id) {
-  // TEST LAB FLOW
-  // Update test_run_contacts row: transcript, status, outcome, duration_seconds, extracted_data
-  // Call evaluate-call (adapted for test context)
-  // Call run-test-run to pick next queued contacts
-  
-} else {
-  // EXISTING CAMPAIGN FLOW (unchanged)
-  // Update calls + contacts rows, call evaluate-call, call tick-campaign
-}
-```
-
----
-
-## 3. Frontend: Step 3 Integration
-
-### Modified UI Structure (Step 3)
-
-**Part A: Agent Summary** (unchanged)
-- Plain-English summary cards (Who it calls, What it says, etc.)
-- Edit Details button
-
-**Part B: Test Lab Section** (NEW)
-```
-┌─────────────────────────────────────────┐
-│  Test Your Agent (5 Sample Calls)       │
-│  ─────────────────────────────────────  │
-│                                         │
-│  [ Manual Entry ] [ Upload File ]       │
-│                                         │
-│  Manual Entry Tab:                      │
-│  ┌─────────────────────────────────────┐
-│  │ Paste contacts (one per line):      │
-│  │ Name, Phone                         │
-│  │                                     │
-│  │ John Doe, +15551234567              │
-│  │ Jane Smith, +15559876543            │
-│  │                                     │
-│  │ (Shows: 2 contacts parsed)          │
-│  └─────────────────────────────────────┘
-│                                         │
-│  OR                                     │
-│                                         │
-│  Upload File Tab:                       │
-│  ┌─────────────────────────────────────┐
-│  │ [ Choose CSV / XLSX File ]          │
-│  │ (Shows parsed preview: 2 contacts)  │
-│  └─────────────────────────────────────┘
-│                                         │
-│  Concurrency: [1] (read-only for now)  │
-│                                         │
-│  [ Run 5 Test Calls ]                   │
-└─────────────────────────────────────────┘
-
-AFTER "Run Test Calls" is clicked:
-
-┌─────────────────────────────────────────┐
-│  Test Results (Modal / Slide-out)       │
-│  ─────────────────────────────────────  │
-│                                         │
-│  Status: Running... (1/2 completed)    │
-│                                         │
-│  Results Table:                         │
-│  ┌──────────┬────────┬──────────────┐  │
-│  │ Name     │ Status │ Score / Err  │  │
-│  ├──────────┼────────┼──────────────┤  │
-│  │ John Doe │ ✓ Done │ 87 (good)    │  │
-│  │ Jane ... │ ⏳ Call │ --           │  │
-│  └──────────┴────────┴──────────────┘  │
-│                                         │
-│  [View Details] [Download Transcript]  │
-└─────────────────────────────────────────┘
-
-Call Detail View (click row):
-- Full transcript
-- Extracted data (key-value)
-- Evaluation: compliance/objective/overall scores
-- Issues detected
-- Recommended improvements
-- [Apply Fix] button per improvement
-```
-
-**Part C: Launch Campaign** (UNCHANGED but below Test Lab)
-```
-Campaign Name, Max Concurrent, Contacts (CSV)
-[Launch Campaign] button
-```
-
----
-
-## 4. CreateAgentPage.tsx Changes (Step 3)
-
-### New State Variables:
-```typescript
-// Test Lab state
-const [testLabMode, setTestLabMode] = useState<'manual' | 'upload' | null>(null);
-const [manualContacts, setManualContacts] = useState("");
-const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-const [parsedTestContacts, setParsedTestContacts] = useState<{ name: string; phone: string }[]>([]);
-const [testRunId, setTestRunId] = useState<string | null>(null);
-const [testRunning, setTestRunning] = useState(false);
-const [testResults, setTestResults] = useState<any[]>([]);
-const [showTestResults, setShowTestResults] = useState(false);
-const [selectedTestResult, setSelectedTestResult] = useState<any | null>(null);
-```
-
-### New Handler Functions:
-
-**parseManualContacts()**:
-- Split manualContacts textarea by line
-- Extract name, phone from each line (name, phone format)
-- Normalize phone using same logic as parse-dial-list edge function
-- Set parsedTestContacts
-- Show preview
-
-**handleFileUpload()**:
-- Read file as Base64 or text
-- Call parse-dial-list edge function
-- Set parsedTestContacts
-- Show preview
-
-**handleRunTest()**:
-- Create test_run with contacts
-- Call create-test-run edge function
-- Call run-test-run edge function
-- Show results modal
-- Poll for updates every 2 seconds (refetch test_run_contacts)
-- When all calls complete or timeout, close modal
-
-**handleApplyFix(improvement)**:
-- Call apply-improvement edge function
-- Increment spec version
-- Optionally auto-run test again (with updated spec)
-
----
-
-## 5. UI Components
-
-### TestLabSection.tsx (sub-component in Step 3)
-- Tab/toggle between Manual and Upload
-- Manual: textarea for "Name, Phone" entries
-- Upload: file input for CSV/XLSX
-- Preview table: shows parsed contacts
-- Run button, loading state
-- Integrates with CreateAgentPage state
-
-### TestResultsModal.tsx (new)
-- Modal or slide-out drawer
-- Shows live progress and results table
-- Click row → detail view
-- Detail view: transcript + evaluation + fix button
-
----
-
-## 6. Webhook Routing (receive-bland-webhook)
-
-```typescript
-const metadata = body.metadata || {};
-
-if (metadata.test_run_contact_id) {
-  // TEST LAB FLOW
-  const { error: updateErr } = await supabase
-    .from("test_run_contacts")
-    .update({
-      transcript,
-      status: contactStatus,
-      bland_call_id: blandCallId,
-      duration_seconds: duration,
-      outcome: outcome,
-      extracted_data: extractedData,
-      called_at: new Date().toISOString(),
-    })
-    .eq("id", metadata.test_run_contact_id);
-  
-  if (updateErr) console.error("Error updating test_run_contacts:", updateErr);
-
-  // Trigger evaluate-call (same as before)
-  if (upsertedCall?.id && transcript && contactStatus === "completed") {
-    const evalUrl = `${supabaseUrl}/functions/v1/evaluate-call`;
-    fetch(evalUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${supabaseKey}`,
-      },
-      body: JSON.stringify({ 
-        call_id: upsertedCall.id,
-        test_run_contact_id: metadata.test_run_contact_id 
-      }),
-    }).catch((e) => console.error("Error triggering evaluate-call:", e));
+**New handler function: `handleApplyFix(improvement)`**
+- Extract improvement data (field, suggested_value, reason)
+- Call `apply-improvement` edge function with:
+  ```typescript
+  {
+    project_id: projectId,
+    improvement: {
+      field: improvement.field,
+      suggested_value: improvement.suggested_value,
+      reason: improvement.reason
+    }
   }
+  ```
+- On success:
+  - Show toast: "Fix applied! Agent spec updated to version X."
+  - Mark improvement as applied (disable button or visual indicator)
+  - Optionally trigger auto-retest OR show "Re-run Test" button
+- On error:
+  - Show destructive toast with error message
 
-  // Trigger run-test-run to pick next contact
-  if (metadata.test_run_id) {
-    fetch(`${supabaseUrl}/functions/v1/run-test-run`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${supabaseKey}`,
-      },
-      body: JSON.stringify({ test_run_id: metadata.test_run_id }),
-    }).catch((e) => console.error("Error triggering run-test-run:", e));
-  }
-} else {
-  // EXISTING CAMPAIGN FLOW (unchanged)
-  ...
+**UI Changes in detail view:**
+- For each recommended improvement item, add:
+  - "Apply Fix" button (primary variant, right-aligned)
+  - Button disabled if: already applied, currently applying, or test still running
+  - Show loading spinner while applying
+  - Visual indicator (checkmark or badge) after successful application
+
+**Optional: Auto-retest logic**
+- After applying a fix, either:
+  - Automatically re-run the test (simple but noisy)
+  - Show a "Re-run with Updated Spec" button (gives user control)
+  - Recommend: Show a highlighted banner like "Fix applied! Re-run tests to verify improvement." with a "Re-run" button
+
+#### 2. **Props Update**
+Add to `TestResultsModalProps`:
+```typescript
+interface TestResultsModalProps {
+  testRunId: string;
+  projectId: string;  // NEW - required for apply-improvement
+  open: boolean;
+  onClose: () => void;
 }
 ```
 
----
+#### 3. **Integration Point: TestLabSection.tsx**
+Pass `projectId` when rendering `TestResultsModal`:
+```typescript
+<TestResultsModal
+  testRunId={testRunId}
+  projectId={projectId}  // NEW
+  open={showResults}
+  onClose={() => setShowResults(false)}
+/>
+```
 
-## 7. Integration Points
+## Implementation Details
 
-### Files to Create:
-1. `supabase/functions/parse-dial-list/index.ts` — Parse CSV/XLSX
-2. `supabase/functions/create-test-run/index.ts` — Initialize test
-3. `supabase/functions/run-test-run/index.ts` — Execute calls
-4. `src/components/TestLabSection.tsx` — UI component for Step 3
-5. `src/components/TestResultsModal.tsx` — Results display
+### Apply Fix Handler
+```typescript
+const handleApplyFix = async (improvement: any) => {
+  try {
+    setApplyingFixId(improvement.field);
+    const { data, error } = await supabase.functions.invoke("apply-improvement", {
+      body: {
+        project_id: projectId,
+        improvement: {
+          field: improvement.field,
+          suggested_value: improvement.suggested_value,
+          reason: improvement.reason
+        }
+      }
+    });
+    if (error) throw error;
+    
+    // Mark as applied
+    setAppliedFixes(prev => [...prev, improvement.field]);
+    
+    // Show success
+    toast({
+      title: "Fix applied!",
+      description: `Agent spec updated to version ${data.to_version}.`
+    });
+    
+    // Optional: Show re-test prompt
+    // Could auto-trigger re-test or show button
+  } catch (err: any) {
+    toast({
+      title: "Failed to apply fix",
+      description: err.message,
+      variant: "destructive"
+    });
+  } finally {
+    setApplyingFixId(null);
+  }
+};
+```
 
-### Files to Modify:
-1. `supabase/migrations/xxx_test_lab.sql` — Create tables + RLS
-2. `supabase/functions/receive-bland-webhook/index.ts` — Add routing
-3. `supabase/functions/evaluate-call/index.ts` — Support test context (optional: store in test_run_contacts.evaluation)
-4. `supabase/config.toml` — Register new functions
-5. `src/pages/CreateAgentPage.tsx` — Add Step 3 test lab UI + handlers
-6. `src/integrations/supabase/types.ts` — Auto-update after migration
+### UI Rendering in Detail View
+In the improvements section (lines 178-191):
+```typescript
+{selected.evaluation.recommended_improvements?.length > 0 && (
+  <div className="space-y-1">
+    <p className="text-xs font-medium text-muted-foreground">Recommended Improvements</p>
+    <ul className="text-xs text-foreground space-y-2">
+      {selected.evaluation.recommended_improvements.map((imp: any, i: number) => (
+        <li key={i} className="rounded-lg bg-muted/30 border border-border p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1">
+              <p className="font-medium">{imp.field}</p>
+              <p className="text-muted-foreground text-xs mt-1">{imp.reason}</p>
+              <p className="mt-2">Suggested: <span className="text-primary">{imp.suggested_value}</span></p>
+            </div>
+            <Button
+              onClick={() => handleApplyFix(imp)}
+              disabled={applyingFixId === imp.field || appliedFixes.includes(imp.field)}
+              size="sm"
+              variant={appliedFixes.includes(imp.field) ? "ghost" : "default"}
+              className="shrink-0"
+            >
+              {applyingFixId === imp.field && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+              {appliedFixes.includes(imp.field) ? (
+                <>
+                  <CheckCircle className="mr-1 h-3 w-3" /> Applied
+                </>
+              ) : (
+                "Apply Fix"
+              )}
+            </Button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+)}
+```
 
----
+## Files to Modify
 
-## 8. UX Flow
+1. **src/components/TestResultsModal.tsx**
+   - Add `projectId` to interface
+   - Add state: `applyingFixId`, `appliedFixes`
+   - Add `handleApplyFix()` function
+   - Update improvement item UI with button and visual indicators
+   - Update imports (add `CheckCircle` icon, already imported)
 
-1. User completes Steps 1 & 2 (describe + answer questions)
-2. Step 3 shows agent summary + **Test Lab section**
-3. User chooses **Manual Entry** or **Upload File**
-4. Contacts are parsed and previewed
-5. User clicks **"Run 5 Test Calls"**
-6. Modal opens, calls execute in real-time (with progress)
-7. User sees results: transcripts, scores, issues
-8. User can **"Apply Fix"** to any recommended improvement
-9. Optionally re-run test with updated spec
-10. When satisfied, scroll down and **"Launch Campaign"** with full dial list
+2. **src/components/TestLabSection.tsx**
+   - Pass `projectId` prop to `TestResultsModal`
 
----
+## Design Decisions
 
-## 9. Key Design Decisions
+- **Visual Feedback**: Button changes to "Applied ✓" with checkmark after success, preventing accidental re-applies
+- **No Auto-retest**: Give users control; they can re-run manually via the "Run Tests" button if desired
+- **Single Fix at a Time**: Each fix is applied individually (allows seeing the impact before next fix)
+- **Disabled While Running**: Apply button is disabled while test is still running (prevents spec changes mid-test)
+- **Toast Notifications**: Show version number to confirm spec was updated
+- **Error Handling**: Clear error messages if fix fails (e.g., invalid field, invalid value type)
 
-- **Max 5 test calls** by default (non-configurable in UI for simplicity, but settable in code)
-- **Concurrency = 1** by default (non-configurable for simplicity)
-- **Manual vs. Upload**: Toggle/tab, but only one active per test run (not cumulative)
-- **Real Bland calls**: Every test run uses actual Bland API (no mock)
-- **Test data isolation**: metadata.test_run_id routes to test_run_contacts, NOT campaign contacts
-- **No analytics mixing**: test_runs are completely separate from campaigns
-- **Apply Fix loop**: Users can refine spec and re-test within Step 3 before launching
-- **Phone normalization**: Consistent logic for both manual and file-based entry
+## Testing Flow
 
----
-
-## 10. Sequencing
-
-1. Database migration (test_runs + test_run_contacts + RLS)
-2. Edge functions: parse-dial-list, create-test-run, run-test-run
-3. Update receive-bland-webhook routing
-4. Update evaluate-call to store in test_run_contacts.evaluation
-5. Update config.toml
-6. Frontend components: TestLabSection.tsx, TestResultsModal.tsx
-7. Integrate into CreateAgentPage.tsx Step 3
-8. Test end-to-end: Create agent → Answer questions → Run test (manual) → View results → Apply fix → Re-test → Launch campaign
-
+1. Create agent, answer questions, reach Step 3
+2. Enter 2-3 manual contacts
+3. Run test, wait for results
+4. View details of a completed call
+5. Click "Apply Fix" on a recommended improvement
+6. Verify:
+   - Button shows loading spinner
+   - Toast shows success with new version number
+   - Button changes to "Applied ✓" and is disabled
+7. Optionally re-run tests to verify improvement
