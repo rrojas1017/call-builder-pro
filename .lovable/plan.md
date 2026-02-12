@@ -1,74 +1,36 @@
 
 
-# Simplify Agent Creation: Save Agent + Move Tuning to Test Lab
+# Fix: Invalid transfer_phone_number Error
 
-## Problem
-Step 3 (Review) is overloaded with voice selection, voice tuning sliders, pronunciation guide, test lab, AND campaign launch -- all on one screen. There's no "Save Agent" button, so users feel forced to either test or launch. Voice tuning controls belong in the testing phase, not the creation phase.
+## Root Cause
+The `transfer_phone_number` field in the database contains qualification/disqualification rule text (e.g., "Users looking to travel in less than 14 days...") instead of actual phone numbers. When `transfer_required` is `true`, this text is sent to the Bland API as a phone number, causing the "Invalid transfer_phone_number" error.
 
-## Solution
-Restructure the flow into two clear phases:
-1. **Create and Save** -- configure the basics, then save the agent
-2. **Test and Improve** -- tune voice settings based on actual test call feedback
+## Fix
 
-## Changes
+### 1. Validate transfer_phone_number before sending to Bland API
+In `supabase/functions/run-test-run/index.ts`, add a phone number format check before including `transfer_phone_number` in the Bland payload. Only send it if it looks like an actual phone number (digits, starts with + or contains 10+ digits).
 
-### 1. Simplify Step 3 (Review) to focus on saving
-Remove from Step 3:
-- Voice Tuning section (temperature, interruption threshold, speaking speed sliders)
-- Pronunciation Guide table
-- Test Lab section
-- Campaign Launch section (users can launch from the Campaigns page)
-
-Keep in Step 3:
-- Agent summary cards (who it calls, what it says, etc.)
-- Voice selection (pick a voice preset or custom ID -- this is a basic config choice)
-- "Edit Details" toggle for raw spec
-
-Replace the bottom buttons with:
-- **"Save Agent"** button (primary) -- saves the agent and navigates to the agent's detail/test page
-- "Back" button
-
-### 2. Move voice tuning into the Test Lab
-Update `TestLabSection` to include an expandable "Voice Tuning" panel with:
-- Temperature, Interruption Threshold, Speaking Speed sliders
-- Pronunciation Guide manager
-- These load current values from `agent_specs` on mount
-- Changes save immediately to DB so the next test call uses them
-
-This way, users configure tuning **after hearing test calls**, not before. The test-then-tune loop becomes the natural workflow.
-
-### 3. Add "Save Agent" functionality
-Create a `handleSaveAgent` function that:
-- Updates the voice selection in `agent_specs` (already happens on click)
-- Shows a success toast: "Agent saved! Run test calls to fine-tune."
-- Navigates to `/agents` (or a future agent detail page)
-
-### 4. Use creator's phone for test calls
-Update the Test Lab to pre-populate with the logged-in user's phone number (from profiles table if available), making it clear the creator will receive the test calls. Add a note: "You'll receive the test call on your phone to evaluate quality."
-
-## Technical Details
-
-### Files to modify:
-- **`src/pages/CreateAgentPage.tsx`**: Remove voice tuning, pronunciation guide, test lab, and campaign launch sections from Step 3. Add "Save Agent" button with navigation.
-- **`src/components/TestLabSection.tsx`**: Add collapsible voice tuning panel that loads/saves `temperature`, `interruption_threshold`, `speaking_speed`, and `pronunciation_guide` from `agent_specs`. Import Slider and related UI components.
-- No database changes needed -- all columns already exist.
-- No edge function changes needed.
-
-### New flow summary:
-```text
-Step 1: Describe Agent --> Step 2: Answer Questions --> Step 3: Review + Save
-                                                              |
-                                                              v
-                                                     Agents List Page
-                                                              |
-                                                              v
-                                                    Test Lab (per agent)
-                                                     - Run test calls
-                                                     - Adjust voice tuning
-                                                     - Apply AI-recommended fixes
-                                                     - Repeat until satisfied
-                                                              |
-                                                              v
-                                                     Launch Campaign
+Change the existing block:
+```
+if (spec?.transfer_required && spec?.transfer_phone_number) {
+  blandPayload.transfer_phone_number = spec.transfer_phone_number;
+}
+```
+To:
+```
+if (spec?.transfer_required && spec?.transfer_phone_number) {
+  const digits = spec.transfer_phone_number.replace(/\D/g, "");
+  if (digits.length >= 10) {
+    blandPayload.transfer_phone_number = digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
+  }
+}
 ```
 
+This silently skips invalid transfer numbers so the call still goes through -- it just won't attempt a transfer.
+
+### 2. Fix the data at the source (generate-spec or save-wizard-answers)
+The wizard is storing rule descriptions in the `transfer_phone_number` column. Review the `save-wizard-answers` or `generate-spec` edge function to ensure qualification/disqualification rules go into `qualification_rules` / `disqualification_rules` columns instead, and `transfer_phone_number` only stores an actual phone number.
+
+### Files to modify:
+- **`supabase/functions/run-test-run/index.ts`** -- add phone validation guard (immediate fix)
+- **`supabase/functions/generate-spec/index.ts`** or **`supabase/functions/save-wizard-answers/index.ts`** -- review and fix field mapping so rule text doesn't end up in `transfer_phone_number` (root cause fix)
