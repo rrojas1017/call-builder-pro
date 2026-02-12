@@ -6,10 +6,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Rocket, Eye, Pencil, FileText, Phone, Shield, Target, Users } from "lucide-react";
+import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Rocket, Eye, Pencil, FileText, Phone, Shield, Target, Users, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import TestLabSection from "@/components/TestLabSection";
+
+const BLAND_VOICES = [
+  { id: "maya", name: "Maya", description: "Warm, natural female voice — most popular" },
+  { id: "josh", name: "Josh", description: "Friendly male voice, conversational" },
+  { id: "matt", name: "Matt", description: "Professional male voice" },
+  { id: "rachel", name: "Rachel", description: "Clear female voice, empathetic" },
+  { id: "mark", name: "Mark", description: "Deep male voice, authoritative" },
+  { id: "evelyn", name: "Evelyn", description: "Soft female voice, calm" },
+  { id: "nat", name: "Nat", description: "Energetic female voice" },
+  { id: "tina", name: "Tina", description: "Young female voice, upbeat" },
+];
 
 const STEPS = ["Build Your Agent", "Clarify Details", "Review & Launch"];
 
@@ -36,6 +48,8 @@ export default function CreateAgentPage() {
   const [showRawSpec, setShowRawSpec] = useState(false);
   const [rawSpecText, setRawSpecText] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [selectedVoice, setSelectedVoice] = useState("maya");
+  const [customVoiceId, setCustomVoiceId] = useState("");
 
   // Campaign launch state (integrated into Step 3)
   const [campaignName, setCampaignName] = useState("");
@@ -266,9 +280,70 @@ export default function CreateAgentPage() {
               <SummaryCard icon={<Shield className="h-5 w-5" />} title="Qualification logic" value={spec.qualification_rules ? JSON.stringify(spec.qualification_rules) : "No specific rules"} />
               <SummaryCard icon={<ArrowRight className="h-5 w-5" />} title="Transfer logic" value={spec.transfer_required ? `Transfers to ${spec.transfer_phone_number || "configured number"}` : "No live transfer"} />
               <SummaryCard icon={<Target className="h-5 w-5" />} title="Success definition" value={spec.success_definition || "Complete the call objectives"} />
-              <SummaryCard icon={<Phone className="h-5 w-5" />} title="Voice" value={spec.voice_id || "maya (default)"} />
+              <SummaryCard icon={<Mic className="h-5 w-5" />} title="Voice" value={
+                selectedVoice === "custom" 
+                  ? customVoiceId || "No custom ID set" 
+                  : `${BLAND_VOICES.find(v => v.id === selectedVoice)?.name || selectedVoice}`
+              } />
             </div>
           )}
+
+          {/* Voice Selection */}
+            <div className="surface-elevated rounded-xl p-6 space-y-4">
+              <h3 className="font-semibold text-foreground flex items-center gap-2">
+                <Mic className="h-4 w-4 text-primary" /> Voice Selection
+              </h3>
+              <p className="text-xs text-muted-foreground">Choose a preset voice or use a custom Bland AI voice clone ID.</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {BLAND_VOICES.map((voice) => (
+                  <button
+                    key={voice.id}
+                    onClick={async () => {
+                      setSelectedVoice(voice.id);
+                      if (projectId) {
+                        await supabase.from("agent_specs").update({ voice_id: voice.id }).eq("project_id", projectId);
+                      }
+                    }}
+                    className={cn(
+                      "rounded-lg border p-3 text-left transition-colors",
+                      selectedVoice === voice.id
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:border-primary/50"
+                    )}
+                  >
+                    <p className="text-sm font-medium text-foreground">{voice.name}</p>
+                    <p className="text-xs text-muted-foreground">{voice.description}</p>
+                  </button>
+                ))}
+                <button
+                  onClick={() => setSelectedVoice("custom")}
+                  className={cn(
+                    "rounded-lg border p-3 text-left transition-colors",
+                    selectedVoice === "custom"
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:border-primary/50"
+                  )}
+                >
+                  <p className="text-sm font-medium text-foreground">Custom Voice</p>
+                  <p className="text-xs text-muted-foreground">Use your own Bland AI voice clone ID</p>
+                </button>
+              </div>
+              {selectedVoice === "custom" && (
+                <div className="space-y-2">
+                  <Label>Custom Voice Clone ID</Label>
+                  <Input
+                    value={customVoiceId}
+                    onChange={async (e) => {
+                      setCustomVoiceId(e.target.value);
+                      if (projectId && e.target.value.trim()) {
+                        await supabase.from("agent_specs").update({ voice_id: e.target.value.trim() }).eq("project_id", projectId);
+                      }
+                    }}
+                    placeholder="e.g. abc123-voice-clone-id"
+                  />
+                </div>
+              )}
+            </div>
 
           {showRawSpec && (
             <div className="surface-elevated rounded-xl p-4">
