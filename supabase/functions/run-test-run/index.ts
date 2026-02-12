@@ -182,7 +182,10 @@ serve(async (req) => {
         }
 
         if (spec?.transfer_required && spec?.transfer_phone_number) {
-          blandPayload.transfer_phone_number = spec.transfer_phone_number;
+          const digits = spec.transfer_phone_number.replace(/\D/g, "");
+          if (digits.length >= 10) {
+            blandPayload.transfer_phone_number = digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
+          }
         }
 
         const blandResp = await fetch("https://api.bland.ai/v1/calls", {
