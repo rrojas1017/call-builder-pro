@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Loader2, Phone, ChevronRight } from "lucide-react";
+import { Loader2, Phone, ChevronRight, Zap, AlertTriangle, CheckCircle2, TrendingUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 interface Call {
@@ -15,13 +17,17 @@ interface Call {
   transcript: string | null;
   extracted_data: any;
   summary: any;
+  evaluation: any;
+  project_id: string;
 }
 
 export default function CallsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [calls, setCalls] = useState<Call[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Call | null>(null);
+  const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -31,23 +37,44 @@ export default function CallsPage() {
         .select("*")
         .order("created_at", { ascending: false })
         .limit(100);
-      setCalls(data || []);
+      setCalls((data as Call[]) || []);
       setLoading(false);
     };
     load();
   }, [user]);
+
+  const handleApplyImprovement = async (improvement: any, idx: number) => {
+    if (!selected) return;
+    setApplyingIdx(idx);
+    try {
+      const { data, error } = await supabase.functions.invoke("apply-improvement", {
+        body: { project_id: selected.project_id, improvement },
+      });
+      if (error) throw error;
+      toast({
+        title: "Improvement Applied",
+        description: `v${data.from_version} → v${data.to_version}: ${data.change_summary}`,
+      });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setApplyingIdx(null);
+    }
+  };
 
   if (loading) {
     return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
   const outcomeColor: Record<string, string> = {
-    completed: "text-success",
+    completed: "text-green-400",
     failed: "text-destructive",
-    no_answer: "text-warning",
+    no_answer: "text-yellow-400",
     qualified: "text-primary",
     disqualified: "text-muted-foreground",
   };
+
+  const eval_ = selected?.evaluation;
 
   return (
     <div className="flex h-full">
@@ -81,6 +108,9 @@ export default function CallsPage() {
                     <span className="text-muted-foreground">
                       {call.duration_seconds ? `${call.duration_seconds}s` : "—"}
                     </span>
+                    {call.evaluation?.overall_score != null && (
+                      <span className="text-primary font-medium">{call.evaluation.overall_score}%</span>
+                    )}
                   </div>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -108,6 +138,63 @@ export default function CallsPage() {
             </div>
           </div>
 
+          {/* Evaluation Scores */}
+          {eval_ && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-primary" /> Evaluation
+              </h3>
+              <div className="grid grid-cols-3 gap-3">
+                <ScoreCard label="Compliance" score={eval_.compliance_score} />
+                <ScoreCard label="Objective" score={eval_.objective_score} />
+                <ScoreCard label="Overall" score={eval_.overall_score} />
+              </div>
+
+              {eval_.hallucination_detected && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                  <AlertTriangle className="h-4 w-4" /> Hallucination detected in this call
+                </div>
+              )}
+
+              {eval_.issues_detected?.length > 0 && (
+                <div className="surface-elevated rounded-lg p-4 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Issues Detected</p>
+                  <ul className="space-y-1">
+                    {eval_.issues_detected.map((issue: string, i: number) => (
+                      <li key={i} className="text-sm text-foreground flex items-start gap-2">
+                        <AlertTriangle className="h-3 w-3 text-yellow-400 mt-1 shrink-0" />
+                        {issue}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {eval_.recommended_improvements?.length > 0 && (
+                <div className="surface-elevated rounded-lg p-4 space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Recommended Improvements</p>
+                  {eval_.recommended_improvements.map((imp: any, i: number) => (
+                    <div key={i} className="p-3 rounded-lg bg-muted/30 border border-border space-y-2">
+                      <p className="text-sm text-foreground"><strong>{imp.field}:</strong> {imp.reason}</p>
+                      {imp.suggested_value && (
+                        <p className="text-xs text-muted-foreground">Suggested: {typeof imp.suggested_value === "object" ? JSON.stringify(imp.suggested_value) : imp.suggested_value}</p>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={applyingIdx === i}
+                        onClick={() => handleApplyImprovement(imp, i)}
+                      >
+                        {applyingIdx === i ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Zap className="mr-2 h-3 w-3" />}
+                        Apply Improvement
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {selected.extracted_data && (
             <div className="surface-elevated rounded-lg p-4 space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Extracted Data</p>
@@ -125,6 +212,17 @@ export default function CallsPage() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function ScoreCard({ label, score }: { label: string; score: number | undefined }) {
+  if (score == null) return null;
+  const color = score >= 80 ? "text-green-400" : score >= 50 ? "text-yellow-400" : "text-destructive";
+  return (
+    <div className="surface-elevated rounded-lg p-3 text-center">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={cn("text-lg font-bold", color)}>{score}%</p>
     </div>
   );
 }

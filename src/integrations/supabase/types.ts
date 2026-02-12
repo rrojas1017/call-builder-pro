@@ -58,54 +58,75 @@ export type Database = {
       agent_specs: {
         Row: {
           business_hours: Json | null
+          business_rules: Json | null
           consent_required: boolean
+          disclosure_required: boolean | null
           disclosure_text: string | null
           disqualification_rules: Json | null
+          escalation_rules: Json | null
           from_number: string | null
           id: string
           language: string
+          mode: string | null
           must_collect_fields: Json | null
+          opening_line: string | null
           project_id: string
           qualification_rules: Json | null
           retry_policy: Json | null
+          success_definition: string | null
           tone_style: string | null
           transfer_phone_number: string | null
+          transfer_required: boolean | null
           updated_at: string
           use_case: string
           version: number
         }
         Insert: {
           business_hours?: Json | null
+          business_rules?: Json | null
           consent_required?: boolean
+          disclosure_required?: boolean | null
           disclosure_text?: string | null
           disqualification_rules?: Json | null
+          escalation_rules?: Json | null
           from_number?: string | null
           id?: string
           language?: string
+          mode?: string | null
           must_collect_fields?: Json | null
+          opening_line?: string | null
           project_id: string
           qualification_rules?: Json | null
           retry_policy?: Json | null
+          success_definition?: string | null
           tone_style?: string | null
           transfer_phone_number?: string | null
+          transfer_required?: boolean | null
           updated_at?: string
           use_case?: string
           version?: number
         }
         Update: {
           business_hours?: Json | null
+          business_rules?: Json | null
           consent_required?: boolean
+          disclosure_required?: boolean | null
           disclosure_text?: string | null
           disqualification_rules?: Json | null
+          escalation_rules?: Json | null
           from_number?: string | null
           id?: string
           language?: string
+          mode?: string | null
           must_collect_fields?: Json | null
+          opening_line?: string | null
           project_id?: string
           qualification_rules?: Json | null
           retry_policy?: Json | null
+          success_definition?: string | null
           tone_style?: string | null
           transfer_phone_number?: string | null
+          transfer_required?: boolean | null
           updated_at?: string
           use_case?: string
           version?: number
@@ -130,6 +151,7 @@ export type Database = {
           direction: string
           duration_seconds: number | null
           ended_at: string | null
+          evaluation: Json | null
           extracted_data: Json | null
           id: string
           org_id: string
@@ -149,6 +171,7 @@ export type Database = {
           direction?: string
           duration_seconds?: number | null
           ended_at?: string | null
+          evaluation?: Json | null
           extracted_data?: Json | null
           id?: string
           org_id: string
@@ -168,6 +191,7 @@ export type Database = {
           direction?: string
           duration_seconds?: number | null
           ended_at?: string | null
+          evaluation?: Json | null
           extracted_data?: Json | null
           id?: string
           org_id?: string
@@ -446,6 +470,7 @@ export type Database = {
           order_index: number
           project_id: string
           question: string
+          rationale: string | null
         }
         Insert: {
           answer?: string | null
@@ -454,6 +479,7 @@ export type Database = {
           order_index?: number
           project_id: string
           question: string
+          rationale?: string | null
         }
         Update: {
           answer?: string | null
@@ -462,6 +488,7 @@ export type Database = {
           order_index?: number
           project_id?: string
           question?: string
+          rationale?: string | null
         }
         Relationships: [
           {
