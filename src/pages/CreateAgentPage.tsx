@@ -6,13 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Rocket, Eye, Pencil, FileText, Phone, Shield, Target, Users, Mic, Plus, Trash2, SlidersHorizontal } from "lucide-react";
-import { Slider } from "@/components/ui/slider";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, Shield, Target, Users, Mic, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
-import TestLabSection from "@/components/TestLabSection";
 
 const BLAND_VOICES = [
   { id: "maya", name: "Maya", description: "Warm, natural female voice — most popular" },
@@ -25,7 +21,7 @@ const BLAND_VOICES = [
   { id: "tina", name: "Tina", description: "Young female voice, upbeat" },
 ];
 
-const STEPS = ["Build Your Agent", "Clarify Details", "Review & Launch"];
+const STEPS = ["Build Your Agent", "Clarify Details", "Review & Save"];
 
 interface WizardQuestion {
   question: string;
@@ -52,18 +48,7 @@ export default function CreateAgentPage() {
   const [file, setFile] = useState<File | null>(null);
   const [selectedVoice, setSelectedVoice] = useState("maya");
   const [customVoiceId, setCustomVoiceId] = useState("");
-  const [temperature, setTemperature] = useState(0.7);
-  const [interruptionThreshold, setInterruptionThreshold] = useState(100);
-  const [speakingSpeed, setSpeakingSpeed] = useState(1.0);
-  const [pronunciationGuide, setPronunciationGuide] = useState<{ word: string; pronunciation: string }[]>([]);
-  const [newWord, setNewWord] = useState("");
-  const [newPronunciation, setNewPronunciation] = useState("");
-
-  // Campaign launch state (integrated into Step 3)
-  const [campaignName, setCampaignName] = useState("");
-  const [csvText, setCsvText] = useState("");
-  const [maxConcurrent, setMaxConcurrent] = useState(1);
-  const [launching, setLaunching] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Step 1: Create project + generate spec
   const handleGenerateSpec = async () => {
@@ -91,7 +76,6 @@ export default function CreateAgentPage() {
       }).select().single();
       if (projErr) throw projErr;
       setProjectId(project.id);
-      setCampaignName(`${agentName} Campaign`);
 
       const { data, error } = await supabase.functions.invoke("generate-spec", {
         body: { project_id: project.id },
@@ -127,53 +111,21 @@ export default function CreateAgentPage() {
     }
   };
 
-  // Step 3: Launch campaign
-  const handleLaunch = async () => {
-    if (!projectId || !campaignName.trim()) return;
-    setLaunching(true);
+  // Step 3: Save agent
+  const handleSaveAgent = async () => {
+    if (!projectId) return;
+    setSaving(true);
     try {
-      const { data: profile } = await supabase.from("profiles").select("org_id").eq("id", user!.id).single();
-
-      // Create campaign
-      const { data: campaign, error: campErr } = await supabase.from("campaigns").insert({
-        project_id: projectId,
-        name: campaignName,
-        max_concurrent_calls: maxConcurrent,
-        status: "draft",
-      }).select().single();
-      if (campErr) throw campErr;
-
-      // Parse CSV and insert contacts
-      if (csvText.trim()) {
-        const lines = csvText.trim().split("\n");
-        const contacts = lines
-          .map((line) => {
-            const parts = line.split(",").map((s) => s.trim());
-            if (parts.length >= 2) {
-              return { campaign_id: campaign.id, name: parts[0], phone: parts[1], status: "queued" as const };
-            }
-            return null;
-          })
-          .filter(Boolean);
-
-        if (contacts.length > 0) {
-          const { error: cErr } = await supabase.from("contacts").insert(contacts as any[]);
-          if (cErr) throw cErr;
-        }
+      const voiceId = selectedVoice === "custom" ? customVoiceId.trim() : selectedVoice;
+      if (voiceId) {
+        await supabase.from("agent_specs").update({ voice_id: voiceId }).eq("project_id", projectId);
       }
-
-      // Start campaign
-      const { error: startErr } = await supabase.functions.invoke("start-campaign", {
-        body: { campaign_id: campaign.id },
-      });
-      if (startErr) throw startErr;
-
-      toast({ title: "Campaign launched!", description: `${campaignName} is now running.` });
-      navigate("/campaigns");
+      toast({ title: "Agent saved!", description: "Run test calls to fine-tune voice and delivery." });
+      navigate("/agents");
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
-      setLaunching(false);
+      setSaving(false);
     }
   };
 
@@ -272,12 +224,12 @@ export default function CreateAgentPage() {
         </div>
       )}
 
-      {/* Step 3: Review Your AI Agent */}
+      {/* Step 3: Review & Save */}
       {step === 2 && (
         <div className="space-y-6">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Review Your AI Agent</h1>
-            <p className="text-muted-foreground mt-1">Here's exactly what your agent will do.</p>
+            <h1 className="text-2xl font-bold text-foreground">Review & Save Your Agent</h1>
+            <p className="text-muted-foreground mt-1">Here's what your agent will do. Save it, then head to the Test Lab to fine-tune.</p>
           </div>
 
           {!showRawSpec && spec && (
@@ -297,169 +249,52 @@ export default function CreateAgentPage() {
           )}
 
           {/* Voice Selection */}
-            <div className="surface-elevated rounded-xl p-6 space-y-4">
-              <h3 className="font-semibold text-foreground flex items-center gap-2">
-                <Mic className="h-4 w-4 text-primary" /> Voice Selection
-              </h3>
-              <p className="text-xs text-muted-foreground">Choose a preset voice or use a custom Bland AI voice clone ID.</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {BLAND_VOICES.map((voice) => (
-                  <button
-                    key={voice.id}
-                    onClick={async () => {
-                      setSelectedVoice(voice.id);
-                      if (projectId) {
-                        await supabase.from("agent_specs").update({ voice_id: voice.id }).eq("project_id", projectId);
-                      }
-                    }}
-                    className={cn(
-                      "rounded-lg border p-3 text-left transition-colors",
-                      selectedVoice === voice.id
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/50"
-                    )}
-                  >
-                    <p className="text-sm font-medium text-foreground">{voice.name}</p>
-                    <p className="text-xs text-muted-foreground">{voice.description}</p>
-                  </button>
-                ))}
+          <div className="surface-elevated rounded-xl p-6 space-y-4">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <Mic className="h-4 w-4 text-primary" /> Voice Selection
+            </h3>
+            <p className="text-xs text-muted-foreground">Choose a preset voice or use a custom Bland AI voice clone ID.</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {BLAND_VOICES.map((voice) => (
                 <button
-                  onClick={() => setSelectedVoice("custom")}
+                  key={voice.id}
+                  onClick={() => setSelectedVoice(voice.id)}
                   className={cn(
                     "rounded-lg border p-3 text-left transition-colors",
-                    selectedVoice === "custom"
+                    selectedVoice === voice.id
                       ? "border-primary bg-primary/10"
                       : "border-border hover:border-primary/50"
                   )}
                 >
-                  <p className="text-sm font-medium text-foreground">Custom Voice</p>
-                  <p className="text-xs text-muted-foreground">Use your own Bland AI voice clone ID</p>
+                  <p className="text-sm font-medium text-foreground">{voice.name}</p>
+                  <p className="text-xs text-muted-foreground">{voice.description}</p>
                 </button>
-              </div>
-              {selectedVoice === "custom" && (
-                <div className="space-y-2">
-                  <Label>Custom Voice Clone ID</Label>
-                  <Input
-                    value={customVoiceId}
-                    onChange={async (e) => {
-                      setCustomVoiceId(e.target.value);
-                      if (projectId && e.target.value.trim()) {
-                        await supabase.from("agent_specs").update({ voice_id: e.target.value.trim() }).eq("project_id", projectId);
-                      }
-                    }}
-                    placeholder="e.g. abc123-voice-clone-id"
-                  />
-                </div>
-              )}
+              ))}
+              <button
+                onClick={() => setSelectedVoice("custom")}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition-colors",
+                  selectedVoice === "custom"
+                    ? "border-primary bg-primary/10"
+                    : "border-border hover:border-primary/50"
+                )}
+              >
+                <p className="text-sm font-medium text-foreground">Custom Voice</p>
+                <p className="text-xs text-muted-foreground">Use your own Bland AI voice clone ID</p>
+              </button>
             </div>
-
-          {/* Voice Tuning */}
-          <div className="surface-elevated rounded-xl p-6 space-y-5">
-            <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <SlidersHorizontal className="h-4 w-4 text-primary" /> Voice Tuning
-            </h3>
-            <p className="text-xs text-muted-foreground">Fine-tune how your agent sounds and responds.</p>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Temperature</Label>
-                <span className="text-xs text-muted-foreground font-mono">{temperature.toFixed(1)}</span>
+            {selectedVoice === "custom" && (
+              <div className="space-y-2">
+                <Label>Custom Voice Clone ID</Label>
+                <Input
+                  value={customVoiceId}
+                  onChange={(e) => setCustomVoiceId(e.target.value)}
+                  placeholder="e.g. abc123-voice-clone-id"
+                />
               </div>
-              <Slider
-                value={[temperature]}
-                onValueChange={async ([v]) => {
-                  setTemperature(v);
-                  if (projectId) await supabase.from("agent_specs").update({ temperature: v }).eq("project_id", projectId);
-                }}
-                min={0} max={1} step={0.1}
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Predictable</span><span>Natural / Varied</span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Interruption Threshold</Label>
-                <span className="text-xs text-muted-foreground font-mono">{interruptionThreshold}ms</span>
-              </div>
-              <Slider
-                value={[interruptionThreshold]}
-                onValueChange={async ([v]) => {
-                  setInterruptionThreshold(v);
-                  if (projectId) await supabase.from("agent_specs").update({ interruption_threshold: v }).eq("project_id", projectId);
-                }}
-                min={50} max={300} step={10}
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Quick response</span><span>Patient listener</span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Speaking Speed</Label>
-                <span className="text-xs text-muted-foreground font-mono">{speakingSpeed.toFixed(1)}x</span>
-              </div>
-              <Slider
-                value={[speakingSpeed]}
-                onValueChange={async ([v]) => {
-                  setSpeakingSpeed(v);
-                  if (projectId) await supabase.from("agent_specs").update({ speaking_speed: v }).eq("project_id", projectId);
-                }}
-                min={0.7} max={1.2} step={0.05}
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Slower</span><span>Faster</span>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Label>Pronunciation Guide</Label>
-              <p className="text-xs text-muted-foreground">Add words your agent mispronounces with their correct phonetic spelling.</p>
-              {pronunciationGuide.length > 0 && (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Word</TableHead>
-                      <TableHead>Pronunciation</TableHead>
-                      <TableHead className="w-10"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pronunciationGuide.map((entry, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="font-mono text-sm">{entry.word}</TableCell>
-                        <TableCell className="font-mono text-sm">{entry.pronunciation}</TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm" onClick={async () => {
-                            const updated = pronunciationGuide.filter((_, idx) => idx !== i);
-                            setPronunciationGuide(updated);
-                            if (projectId) await supabase.from("agent_specs").update({ pronunciation_guide: updated }).eq("project_id", projectId);
-                          }}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-              <div className="flex gap-2">
-                <Input value={newWord} onChange={(e) => setNewWord(e.target.value)} placeholder="Word (e.g. ACA)" className="flex-1" />
-                <Input value={newPronunciation} onChange={(e) => setNewPronunciation(e.target.value)} placeholder="Say as (e.g. A-C-A)" className="flex-1" />
-                <Button variant="outline" size="sm" disabled={!newWord.trim() || !newPronunciation.trim()} onClick={async () => {
-                  const updated = [...pronunciationGuide, { word: newWord.trim(), pronunciation: newPronunciation.trim() }];
-                  setPronunciationGuide(updated);
-                  setNewWord("");
-                  setNewPronunciation("");
-                  if (projectId) await supabase.from("agent_specs").update({ pronunciation_guide: updated }).eq("project_id", projectId);
-                }}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+            )}
           </div>
+
           {showRawSpec && (
             <div className="surface-elevated rounded-xl p-4">
               <Textarea value={rawSpecText} onChange={(e) => setRawSpecText(e.target.value)} rows={14} className="font-mono text-xs" />
@@ -471,33 +306,13 @@ export default function CreateAgentPage() {
             {showRawSpec ? "View Summary" : "Edit Details"}
           </Button>
 
-          {/* Test Lab */}
-          {projectId && <TestLabSection projectId={projectId} />}
-
-          {/* Integrated campaign launch */}
-          <div className="surface-elevated rounded-xl p-6 space-y-4">
-            <h3 className="font-semibold text-foreground">Launch Campaign</h3>
-            <div className="space-y-2">
-              <Label>Campaign Name</Label>
-              <Input value={campaignName} onChange={(e) => setCampaignName(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Max Concurrent Calls</Label>
-              <Input type="number" min={1} max={10} value={maxConcurrent} onChange={(e) => setMaxConcurrent(Number(e.target.value))} />
-            </div>
-            <div className="space-y-2">
-              <Label>Contacts (CSV: name, phone — one per line)</Label>
-              <Textarea value={csvText} onChange={(e) => setCsvText(e.target.value)} rows={5} placeholder={"John Doe, +15551234567\nJane Smith, +15559876543"} />
-            </div>
-          </div>
-
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => setStep(1)}>
               <ArrowLeft className="mr-2 h-4 w-4" /> Back
             </Button>
-            <Button onClick={handleLaunch} disabled={launching || !campaignName.trim() || !csvText.trim()} className="flex-1" size="lg">
-              {launching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Rocket className="mr-2 h-4 w-4" />}
-              Start Calls
+            <Button onClick={handleSaveAgent} disabled={saving} className="flex-1" size="lg">
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save Agent
             </Button>
           </div>
         </div>
