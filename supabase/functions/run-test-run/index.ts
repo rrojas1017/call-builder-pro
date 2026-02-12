@@ -22,7 +22,14 @@ interface AgentSpec {
 
 function buildTaskPrompt(spec: AgentSpec): string {
   const discl = spec.disclosure_text || "This call may be recorded for quality and compliance purposes.";
-  const fields = (spec.must_collect_fields as string[]) || ["consent", "state", "age", "household_size", "income_est_annual", "coverage_type"];
+  const rawFields = spec.must_collect_fields;
+  const defaultFields = ["consent", "state", "age", "household_size", "income_est_annual", "coverage_type"];
+  let fields: string[] = defaultFields;
+  if (Array.isArray(rawFields)) {
+    fields = rawFields;
+  } else if (typeof rawFields === "string") {
+    try { const p = JSON.parse(rawFields); if (Array.isArray(p)) fields = p; } catch { /* use default */ }
+  }
   const transferNum = spec.transfer_phone_number || "";
 
   const formatField = (field: string): string => {
