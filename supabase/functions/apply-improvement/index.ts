@@ -29,13 +29,26 @@ serve(async (req) => {
     const toVersion = fromVersion + 1;
 
     // Build patch
-    const field = improvement.field;
+    const field = improvement.field as string;
     const patch: Record<string, any> = {};
-    
-    // Handle both simple and JSON fields
-    if (["tone_style", "opening_line", "disclosure_text", "success_definition", "transfer_phone_number", "language", "use_case", "mode"].includes(field)) {
+
+    // Handle dot-notation fields (e.g. "qualification_rules.income_range")
+    if (field.includes(".")) {
+      const [parentCol, ...rest] = field.split(".");
+      const nestedKey = rest.join(".");
+
+      // Fetch current value of the parent JSON column
+      const currentParentValue = spec[parentCol] || {};
+      const parentObj = typeof currentParentValue === "string"
+        ? JSON.parse(currentParentValue)
+        : { ...currentParentValue };
+
+      // Set the nested key
+      parentObj[nestedKey] = improvement.suggested_value;
+      patch[parentCol] = parentObj;
+    } else if (["tone_style", "opening_line", "disclosure_text", "success_definition", "transfer_phone_number", "language", "use_case", "mode"].includes(field)) {
       patch[field] = improvement.suggested_value;
-    } else if (["must_collect_fields", "qualification_logic", "disqualification_logic", "escalation_rules", "business_rules", "retry_policy"].includes(field)) {
+    } else if (["must_collect_fields", "qualification_logic", "disqualification_logic", "escalation_rules", "business_rules", "retry_policy", "qualification_rules", "disqualification_rules"].includes(field)) {
       try {
         patch[field] = typeof improvement.suggested_value === "string"
           ? JSON.parse(improvement.suggested_value)
@@ -46,7 +59,6 @@ serve(async (req) => {
     } else if (["consent_required", "disclosure_required", "transfer_required"].includes(field)) {
       patch[field] = improvement.suggested_value === "true" || improvement.suggested_value === true;
     } else {
-      // Unknown field — try anyway
       patch[field] = improvement.suggested_value;
     }
 
