@@ -1,0 +1,1 @@
+ALTER TABLE public.agent_specs ADD COLUMN voice_id text DEFAULT NULL;

@@ -266,6 +266,7 @@ export default function CreateAgentPage() {
               <SummaryCard icon={<Shield className="h-5 w-5" />} title="Qualification logic" value={spec.qualification_rules ? JSON.stringify(spec.qualification_rules) : "No specific rules"} />
               <SummaryCard icon={<ArrowRight className="h-5 w-5" />} title="Transfer logic" value={spec.transfer_required ? `Transfers to ${spec.transfer_phone_number || "configured number"}` : "No live transfer"} />
               <SummaryCard icon={<Target className="h-5 w-5" />} title="Success definition" value={spec.success_definition || "Complete the call objectives"} />
+              <SummaryCard icon={<Phone className="h-5 w-5" />} title="Voice" value={spec.voice_id || "maya (default)"} />
             </div>
           )}
 
