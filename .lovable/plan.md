@@ -1,58 +1,34 @@
 
 
-# Fix: Make Task Prompt Dynamic + Replace Template Variables
+# Add Transfer Configuration to Agent Creation
 
-## Problem
-Two issues caused the nonsensical call:
-
-1. **Hardcoded ACA prompt**: `buildTaskPrompt()` in `run-test-run/index.ts` always wraps everything in ACA health insurance context ("You are an ACA pre-qualification agent", "Medicare disqualifies", etc.) regardless of what the agent actually does. Your travel agent got ACA qualification logic baked in.
-
-2. **Unresolved template variables**: The opening line contains `{{first_name}}` but the code never replaces it with the contact's actual name, so Bland AI literally says "Hi {{first_name}}".
+## What This Does
+Adds a simple "Call Ending" section to the Review & Save step where you can choose what happens when the agent finishes qualifying someone:
+- **Hang up** (default) -- the agent wraps up and ends the call
+- **Transfer to a live person** -- the agent transfers the caller to a phone number you provide
 
 ## Changes
 
-### 1. Rebuild `buildTaskPrompt()` to be industry-agnostic
-Replace the hardcoded ACA prompt with a generic template that uses the spec's actual fields:
-- Use `spec.use_case` or `spec.tone_style` to describe the agent role instead of hardcoding "ACA pre-qualification agent"
-- Use `spec.qualification_rules` and `spec.disqualification_rules` as-is instead of hardcoding Medicare/Medicaid logic
-- Use `spec.disclosure_text` as the disclosure (already done) but remove ACA framing
-- Use `spec.success_definition` to describe what a successful call looks like
-- Keep `must_collect_fields` and `formatField()` but remove ACA-specific labels -- if the field isn't in the labels map, just use the field name as the question
+### 1. Add transfer config UI to Step 3 (Review & Save)
+Add a new section between the summary cards and voice selection with two options:
 
-The new prompt structure:
-```
-You are a professional outbound calling agent.
+- A toggle or radio choice: "End call normally" vs "Transfer to live agent"
+- When transfer is selected, show a phone number input field
+- Pre-populate from `spec.transfer_phone_number` if it already has a valid number
 
-PURPOSE: {use_case / success_definition}
+### 2. Save transfer settings on "Save Agent"
+Update the `handleSaveAgent` function to include `transfer_required` and `transfer_phone_number` in the spec update. Validate the phone number has at least 10 digits before saving.
 
-DISCLOSURE (read at the start): "{disclosure_text}"
+### 3. Update the Transfer Logic summary card
+The existing "Transfer logic" summary card will update dynamically based on the toggle state instead of only reading from the spec.
 
-RULES:
-- Obtain verbal consent before proceeding
-- Tone: {tone_style}
-- Keep conversation concise and professional
+## Technical Details
 
-INFORMATION TO COLLECT:
-1. {field_1}
-2. {field_2}
-...
+### File: `src/pages/CreateAgentPage.tsx`
+- Add state: `transferEnabled` (boolean), `transferPhone` (string)
+- Initialize from `spec.transfer_required` and `spec.transfer_phone_number` when spec loads
+- Add UI section with radio/switch + phone input between summary cards and voice selection
+- Update `handleSaveAgent` to include `transfer_required: transferEnabled` and `transfer_phone_number` (formatted with +1 prefix) in the spec update call
+- Update the Transfer Logic summary card to reflect the current toggle/phone state
 
-QUALIFICATION: {qualification_rules as text}
-DISQUALIFICATION: {disqualification_rules as text}
-
-{transfer instructions if transfer_phone_number is valid}
-
-FALLBACK: If unable to collect info after 2 attempts, end politely.
-SUMMARY: Provide JSON summary with collected fields.
-```
-
-### 2. Add template variable replacement
-Before sending the payload to Bland, replace common template variables in `task` and `first_sentence`:
-- `{{first_name}}` -- extracted from contact `name` (split on space, take first)
-- `{{last_name}}` -- extracted from contact `name` (split on space, take last)
-- `{{name}}` -- full contact name
-- `{{phone}}` -- contact phone
-
-### Files to modify
-- **`supabase/functions/run-test-run/index.ts`**: Rewrite `buildTaskPrompt()` to be generic; add template variable replacement before building `blandPayload`
-
+No database or edge function changes needed -- the columns and Bland API integration already exist.
