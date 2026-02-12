@@ -1,192 +1,74 @@
 
-# Add "Apply Fix" Button to Test Results Modal
 
-## Overview
-Enhance the `TestResultsModal.tsx` component to allow users to apply recommended improvements from evaluation results, automatically patch the agent spec, and re-run tests with the updated configuration.
+# Simplified "Quick Test" Flow
 
-## Architecture & Flow
+## The Idea
+Replace the multi-step Test Lab with a dead-simple experience: **Pick agent -> Enter phone number -> Click Test**. One screen, three actions, done.
 
-### Current State
-- `TestResultsModal.tsx` displays evaluation results with recommended improvements
-- Each improvement has: `field`, `reason`, `suggested_value`
-- `apply-improvement` edge function already exists and handles spec versioning
-- Test runs are isolated from campaigns via metadata routing
+## What Changes
 
-### Proposed Changes
+### 1. New Page: `/test` (QuickTestPage.tsx)
 
-#### 1. **TestResultsModal.tsx Enhancements**
-**Add state variables:**
-- `applyingFixId`: Track which improvement is being applied (show loading state)
-- `appliedFixes`: Track applied fixes to prevent duplicate clicks
-- Need reference to `projectId` (passed via props)
-- Need reference to `testRunId` (already available)
+A clean, focused page with just three elements:
 
-**New handler function: `handleApplyFix(improvement)`**
-- Extract improvement data (field, suggested_value, reason)
-- Call `apply-improvement` edge function with:
-  ```typescript
-  {
-    project_id: projectId,
-    improvement: {
-      field: improvement.field,
-      suggested_value: improvement.suggested_value,
-      reason: improvement.reason
-    }
-  }
-  ```
-- On success:
-  - Show toast: "Fix applied! Agent spec updated to version X."
-  - Mark improvement as applied (disable button or visual indicator)
-  - Optionally trigger auto-retest OR show "Re-run Test" button
-- On error:
-  - Show destructive toast with error message
-
-**UI Changes in detail view:**
-- For each recommended improvement item, add:
-  - "Apply Fix" button (primary variant, right-aligned)
-  - Button disabled if: already applied, currently applying, or test still running
-  - Show loading spinner while applying
-  - Visual indicator (checkmark or badge) after successful application
-
-**Optional: Auto-retest logic**
-- After applying a fix, either:
-  - Automatically re-run the test (simple but noisy)
-  - Show a "Re-run with Updated Spec" button (gives user control)
-  - Recommend: Show a highlighted banner like "Fix applied! Re-run tests to verify improvement." with a "Re-run" button
-
-#### 2. **Props Update**
-Add to `TestResultsModalProps`:
-```typescript
-interface TestResultsModalProps {
-  testRunId: string;
-  projectId: string;  // NEW - required for apply-improvement
-  open: boolean;
-  onClose: () => void;
-}
+```text
++-----------------------------------------------+
+|  Quick Test                                    |
+|                                                |
+|  Agent:  [ Select an agent        v ]          |
+|                                                |
+|  Phone:  [ +1 555 123 4567          ]          |
+|                                                |
+|  [ Run Test Call ]                             |
+|                                                |
+|  --- After clicking: ---                       |
+|                                                |
+|  Status: Calling...  (spinner)                 |
+|  Transcript: (streams in live)                 |
+|  Score: 87 / Outcome: Qualified                |
+|  [Recommended fixes with Apply Fix buttons]    |
++-----------------------------------------------+
 ```
 
-#### 3. **Integration Point: TestLabSection.tsx**
-Pass `projectId` when rendering `TestResultsModal`:
-```typescript
-<TestResultsModal
-  testRunId={testRunId}
-  projectId={projectId}  // NEW
-  open={showResults}
-  onClose={() => setShowResults(false)}
-/>
-```
+- **Agent dropdown**: Loads all `agent_projects` for the user's org
+- **Phone input**: Single phone number field with auto-normalization
+- **Run Test Call**: Creates a 1-contact test run, fires the call, shows results inline (no modal needed)
+- Results appear on the same page below the button -- transcript, evaluation, and Apply Fix buttons
 
-## Implementation Details
+### 2. Navigation
+- Add "Test" item to the sidebar (between "Agents" and "Campaigns")
+- Add a "Test" button on each agent card in the Agents page for quick access (`/test?agent=<id>`)
 
-### Apply Fix Handler
-```typescript
-const handleApplyFix = async (improvement: any) => {
-  try {
-    setApplyingFixId(improvement.field);
-    const { data, error } = await supabase.functions.invoke("apply-improvement", {
-      body: {
-        project_id: projectId,
-        improvement: {
-          field: improvement.field,
-          suggested_value: improvement.suggested_value,
-          reason: improvement.reason
-        }
-      }
-    });
-    if (error) throw error;
-    
-    // Mark as applied
-    setAppliedFixes(prev => [...prev, improvement.field]);
-    
-    // Show success
-    toast({
-      title: "Fix applied!",
-      description: `Agent spec updated to version ${data.to_version}.`
-    });
-    
-    // Optional: Show re-test prompt
-    // Could auto-trigger re-test or show button
-  } catch (err: any) {
-    toast({
-      title: "Failed to apply fix",
-      description: err.message,
-      variant: "destructive"
-    });
-  } finally {
-    setApplyingFixId(null);
-  }
-};
-```
+### 3. Reuse Existing Backend
+No new edge functions needed. The flow calls:
+1. `create-test-run` with 1 contact
+2. `run-test-run` to fire the Bland call
+3. Subscribes to Realtime updates on `test_run_contacts` for live status
+4. Shows evaluation + Apply Fix buttons (reusing existing `apply-improvement` function)
 
-### UI Rendering in Detail View
-In the improvements section (lines 178-191):
-```typescript
-{selected.evaluation.recommended_improvements?.length > 0 && (
-  <div className="space-y-1">
-    <p className="text-xs font-medium text-muted-foreground">Recommended Improvements</p>
-    <ul className="text-xs text-foreground space-y-2">
-      {selected.evaluation.recommended_improvements.map((imp: any, i: number) => (
-        <li key={i} className="rounded-lg bg-muted/30 border border-border p-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
-              <p className="font-medium">{imp.field}</p>
-              <p className="text-muted-foreground text-xs mt-1">{imp.reason}</p>
-              <p className="mt-2">Suggested: <span className="text-primary">{imp.suggested_value}</span></p>
-            </div>
-            <Button
-              onClick={() => handleApplyFix(imp)}
-              disabled={applyingFixId === imp.field || appliedFixes.includes(imp.field)}
-              size="sm"
-              variant={appliedFixes.includes(imp.field) ? "ghost" : "default"}
-              className="shrink-0"
-            >
-              {applyingFixId === imp.field && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-              {appliedFixes.includes(imp.field) ? (
-                <>
-                  <CheckCircle className="mr-1 h-3 w-3" /> Applied
-                </>
-              ) : (
-                "Apply Fix"
-              )}
-            </Button>
-          </div>
-        </li>
-      ))}
-    </ul>
-  </div>
-)}
-```
+### 4. Keep Existing Test Lab in Wizard
+The current Test Lab in Step 3 of the wizard stays as-is for bulk testing during agent creation. This new page is for quick one-off tests anytime.
 
-## Files to Modify
+---
 
-1. **src/components/TestResultsModal.tsx**
-   - Add `projectId` to interface
-   - Add state: `applyingFixId`, `appliedFixes`
-   - Add `handleApplyFix()` function
-   - Update improvement item UI with button and visual indicators
-   - Update imports (add `CheckCircle` icon, already imported)
+## Technical Details
 
-2. **src/components/TestLabSection.tsx**
-   - Pass `projectId` prop to `TestResultsModal`
+### Files to Create
+- `src/pages/QuickTestPage.tsx` -- the main page component
 
-## Design Decisions
+### Files to Modify
+- `src/App.tsx` -- add `/test` route
+- `src/components/AppSidebar.tsx` -- add "Test" nav item
+- `src/pages/AgentsPage.tsx` -- add "Test" button on each agent card
 
-- **Visual Feedback**: Button changes to "Applied ✓" with checkmark after success, preventing accidental re-applies
-- **No Auto-retest**: Give users control; they can re-run manually via the "Run Tests" button if desired
-- **Single Fix at a Time**: Each fix is applied individually (allows seeing the impact before next fix)
-- **Disabled While Running**: Apply button is disabled while test is still running (prevents spec changes mid-test)
-- **Toast Notifications**: Show version number to confirm spec was updated
-- **Error Handling**: Clear error messages if fix fails (e.g., invalid field, invalid value type)
+### QuickTestPage.tsx Structure
+- Loads agents from `agent_projects` on mount
+- If `?agent=<id>` query param exists, pre-selects that agent
+- Single phone input with normalization (strip non-digits, prepend +1 if 10 digits)
+- On "Run Test Call":
+  1. Call `create-test-run` with 1 contact (name defaults to "Quick Test")
+  2. Call `run-test-run`
+  3. Subscribe to Realtime on `test_run_contacts` for that test_run_id
+  4. Show inline results: status, transcript, evaluation scores, recommended improvements with Apply Fix buttons
+- Apply Fix reuses the same `apply-improvement` edge function call pattern from `TestResultsModal`
 
-## Testing Flow
-
-1. Create agent, answer questions, reach Step 3
-2. Enter 2-3 manual contacts
-3. Run test, wait for results
-4. View details of a completed call
-5. Click "Apply Fix" on a recommended improvement
-6. Verify:
-   - Button shows loading spinner
-   - Toast shows success with new version number
-   - Button changes to "Applied ✓" and is disabled
-7. Optionally re-run tests to verify improvement
