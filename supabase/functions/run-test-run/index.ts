@@ -161,6 +161,9 @@ serve(async (req) => {
           model: "base",
           record: true,
           webhook: webhookUrl,
+          temperature: spec?.temperature ?? 0.7,
+          interruption_threshold: spec?.interruption_threshold ?? 100,
+          noise_cancellation: true,
           metadata: {
             test_run_id,
             test_run_contact_id: contact.id,
@@ -169,6 +172,14 @@ serve(async (req) => {
             spec_version: testRun.spec_version,
           },
         };
+
+        if (spec?.speaking_speed && spec.speaking_speed !== 1.0) {
+          blandPayload.voice_settings = { speed: spec.speaking_speed };
+        }
+
+        if (spec?.pronunciation_guide && Array.isArray(spec.pronunciation_guide) && spec.pronunciation_guide.length > 0) {
+          blandPayload.pronunciation_guide = spec.pronunciation_guide;
+        }
 
         if (spec?.transfer_required && spec?.transfer_phone_number) {
           blandPayload.transfer_phone_number = spec.transfer_phone_number;
