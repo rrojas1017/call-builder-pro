@@ -175,6 +175,7 @@ serve(async (req) => {
         });
 
         const blandData = await blandResp.json();
+        console.log("Bland API response:", blandResp.status, JSON.stringify(blandData));
 
         if (blandData.call_id) {
           callIds.push(blandData.call_id);
@@ -189,7 +190,7 @@ serve(async (req) => {
         } else {
           await supabase
             .from("test_run_contacts")
-            .update({ status: "failed", error: blandData.message || "Bland API error" })
+            .update({ status: "failed", error: blandData.message || blandData.error || JSON.stringify(blandData) })
             .eq("id", contact.id);
         }
       } catch (callErr: any) {
