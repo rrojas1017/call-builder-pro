@@ -1,36 +1,58 @@
 
 
-# Fix: Invalid transfer_phone_number Error
+# Fix: Make Task Prompt Dynamic + Replace Template Variables
 
-## Root Cause
-The `transfer_phone_number` field in the database contains qualification/disqualification rule text (e.g., "Users looking to travel in less than 14 days...") instead of actual phone numbers. When `transfer_required` is `true`, this text is sent to the Bland API as a phone number, causing the "Invalid transfer_phone_number" error.
+## Problem
+Two issues caused the nonsensical call:
 
-## Fix
+1. **Hardcoded ACA prompt**: `buildTaskPrompt()` in `run-test-run/index.ts` always wraps everything in ACA health insurance context ("You are an ACA pre-qualification agent", "Medicare disqualifies", etc.) regardless of what the agent actually does. Your travel agent got ACA qualification logic baked in.
 
-### 1. Validate transfer_phone_number before sending to Bland API
-In `supabase/functions/run-test-run/index.ts`, add a phone number format check before including `transfer_phone_number` in the Bland payload. Only send it if it looks like an actual phone number (digits, starts with + or contains 10+ digits).
+2. **Unresolved template variables**: The opening line contains `{{first_name}}` but the code never replaces it with the contact's actual name, so Bland AI literally says "Hi {{first_name}}".
 
-Change the existing block:
+## Changes
+
+### 1. Rebuild `buildTaskPrompt()` to be industry-agnostic
+Replace the hardcoded ACA prompt with a generic template that uses the spec's actual fields:
+- Use `spec.use_case` or `spec.tone_style` to describe the agent role instead of hardcoding "ACA pre-qualification agent"
+- Use `spec.qualification_rules` and `spec.disqualification_rules` as-is instead of hardcoding Medicare/Medicaid logic
+- Use `spec.disclosure_text` as the disclosure (already done) but remove ACA framing
+- Use `spec.success_definition` to describe what a successful call looks like
+- Keep `must_collect_fields` and `formatField()` but remove ACA-specific labels -- if the field isn't in the labels map, just use the field name as the question
+
+The new prompt structure:
 ```
-if (spec?.transfer_required && spec?.transfer_phone_number) {
-  blandPayload.transfer_phone_number = spec.transfer_phone_number;
-}
-```
-To:
-```
-if (spec?.transfer_required && spec?.transfer_phone_number) {
-  const digits = spec.transfer_phone_number.replace(/\D/g, "");
-  if (digits.length >= 10) {
-    blandPayload.transfer_phone_number = digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
-  }
-}
+You are a professional outbound calling agent.
+
+PURPOSE: {use_case / success_definition}
+
+DISCLOSURE (read at the start): "{disclosure_text}"
+
+RULES:
+- Obtain verbal consent before proceeding
+- Tone: {tone_style}
+- Keep conversation concise and professional
+
+INFORMATION TO COLLECT:
+1. {field_1}
+2. {field_2}
+...
+
+QUALIFICATION: {qualification_rules as text}
+DISQUALIFICATION: {disqualification_rules as text}
+
+{transfer instructions if transfer_phone_number is valid}
+
+FALLBACK: If unable to collect info after 2 attempts, end politely.
+SUMMARY: Provide JSON summary with collected fields.
 ```
 
-This silently skips invalid transfer numbers so the call still goes through -- it just won't attempt a transfer.
+### 2. Add template variable replacement
+Before sending the payload to Bland, replace common template variables in `task` and `first_sentence`:
+- `{{first_name}}` -- extracted from contact `name` (split on space, take first)
+- `{{last_name}}` -- extracted from contact `name` (split on space, take last)
+- `{{name}}` -- full contact name
+- `{{phone}}` -- contact phone
 
-### 2. Fix the data at the source (generate-spec or save-wizard-answers)
-The wizard is storing rule descriptions in the `transfer_phone_number` column. Review the `save-wizard-answers` or `generate-spec` edge function to ensure qualification/disqualification rules go into `qualification_rules` / `disqualification_rules` columns instead, and `transfer_phone_number` only stores an actual phone number.
+### Files to modify
+- **`supabase/functions/run-test-run/index.ts`**: Rewrite `buildTaskPrompt()` to be generic; add template variable replacement before building `blandPayload`
 
-### Files to modify:
-- **`supabase/functions/run-test-run/index.ts`** -- add phone validation guard (immediate fix)
-- **`supabase/functions/generate-spec/index.ts`** or **`supabase/functions/save-wizard-answers/index.ts`** -- review and fix field mapping so rule text doesn't end up in `transfer_phone_number` (root cause fix)
