@@ -1,106 +1,48 @@
 
+## Add "Stop Call" Button to Gym and Test Lab
 
-## Lists, Campaigns, and Results Dashboard
+### Problem
+Once a test call is initiated in the Gym or Test Lab, there is no way to stop or interrupt it. The user must wait for the call to complete naturally.
 
-### Overview
-Build a complete workflow: upload contact lists with automatic field detection, attach lists to campaigns, assign an agent, and view campaign results broken down by list and agent performance.
+### Solution
+Add a "Stop Call" button that appears while a call is in progress. This button will:
+1. Call a new Edge Function that hits Bland AI's stop endpoint (`POST /v1/calls/{call_id}/stop`)
+2. Update the contact/test record status to "cancelled"
+3. Reset the UI so the user can start a new call immediately
 
-### Data Model Changes
+### Bland AI Endpoint
+- `POST https://us.api.bland.ai/v1/calls/{call_id}/stop`
+- Requires the `Authorization` header with the Bland API key
+- Returns `{ "status": "success", "message": "Call ended successfully." }`
 
-**New table: `dial_lists`**
-- `id` (uuid, PK)
-- `org_id` (uuid, FK to organizations)
-- `name` (text) -- user-given name for the list
-- `file_name` (text) -- original uploaded file name
-- `row_count` (integer)
-- `detected_fields` (jsonb) -- array of detected column names, e.g. `["name","phone","state","age"]`
-- `status` (text, default "ready") -- ready, archived
-- `created_at` (timestamptz)
+### Changes
 
-**New table: `campaign_lists`** (junction -- a campaign can have many lists)
-- `id` (uuid, PK)
-- `campaign_id` (uuid, FK to campaigns)
-- `list_id` (uuid, FK to dial_lists)
-- `created_at` (timestamptz)
+**1. New Edge Function: `supabase/functions/stop-call/index.ts`**
+- Accepts `{ call_id: string, source: "gym" | "test_lab", contact_id: string }`
+- Calls Bland AI's stop endpoint using the stored `BLAND_API_KEY`
+- Updates the relevant record:
+  - For Gym (`test_run_contacts`): set status to "cancelled"
+  - For Test Lab (`test_run_contacts`): set status to "cancelled"
+- Returns success/failure
 
-**Modify `contacts` table**
-- Add `list_id` (uuid, nullable) -- tracks which list a contact came from
-- Add `extra_data` (jsonb, nullable) -- stores any additional fields beyond name/phone (e.g. state, age, income)
+**2. Update Gym page (`src/pages/GymPage.tsx`)**
+- Store the `bland_call_id` from the test run contact (fetched via realtime subscription)
+- Replace the disabled "Calling..." button with a red "Stop Call" button while `running` is true and a `bland_call_id` is available
+- On click, invoke the `stop-call` edge function, then reset `running` to false
 
-**Modify `campaigns` table**
-- Add `agent_project_id` column (uuid, nullable) -- the agent assigned to this campaign (currently `project_id` serves this purpose but naming is ambiguous)
+**3. Update Test Lab (`src/components/TestLabSection.tsx`)**
+- Similar treatment: show a "Stop Call" button next to or replacing the run button while calls are active
+- Track the test run's contact IDs and their bland_call_ids to allow stopping
 
-**RLS policies** for new tables follow the existing org-isolation pattern using `get_user_org_id()`.
-
-### User Journey
-
-```text
-+------------------+     +-------------------+     +------------------+     +------------------+
-|  1. Upload List  | --> |  2. Preview &     | --> | 3. Create        | --> | 4. Campaign      |
-|  (CSV file)      |     |  Confirm Fields   |     |  Campaign +      |     |  Results         |
-|                  |     |                   |     |  Assign Agent    |     |  Dashboard       |
-+------------------+     +-------------------+     +------------------+     +------------------+
-```
-
-**Step 1 -- Upload**: User drops or selects a CSV file on the Lists page. The system reads the header row and auto-detects field names.
-
-**Step 2 -- Preview**: Shows detected columns (name, phone, state, age, etc.), a preview of the first 5 rows, total row count, and which column maps to "phone" (required) and "name". User confirms or remaps before saving.
-
-**Step 3 -- Campaign Creation**: On the Campaigns page, user creates a campaign by: naming it, selecting one or more uploaded lists, and choosing which agent to use. Contacts from the selected lists are copied into the `contacts` table linked to the campaign and list.
-
-**Step 4 -- Results Dashboard**: New campaign detail page (`/campaigns/:id`) showing:
-- Overall stats (total contacts, called, outcomes)
-- Breakdown by list (which list performed better)
-- Agent success metrics (completion rate, average duration, outcome distribution)
-- Table of individual contacts with status and outcome
-
-### New Pages and Routes
-
-| Route | Page | Purpose |
-|---|---|---|
-| `/lists` | `ListsPage.tsx` | View all uploaded lists, upload new ones |
-| `/campaigns/:id` | `CampaignDetailPage.tsx` | Campaign results dashboard |
-
-### Updated Sidebar
-Add "Lists" nav item (with `FileSpreadsheet` icon) between "Gym" and "Campaigns".
-
-### Edge Function Updates
-
-**Update `parse-dial-list`**
-- Auto-detect header row and identify all columns
-- Identify which column is likely "phone" (contains phone-like data) and "name"
-- Return `{ detected_fields: string[], phone_column: string, name_column: string, rows: object[], count: number }`
-- Support flexible CSV formats (quoted fields, varying column counts)
+### What Users Will See
+- In the Gym: the "Calling..." button becomes a red "Stop Call" button once the call connects
+- Clicking it immediately ends the call on Bland AI's side
+- The status updates to "cancelled" and the user can start a new test right away
+- In the Test Lab: a "Stop All" button appears during active test runs
 
 ### Files to Create
-- `src/pages/ListsPage.tsx` -- upload, preview, confirm, list management
-- `src/pages/CampaignDetailPage.tsx` -- campaign results dashboard with list breakdown
+- `supabase/functions/stop-call/index.ts`
 
 ### Files to Modify
-- `src/App.tsx` -- add routes for `/lists` and `/campaigns/:id`
-- `src/components/AppSidebar.tsx` -- add "Lists" nav item
-- `src/pages/CampaignsPage.tsx` -- rework creation flow to select lists + agent instead of inline CSV upload
-- `supabase/functions/parse-dial-list/index.ts` -- smart field detection from CSV headers
-- Database migration -- new tables, altered columns, RLS policies
-
-### Technical Details
-
-**Smart field detection logic** (in `parse-dial-list`):
-1. Read first line as header
-2. Scan header names for phone-like columns (`phone`, `phone_number`, `mobile`, `cell`, `telephone`)
-3. Scan for name-like columns (`name`, `full_name`, `first_name`, `contact`)
-4. If no header detected (all rows look like data), fall back to positional: column 0 = name, column 1 = phone
-5. Return all columns as `detected_fields` so the UI can show them
-
-**Campaign creation flow**:
-1. Select agent (from `agent_projects`)
-2. Name the campaign
-3. Pick one or more lists (checkboxes showing list name, row count, upload date)
-4. On create: insert campaign row, insert `campaign_lists` junction rows, copy contacts from `dial_list_rows` into `contacts` with `list_id` and `campaign_id` set
-
-**Results dashboard cards**:
-- Total contacts / called / completed / failed
-- Pie chart of outcomes
-- Table grouped by list showing per-list completion rate
-- Filterable contact table with status, outcome, duration
-
+- `src/pages/GymPage.tsx` -- add stop button, track bland_call_id
+- `src/components/TestLabSection.tsx` -- add stop button for active test runs
