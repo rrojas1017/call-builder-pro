@@ -1,61 +1,38 @@
 
+## Rebrand "Quick Test" to "Gym" - Agent Training & Testing Hub
 
-## Add Humanness and Naturalness Scores + Trend Chart
+### Overview
+The user wants to rename the test/training page from "Quick Test" to "Gym" to better reflect its purpose as an agent training and testing environment.
 
-### Part 1: Add Missing Scores to Quick Test Results
+### Scope of Changes
 
-Currently, the score grid on QuickTestPage only shows 3 scores (Compliance, Objective, Overall). We'll expand it to show all 5 scores including Humanness and Naturalness.
+**Files to update:**
 
-**Changes to `src/pages/QuickTestPage.tsx`:**
-- Expand the score grid from 3 columns to 5 columns (`grid-cols-5`)
-- Add two new `ScoreCard` components for `humanness_score` and `naturalness_score`
-- Add a section to display `humanness_suggestions` (tips the AI recommends for sounding more human)
-- Add a section to display `knowledge_gaps` if any are detected
+1. **File rename**: `src/pages/QuickTestPage.tsx` → `src/pages/GymPage.tsx`
+   - Update export function name from `QuickTestPage` to `GymPage`
 
-### Part 2: Humanness Trend Chart
+2. **src/App.tsx** (import & route)
+   - Change import from `QuickTestPage` to `GymPage`
+   - Route path remains `/test` (internal routing, don't break existing links)
 
-Add a trend chart below the Quick Test form that shows humanness score history across past test calls for the selected agent.
+3. **src/components/AppSidebar.tsx** (navigation label)
+   - Change nav label from `"Test"` to `"Gym"`
+   - Icon can stay as `FlaskConical` (good metaphor for training/testing)
 
-**Changes to `src/pages/QuickTestPage.tsx`:**
-- Query `test_run_contacts` joined with `test_runs` for the selected agent, pulling `evaluation` data from completed calls
-- Use `recharts` (already installed) to render a line chart showing humanness score over time
-- Chart appears below the test form, updates when agent selection changes
-- X-axis: call date/time, Y-axis: humanness score (0-100)
-- Add a reference line at score 80 (the threshold that triggers auto-improvement)
+4. **src/pages/QuickTestPage.tsx** (content text)
+   - Page heading: `"Quick Test"` → `"Gym"`
+   - Page subtitle: `"Pick an agent, enter a phone number, hit test."` → Something like `"Train and test your agents one-on-one to measure humanness and refine performance."`
+   - Chart heading: `"Humanness Score Trend"` → `"Agent Humanness Progress"`
+   - Results heading: `"Result"` → Keep as is (already clear)
+   - Test run names: `"Quick Test"` → `"Gym Test"` (in the edge function call)
+
+### Benefits
+- Better UX language that emphasizes training/learning loop
+- Aligns with the system's continuous improvement philosophy
+- Makes it clear this is where agents are developed and validated
 
 ### Technical Details
-
-**Score grid update (lines 253-258):**
-```tsx
-<div className="grid grid-cols-5 gap-2">
-  <ScoreCard label="Compliance" score={contact.evaluation.compliance_score} />
-  <ScoreCard label="Objective" score={contact.evaluation.objective_score} />
-  <ScoreCard label="Overall" score={contact.evaluation.overall_score} />
-  <ScoreCard label="Humanness" score={contact.evaluation.humanness_score} />
-  <ScoreCard label="Naturalness" score={contact.evaluation.naturalness_score} />
-</div>
-```
-
-**New sections after issues:**
-- Humanness suggestions list (similar styling to issues but with a lightbulb icon)
-- Knowledge gaps list (with a book icon)
-
-**Trend chart query:**
-```sql
-SELECT trc.evaluation, trc.created_at
-FROM test_run_contacts trc
-JOIN test_runs tr ON tr.id = trc.test_run_id
-WHERE tr.project_id = :agentId
-  AND trc.status = 'completed'
-  AND trc.evaluation IS NOT NULL
-ORDER BY trc.created_at DESC
-LIMIT 20
-```
-
-**Chart component:** A `LineChart` from recharts with:
-- Line for humanness score (primary color)
-- Optional line for naturalness score (secondary color)
-- Reference line at 80 (auto-improvement threshold)
-- Responsive container, dark-theme friendly
-
-All changes are contained in `src/pages/QuickTestPage.tsx` -- no new files needed.
+- No database changes required
+- No route path changes (stays at `/test`)
+- All updates are purely cosmetic/labeling
+- The `normalizePhone` function and all logic remain unchanged
