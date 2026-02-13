@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, Shield, Target, Users, Mic, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBlandVoices } from "@/hooks/useBlandVoices";
-import { VoicePlayButton } from "@/components/VoicePlayButton";
+import { VoiceSelector } from "@/components/VoiceSelector";
 
 const STEPS = ["Build Your Agent", "Clarify Details", "Review & Save"];
 
@@ -302,45 +302,13 @@ export default function CreateAgentPage() {
               <Mic className="h-4 w-4 text-primary" /> Voice Selection
             </h3>
             <p className="text-xs text-muted-foreground">Choose a voice from your Bland AI account.</p>
-            {voicesLoading ? (
-              <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading voices...
-              </div>
-            ) : (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {blandVoices.map((voice) => (
-                  <button
-                    key={voice.voice_id}
-                    onClick={() => setSelectedVoice(voice.voice_id)}
-                    className={cn(
-                      "rounded-lg border p-3 text-left transition-colors",
-                      selectedVoice === voice.voice_id
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/50"
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-foreground">{voice.name}</p>
-                      <VoicePlayButton voiceId={voice.voice_id} sampleText={spec?.opening_line || undefined} />
-                    </div>
-                    {voice.description && <p className="text-xs text-muted-foreground">{voice.description}</p>}
-                    {voice.is_custom && <span className="text-xs text-primary">Custom clone</span>}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setSelectedVoice("custom")}
-                  className={cn(
-                    "rounded-lg border p-3 text-left transition-colors",
-                    selectedVoice === "custom"
-                      ? "border-primary bg-primary/10"
-                      : "border-border hover:border-primary/50"
-                  )}
-                >
-                  <p className="text-sm font-medium text-foreground">Custom Voice</p>
-                  <p className="text-xs text-muted-foreground">Use your own Bland AI voice clone ID</p>
-                </button>
-              </div>
-            )}
+            <VoiceSelector
+              voices={blandVoices}
+              loading={voicesLoading}
+              selectedVoice={selectedVoice}
+              onSelect={setSelectedVoice}
+              sampleText={spec?.opening_line || undefined}
+            />
             {selectedVoice === "custom" && (
               <div className="space-y-2">
                 <Label>Custom Voice Clone ID</Label>

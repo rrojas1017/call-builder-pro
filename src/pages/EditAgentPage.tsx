@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, Save, ArrowLeft, Phone, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { VoicePlayButton } from "@/components/VoicePlayButton";
+import { VoiceSelector } from "@/components/VoiceSelector";
 
 export default function EditAgentPage() {
   const { id } = useParams<{ id: string }>();
@@ -128,33 +128,13 @@ export default function EditAgentPage() {
         <h3 className="font-semibold text-foreground flex items-center gap-2">
           <Mic className="h-4 w-4 text-primary" /> Voice
         </h3>
-        {voicesLoading ? (
-          <div className="flex items-center gap-2 text-muted-foreground text-sm">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading voices from your account...
-          </div>
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {voices.map((voice) => (
-              <button
-                key={voice.voice_id}
-                onClick={() => setSelectedVoice(voice.voice_id)}
-                className={cn(
-                  "rounded-lg border p-3 text-left transition-colors",
-                  selectedVoice === voice.voice_id
-                    ? "border-primary bg-primary/10"
-                    : "border-border hover:border-primary/50"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-foreground">{voice.name}</p>
-                  <VoicePlayButton voiceId={voice.voice_id} sampleText={openingLine || undefined} />
-                </div>
-                {voice.description && <p className="text-xs text-muted-foreground">{voice.description}</p>}
-                {voice.is_custom && <span className="text-xs text-primary">Custom clone</span>}
-              </button>
-            ))}
-          </div>
-        )}
+        <VoiceSelector
+          voices={voices}
+          loading={voicesLoading}
+          selectedVoice={selectedVoice}
+          onSelect={setSelectedVoice}
+          sampleText={openingLine || undefined}
+        />
       </div>
 
       {/* Transfer */}
