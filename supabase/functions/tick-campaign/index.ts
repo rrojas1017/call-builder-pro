@@ -55,6 +55,27 @@ Household Size | 100% FPL  | 400% FPL
 8+             | $50,560+  | $202,240+
 (Add $5,140 per additional person beyond 8 for 100% FPL; multiply by 4 for 400% FPL)
 
+SPECIAL ENROLLMENT PERIOD (SEP) RULES (Updated 2025):
+IMPORTANT: The low-income SEP (income ≤150% FPL) was ELIMINATED as of August 25, 2025.
+Income alone does NOT qualify someone for year-round enrollment.
+
+Outside of Open Enrollment (Nov 1 - Dec 15), callers can ONLY enroll if they have
+a Qualifying Life Event (QLE) within the past 60 days:
+1. Involuntary loss of health coverage (job loss, aging off parent's plan, losing Medicaid)
+2. Marriage
+3. Birth, adoption, or placement of a child in foster care
+4. Permanent move to a new coverage area (must have had prior coverage)
+5. Becoming a U.S. citizen or gaining lawful presence
+6. Divorce (if it results in loss of coverage)
+7. Gaining access to a QSEHRA or Individual Coverage HRA from employer
+8. Employer-sponsored plan becoming unaffordable (>9.96% of household income)
+9. Change in income that affects subsidy eligibility
+10. Leaving the Medicaid coverage gap due to income increase
+11. Exceptional circumstances (natural disaster, enrollment errors)
+
+ADDITIONAL SCREENING QUESTION:
+- Have you recently experienced any life changes such as losing health coverage, getting married, having a baby, or moving to a new area?
+
 `;
   }
 
@@ -63,9 +84,10 @@ QUALIFICATION:
 - ESI or Medicare → disqualify
 - Medicaid → tag, no transfer
 - Uninsured/private + income within 100-400% FPL${shouldIncludeFplTable(spec.use_case) ? ' (use table above)' : ''} → qualified, transfer
+- ENROLLMENT TIMING: If outside Open Enrollment (Nov 1 - Dec 15), caller MUST have a QLE to enroll. No QLE = inform of next Open Enrollment. Do NOT qualify based on income alone.
 ${transferNum ? `- Transfer to: ${transferNum}` : ""}
 
-After call, provide JSON: consent, state, age, household_size, income_est_annual, coverage_type, qualified, disqual_reason, transfer_attempted, transfer_completed`;
+After call, provide JSON: consent, state, age, household_size, income_est_annual, coverage_type, qualifying_life_event, qualified, disqual_reason, transfer_attempted, transfer_completed`;
 
   return prompt;
 }

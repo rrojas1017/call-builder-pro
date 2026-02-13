@@ -136,6 +136,42 @@ Household Size | 100% FPL  | 400% FPL
 (Add $5,140 per additional person beyond 8 for 100% FPL; multiply by 4 for 400% FPL)
 
 Use this table to determine qualification: If the caller's annual household income falls between the 100% and 400% FPL amounts for their household size, they may qualify for ACA marketplace assistance.`;
+
+    prompt += `\n\nSPECIAL ENROLLMENT PERIOD (SEP) RULES (Updated 2025):
+IMPORTANT: The low-income SEP (income ≤150% FPL) was ELIMINATED as of August 25, 2025.
+Income alone does NOT qualify someone for year-round enrollment.
+
+Outside of Open Enrollment (Nov 1 - Dec 15), callers can ONLY enroll if they have
+a Qualifying Life Event (QLE) within the past 60 days:
+1. Involuntary loss of health coverage (job loss, aging off parent's plan, losing Medicaid)
+2. Marriage
+3. Birth, adoption, or placement of a child in foster care
+4. Permanent move to a new coverage area (must have had prior coverage)
+5. Becoming a U.S. citizen or gaining lawful presence
+6. Divorce (if it results in loss of coverage)
+7. Gaining access to a QSEHRA or Individual Coverage HRA from employer
+8. Employer-sponsored plan becoming unaffordable (>9.96% of household income)
+9. Change in income that affects subsidy eligibility
+10. Leaving the Medicaid coverage gap due to income increase
+11. Exceptional circumstances (natural disaster, enrollment errors)
+
+If outside Open Enrollment:
+- Ask if the caller has experienced any of these life events in the past 60 days
+- If YES: they may qualify for a SEP regardless of income (still must meet FPL range)
+- If NO: inform them they can enroll during the next Open Enrollment period
+- Do NOT tell them they qualify for a SEP based on income alone`;
+
+    // Add QLE screening question for health agents
+    if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('life event') || f.toLowerCase().includes('qle'))) {
+      prompt += `\n\nADDITIONAL SCREENING QUESTION:
+- Have you recently experienced any life changes such as losing health coverage, getting married, having a baby, or moving to a new area? (This determines enrollment eligibility outside Open Enrollment)`;
+    }
+
+    // Updated qualification logic with SEP awareness
+    prompt += `\n\nENROLLMENT TIMING RULES:
+- If currently outside Open Enrollment (Nov 1 - Dec 15), the caller MUST have a Qualifying Life Event (QLE) to enroll.
+- If they have no QLE, inform them of the next Open Enrollment period.
+- Do NOT tell them they qualify for a SEP based on income alone.`;
   }
 
   if (qualRules) {
