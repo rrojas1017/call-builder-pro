@@ -56,3 +56,9 @@ verify_jwt = false
 
 [functions.stripe-webhook]
 verify_jwt = false
+
+[functions.create-user]
+verify_jwt = false
+
+[functions.create-company]
+verify_jwt = false
