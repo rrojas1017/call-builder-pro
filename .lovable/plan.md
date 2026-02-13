@@ -1,35 +1,31 @@
 
 
-## Problem
+## Better Voice Filtering and Search
 
-The **ACA Qualifier** agent's `opening_line` stored in the database contains:
+Right now the voice selector only has a text search box and an optional language dropdown. With dozens (or hundreds) of voices coming back from the API, that's not enough to find what you need quickly.
 
-> "Hi, I'm an **automated assistant** calling because you recently requested information about health insurance coverage..."
+### What's Changing
 
-This makes the agent identify itself as a robot on every call, which undermines the entire humanization engine and the task prompt directive: *"You are a REAL PERSON on a phone call -- not AI, not a robot."*
+**1. Gender Filter** -- Add a toggle row (All / Male / Female) so you can instantly narrow down the list by half. The Bland API returns gender info on most voices, so we'll extract and expose it.
 
-## Fix
+**2. Accent / Style Tags** -- Add a second filter dropdown for accent or style (e.g. "American", "British", "Australian", "Narrative", "Conversational"). These are parsed from the voice description or tags returned by the API.
 
-Update the `opening_line` in the `agent_specs` table for the ACA Qualifier agent to sound like a real person calling. The new line should follow the existing "permission-first" conversational style (e.g., "Hey {{first_name}}, you got a quick minute?").
+**3. "Currently Selected" Pinned at Top** -- The voice you already have selected will always appear at the very top of the list (outside the scroll area), so you never lose track of it.
 
-### Proposed New Opening Line
+**4. Smarter Search** -- The search box will also match against language, gender, and accent tags -- not just name and description.
 
-> "Hi there, I'm calling because you recently asked about health insurance options. This call may be recorded for quality purposes. Do you have a quick minute so I can see if you might qualify for some ACA marketplace savings?"
-
-This keeps:
-- The reason for calling (they requested info)
-- The recording disclosure
-- The consent ask
-- A natural, human tone
+**5. Increased Scroll Height** -- Bump the scrollable area from 320px to 420px so more voices are visible at once without scrolling.
 
 ### Technical Details
 
-- **Single database update** on the `agent_specs` table for the ACA Qualifier project
-- No code changes needed -- just a data fix
-- The `disclosure_text` field for this agent is also wrong (it says "Nationwide coverage (all 50 states)" which looks like a wizard answer got saved to the wrong field). This will also be corrected to a proper compliance disclosure.
+**`BlandVoice` interface** (in `useBlandVoices.ts`):
+- Add `gender?: string` field, mapped from `v.gender` in the API response
 
-### Changes
+**`VoiceSelector.tsx`**:
+- Add `genderFilter` state (`"all" | "male" | "female"`) with a pill-style toggle row
+- Pin the currently selected voice card above the scroll area
+- Exclude the pinned voice from the main list to avoid duplication
+- Expand `max-h-[320px]` to `max-h-[420px]`
+- Update the filter logic to also match gender and include language/gender in search text
 
-1. **Update `agent_specs.opening_line`** for the ACA Qualifier to remove "automated assistant" and use a natural, human greeting
-2. **Update `agent_specs.disclosure_text`** to a proper compliance statement (current value "Nationwide coverage (all 50 states)" is not a disclosure)
-
+**No database changes required** -- this is purely a UI/hook update.
