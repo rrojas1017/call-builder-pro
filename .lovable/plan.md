@@ -2,103 +2,34 @@
 
 ## Problem
 
-The current learning loop is **failure-driven only**: it triggers research when humanness scores drop below 80 or knowledge gaps are detected. It never analyzes **successful calls** to extract winning patterns. In production with hundreds of calls, the most valuable learning signal is: "What did the agent do differently on calls that converted vs. calls that didn't?"
+The **ACA Qualifier** agent's `opening_line` stored in the database contains:
 
-## Solution: Success-Based Learning Loop
+> "Hi, I'm an **automated assistant** calling because you recently requested information about health insurance coverage..."
 
-Add a "learn from winners" step to the `evaluate-call` function that, after every Nth successful call (e.g., every 5 qualified outcomes), triggers a new edge function `learn-from-success` that:
+This makes the agent identify itself as a robot on every call, which undermines the entire humanization engine and the task prompt directive: *"You are a REAL PERSON on a phone call -- not AI, not a robot."*
 
-1. Pulls the transcripts of recent successful calls (qualified/converted)
-2. Compares them against recent unsuccessful calls
-3. Uses AI to extract **winning patterns** (phrases, techniques, pacing)
-4. Saves those patterns back to `agent_knowledge` with a new category: `"winning_pattern"`
-5. These patterns then flow into the pre-call summarization briefing automatically
+## Fix
 
-### Architecture
+Update the `opening_line` in the `agent_specs` table for the ACA Qualifier agent to sound like a real person calling. The new line should follow the existing "permission-first" conversational style (e.g., "Hey {{first_name}}, you got a quick minute?").
 
-```text
-Bland Webhook
-   |
-   v
-evaluate-call (already runs on ALL calls)
-   |
-   +-- Low score? --> research-and-improve (existing)
-   |
-   +-- Successful outcome? --> Check: is this the 5th success?
-         |
-         YES --> learn-from-success (NEW)
-                   |
-                   +-- Fetch 5 recent successful transcripts
-                   +-- Fetch 5 recent unsuccessful transcripts
-                   +-- AI: "What patterns distinguish winners?"
-                   +-- Save winning_patterns to agent_knowledge
-                   +-- Patterns auto-included in next briefing
-```
+### Proposed New Opening Line
 
-### Files to Create/Modify
+> "Hi there, I'm calling because you recently asked about health insurance options. This call may be recorded for quality purposes. Do you have a quick minute so I can see if you might qualify for some ACA marketplace savings?"
 
-**1. Create: `supabase/functions/learn-from-success/index.ts`**
-- Accept: `project_id`
-- Fetch last 5 calls with `outcome = 'qualified'` and last 5 with `outcome IN ('completed', 'disqualified')`
-- Send both sets of transcripts to Lovable AI (Gemini Flash)
-- System prompt: "Compare these successful vs unsuccessful call transcripts. Extract 3-5 specific techniques, phrases, or approaches that the successful calls used but the unsuccessful ones didn't."
-- Save results to `agent_knowledge` with `category = 'winning_pattern'` and `source_type = 'success_analysis'`
-- Deduplicate against existing entries
+This keeps:
+- The reason for calling (they requested info)
+- The recording disclosure
+- The consent ask
+- A natural, human tone
 
-**2. Modify: `supabase/functions/evaluate-call/index.ts`**
-- After storing the evaluation, check if this call's outcome is "qualified"
-- If yes, count recent qualified calls for this project
-- Every 5th qualified call, trigger `learn-from-success`
-- This avoids running the analysis on every single call (cost/performance)
+### Technical Details
 
-**3. Update: `supabase/config.toml`**
-- Register `[functions.learn-from-success]` with `verify_jwt = false`
+- **Single database update** on the `agent_specs` table for the ACA Qualifier project
+- No code changes needed -- just a data fix
+- The `disclosure_text` field for this agent is also wrong (it says "Nationwide coverage (all 50 states)" which looks like a wizard answer got saved to the wrong field). This will also be corrected to a proper compliance disclosure.
 
-### What the AI Analyzes
+### Changes
 
-The comparison prompt will ask:
-- What opening approaches led to engagement vs. hang-ups?
-- How did the agent handle objections differently in successful calls?
-- What pacing or tone patterns correlate with success?
-- Were there specific phrases or transitions that kept the caller engaged?
-- How did data collection flow differ (order, timing, framing)?
-
-### Output Example
-
-```json
-{
-  "winning_patterns": [
-    "Successful calls asked about the caller's current situation before mentioning benefits, creating a consultative tone",
-    "Top calls used the phrase 'just to make sure you get the best option' before income questions, reducing resistance",
-    "Converted calls spent 20+ seconds on rapport before any qualification questions"
-  ]
-}
-```
-
-These get saved to `agent_knowledge` as `winning_pattern` entries and automatically flow into the pre-call briefing via the existing `summarize-agent-knowledge` function.
-
-### Trigger Frequency
-
-| Scenario | Trigger? |
-|----------|----------|
-| Every completed call | No (too expensive) |
-| Every qualified call | No (still frequent) |
-| Every 5th qualified call per project | Yes (balanced) |
-| Manual trigger from dashboard | Future enhancement |
-
-### Edge Cases
-
-| Case | Handling |
-|------|----------|
-| Fewer than 5 successful calls | Skip analysis, wait for more data |
-| Fewer than 3 unsuccessful calls | Use only successful calls, extract general patterns |
-| All calls successful | Skip comparison, no contrast to learn from |
-| AI returns duplicate patterns | Deduplicate against existing `agent_knowledge` entries |
-
-### Impact
-
-- Agents don't just avoid mistakes -- they **replicate what works**
-- Learning is driven by real production outcomes, not synthetic test scenarios
-- The summarization briefing automatically picks up winning patterns
-- Over time, conversion rates should trend upward as the agent internalizes successful approaches
+1. **Update `agent_specs.opening_line`** for the ACA Qualifier to remove "automated assistant" and use a natural, human greeting
+2. **Update `agent_specs.disclosure_text`** to a proper compliance statement (current value "Nationwide coverage (all 50 states)" is not a disclosure)
 
