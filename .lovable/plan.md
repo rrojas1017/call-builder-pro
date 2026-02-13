@@ -1,69 +1,44 @@
 
+## Add Agent Type Icon (Outbound/Inbound) to Agent Cards
 
-## Redesign the Calls Page -- Full Analytics Dashboard
+### Current State
+- The `agent_specs` table already has a `mode` column that stores "outbound", "inbound", or "hybrid"
+- The `generate-spec` edge function already determines the agent mode during creation
+- The `AgentsPage.tsx` currently queries only `agent_projects` and doesn't fetch the agent's mode
+- Agent cards display a generic `Bot` icon with no type differentiation
 
-### What's Wrong Now
-- Just a flat list of call IDs with no summary metrics
-- The US map shows call counts but you can't click a state to drill into it
-- No conversion rate tracking (qualified vs disqualified vs no answer)
-- No aggregate stats (total minutes, avg duration, avg scores)
-- Call list shows truncated IDs instead of useful info (contact name, date, state)
-- No filtering or sorting capability
-- Overall feels like a developer debug view, not a polished analytics page
+### Solution
+Add a visual indicator to agent cards showing whether the agent is Outbound, Inbound, or Hybrid by:
 
-### Redesigned Layout
+1. **Update Agent Query** (`src/pages/AgentsPage.tsx`)
+   - Modify the database query to join with `agent_specs` to fetch the `mode` field
+   - Update the `Agent` interface to include `mode: "outbound" | "inbound" | "hybrid"`
+   - Fetch mode for all agents in a single efficient query
 
-The page will be restructured into three sections:
+2. **Update Agent Card Display** (`src/pages/AgentsPage.tsx`)
+   - Replace the generic `Bot` icon with a mode-specific icon:
+     - **Outbound**: `Phone` icon (agent calls out) - primary color
+     - **Inbound**: `PhoneIncoming` icon (receives calls) - secondary color
+     - **Hybrid**: `Phone` with badge or `PhoneForwarded` - accent color
+   - Add a small badge/label below the agent name (e.g., "Outbound", "Inbound") or directly in the icon tooltip
+   - Keep the existing card layout intact
 
-**Section 1: Summary KPI Cards (top row)**
-Four cards across the top:
-- Total Calls (count)
-- Total Minutes (sum of duration)
-- Avg Score (average of evaluation.overall_score)
-- Conversion Rate (qualified / total completed calls as %)
+3. **Visual Design**
+   - Use `lucide-react` icons: `Phone` (outbound), `PhoneIncoming` (inbound), `PhoneForwarded` (hybrid)
+   - Color code each mode for quick visual scanning
+   - Add subtle tooltip on hover to confirm the agent type (optional but nice UX)
 
-**Section 2: Analytics Row (middle)**
-Two side-by-side panels:
-- Left: Interactive US Map -- clicking a state filters the call list below. Shows a tooltip with state name, call count, qualified count, and conversion rate for that state.
-- Right: Outcome Breakdown -- a donut/pie chart showing distribution across completed, qualified, disqualified, no_answer, failed, etc.
+### Files to Modify
+- `src/pages/AgentsPage.tsx` -- Update query, interface, and card rendering logic
 
-**Section 3: Call Table (bottom)**
-Replace the raw list with a proper data table:
-- Columns: Date/Time, Contact (name from extracted_data or phone), State, Duration, Outcome, Score, Actions (view detail)
-- Sortable by date, duration, score
-- Filterable by outcome (dropdown) and state (via map click or dropdown)
-- Clicking a row opens the existing detail panel as a slide-over sheet instead of shrinking the list
+### What Users Will See
+- Agent cards now show:
+  - Outbound agent: `📞 Phone` icon in primary color + "Outbound" label/badge
+  - Inbound agent: `📥 PhoneIncoming` icon in secondary color + "Inbound" label/badge
+  - Hybrid agent: `🔄 PhoneForwarded` icon in accent color + "Hybrid" label/badge
+- Helps users at a glance distinguish between different agent types without clicking into details
 
-### State Drill-Down
-- Clicking a state on the map filters the table to only show calls from that state
-- A "breadcrumb" chip appears showing the active state filter with an X to clear it
-- The KPI cards update to reflect the filtered data
-
-### Technical Details
-
-**File: `src/pages/CallsPage.tsx`** -- Full rewrite of the page component:
-- Add `useMemo` aggregations for KPI calculations (total calls, total minutes, avg score, conversion rate)
-- Add `selectedState` filter state that the map and table share
-- Add `outcomeFilter` state for dropdown filtering
-- Add `sortField` / `sortDirection` state for table column sorting
-- Compute per-state stats (calls, qualified, conversion rate) passed to the map for richer tooltips
-- Use Card components for KPI row
-- Use Table components for the call list
-- Use Sheet (slide-over) for call detail instead of the current side-panel approach
-- Format dates with `date-fns` (already installed)
-- Show contact name from `extracted_data.name` or fallback to phone/ID
-
-**File: `src/components/USMapChart.tsx`** -- Enhance with:
-- `onStateClick` callback prop so clicking a state triggers filtering
-- `selectedState` prop to highlight the active state
-- Enhanced tooltip showing calls, qualified, and conversion rate per state
-- Accept a richer data shape: `Record<string, { calls: number; qualified: number }>` instead of just counts
-
-**No database changes needed** -- all data already exists in the `calls` table (outcome, duration_seconds, evaluation, extracted_data with state info).
-
-### What You'll See After
-- A polished dashboard-style page with clear KPIs at the top
-- An interactive map where clicking a state filters everything below it
-- A proper sortable/filterable table showing meaningful call info
-- Conversion rates visible at both the global and per-state level
-- A clean slide-over panel for call details instead of the cramped side panel
+### No Breaking Changes
+- Existing functionality (edit, test, knowledge links) remains unchanged
+- All agents that were previously created default to "outbound" in the database
+- The addition is purely visual and informational
