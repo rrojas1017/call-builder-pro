@@ -1,22 +1,36 @@
 
 
-## Fix Voice Preview Playback
+## Organize Voice Selection with Search and Scrollable List
 
-### Root Causes
-1. **Wrong API endpoint**: Using `us.api.bland.ai` but the documented endpoint is `api.bland.ai` -- there is no US regional variant for this endpoint
-2. **Binary audio corruption**: `supabase.functions.invoke()` auto-parses the response as JSON, corrupting the binary MP3 data
+### Problem
+The voice list from Bland AI is very long, making it hard to find and compare voices. The current flat grid shows every voice at once, creating an overwhelming scroll experience.
+
+### Solution
+Add a search/filter bar, group custom clones separately, and constrain the voice list inside a scrollable container with a fixed max height.
 
 ### Changes
 
-**1. Fix edge function endpoint (`supabase/functions/generate-voice-sample/index.ts`)**
-- Change URL back to `https://api.bland.ai/v1/voices/${voice_id}/sample` (the documented endpoint)
-- Keep the 25-second timeout as a safety measure
+**1. Update `src/hooks/useBlandVoices.ts`**
+- No changes needed -- the hook already provides `is_custom` flag for grouping
 
-**2. Fix client-side binary handling (`src/components/VoicePlayButton.tsx`)**
-- Replace `supabase.functions.invoke()` with a direct `fetch()` call to the edge function URL
-- Use `response.blob()` to correctly handle the binary audio response
-- This prevents the SDK from corrupting the MP3 data by trying to parse it as JSON
+**2. Update voice selection in `src/pages/EditAgentPage.tsx`**
+- Add a search `Input` at the top of the Voice section that filters voices by name/description
+- Show custom clones in a separate "Your Clones" group above the general "Preset Voices" group
+- Wrap the voice grid inside a `ScrollArea` with `max-h-[320px]` so the list doesn't take over the page
+- Show a count like "Showing 12 of 48 voices"
+
+**3. Update voice selection in `src/pages/CreateAgentPage.tsx`**
+- Apply the same search + scroll + grouping treatment for consistency
+
+### What Users Will See
+- A search box at the top of the voice section ("Search voices...")
+- Custom clones grouped first under a "Your Clones" label (if any exist)
+- Preset voices grouped below under a "Preset Voices" label
+- The entire list scrollable within a fixed-height container (~320px)
+- A voice count indicator showing filtered results
+- The selected voice remains highlighted and visible
 
 ### Files to Modify
-- `supabase/functions/generate-voice-sample/index.ts` -- fix API URL from `us.api.bland.ai` to `api.bland.ai`
-- `src/components/VoicePlayButton.tsx` -- switch from SDK invoke to raw fetch for binary audio
+- `src/pages/EditAgentPage.tsx` -- add search, grouping, scroll area
+- `src/pages/CreateAgentPage.tsx` -- same treatment
+
