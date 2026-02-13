@@ -278,6 +278,21 @@ serve(async (req) => {
 
     const knowledge: KnowledgeEntry[] = (knowledgeRows || []) as KnowledgeEntry[];
 
+    // Load global human behaviors
+    const { data: globalBehaviors } = await supabase
+      .from("global_human_behaviors").select("content")
+      .order("created_at", { ascending: true });
+
+    const globalTechniques = (globalBehaviors || []).map((g: any) => g.content as string);
+
+    // Merge global behaviors into spec's humanization_notes (deduped)
+    if (spec && globalTechniques.length > 0) {
+      const currentNotes: string[] = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
+      const existingLower = new Set(currentNotes.map((n: string) => n.toLowerCase().trim()));
+      const newGlobal = globalTechniques.filter((t: string) => !existingLower.has(t.toLowerCase().trim()));
+      spec.humanization_notes = [...currentNotes, ...newGlobal];
+    }
+
     const baseTask = testRun.agent_instructions_text || (spec ? buildTaskPrompt(spec, knowledge) : "Conduct a professional outbound call.");
     const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
 

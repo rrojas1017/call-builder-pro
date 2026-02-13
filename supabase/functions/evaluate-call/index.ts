@@ -205,6 +205,24 @@ VOICE TUNING RECOMMENDATIONS:
           await supabase.from("agent_specs").update({ humanization_notes: merged }).eq("id", spec.id);
           console.log(`Auto-applied ${newSuggestions.length} humanness suggestions`);
         }
+
+        // Also save to global_human_behaviors for cross-agent learning
+        const { data: existingGlobal } = await supabase
+          .from("global_human_behaviors").select("content");
+        const existingGlobalSet = new Set((existingGlobal || []).map((g: any) => g.content.toLowerCase().trim()));
+        const globalNew = evaluation.humanness_suggestions.filter(
+          (s: string) => !existingGlobalSet.has(s.toLowerCase().trim())
+        );
+        if (globalNew.length > 0) {
+          await supabase.from("global_human_behaviors").insert(
+            globalNew.map((s: string) => ({
+              content: s,
+              source_type: "auto_learned",
+              source_agent_id: call.project_id,
+            }))
+          );
+          console.log(`Saved ${globalNew.length} behaviors to global library`);
+        }
       } catch (e) {
         console.error("Failed to auto-apply humanness notes:", e);
       }
