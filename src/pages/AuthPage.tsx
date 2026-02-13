@@ -4,8 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Zap, Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Zap, Loader2, MessageSquare, BarChart3, FlaskConical } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
+
+const valueProps = [
+  { icon: MessageSquare, text: "Natural, human-like conversations" },
+  { icon: BarChart3, text: "Scale to thousands of calls instantly" },
+  { icon: FlaskConical, text: "AI-powered testing and improvement" },
+];
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -41,45 +47,120 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm space-y-8">
-        <div className="text-center space-y-2">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary glow-primary">
-            <Zap className="h-6 w-6 text-primary-foreground" />
+    <div className="flex min-h-screen bg-background">
+      {/* Left branding panel */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden items-center justify-center p-12">
+        {/* Gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-accent/20" />
+        <div className="absolute top-1/3 left-1/3 w-[400px] h-[400px] rounded-full bg-primary/10 blur-[100px]" />
+
+        <div className="relative z-10 max-w-md">
+          <Link to="/" className="flex items-center gap-3 mb-10">
+            <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center glow-primary">
+              <Zap className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <span className="text-xl font-bold tracking-tight">VoiceForge</span>
+          </Link>
+
+          <h2 className="text-3xl font-bold tracking-tight leading-tight mb-4">
+            Build AI Voice Agents{" "}
+            <span className="text-gradient-primary">in Minutes</span>
+          </h2>
+          <p className="text-muted-foreground mb-10">
+            Create, test, and deploy intelligent phone agents that handle real conversations at scale.
+          </p>
+
+          <div className="space-y-5">
+            {valueProps.map((vp) => (
+              <div key={vp.text} className="flex items-center gap-4">
+                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <vp.icon className="h-5 w-5 text-primary" />
+                </div>
+                <span className="text-sm text-foreground/80">{vp.text}</span>
+              </div>
+            ))}
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">VoiceForge</h1>
-          <p className="text-sm text-muted-foreground">
-            {isLogin ? "Sign in to your account" : "Create your account"}
+        </div>
+      </div>
+
+      {/* Right form panel */}
+      <div className="flex flex-1 items-center justify-center p-6 sm:p-12">
+        <div className="w-full max-w-sm space-y-8">
+          {/* Mobile logo */}
+          <div className="lg:hidden text-center space-y-2">
+            <Link to="/" className="inline-flex items-center gap-2">
+              <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center glow-primary">
+                <Zap className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <span className="text-xl font-bold tracking-tight">VoiceForge</span>
+            </Link>
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              {isLogin ? "Welcome back" : "Create your account"}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {isLogin
+                ? "Sign in to manage your AI voice agents."
+                : "Start building AI voice agents for free."}
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {!isLogin && (
+              <div className="space-y-2">
+                <Label htmlFor="name">Full Name</Label>
+                <Input
+                  id="name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Jane Smith"
+                  className="h-11"
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                required
+                className="h-11"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                minLength={6}
+                className="h-11"
+              />
+            </div>
+            <Button type="submit" className="w-full h-11" disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isLogin ? "Sign In" : "Create Account"}
+            </Button>
+          </form>
+
+          <p className="text-center text-sm text-muted-foreground">
+            {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
+            <button
+              onClick={() => setIsLogin(!isLogin)}
+              className="font-medium text-primary hover:underline"
+            >
+              {isLogin ? "Sign up" : "Sign in"}
+            </button>
           </p>
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-            <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Smith" />
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required minLength={6} />
-          </div>
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isLogin ? "Sign In" : "Create Account"}
-          </Button>
-        </form>
-
-        <p className="text-center text-sm text-muted-foreground">
-          {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
-          <button onClick={() => setIsLogin(!isLogin)} className="font-medium text-primary hover:underline">
-            {isLogin ? "Sign up" : "Sign in"}
-          </button>
-        </p>
       </div>
     </div>
   );
