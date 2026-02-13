@@ -1,72 +1,109 @@
 
+# Per-Agent Knowledge Base with Smart Auto-Research
 
-# Auto-Research to Accelerate Agent Improvement
+## What This Does
+Right now, research results and humanization notes are stored as flat arrays on `agent_specs` -- invisible to users and not editable. The knowledge base page (`/knowledge`) is a generic file uploader tied to the user, not to any specific agent.
 
-## Overview
-When the evaluator identifies weak areas (low humanness score, poor objection handling, industry-specific gaps), the system will automatically research the web for best practices and inject those learnings into the agent's knowledge -- making it smarter after every call, not just from its own mistakes but from the collective wisdom of the internet.
-
-## How It Works
-
-After each call evaluation, if the humanness score is below 80 or the evaluator flags specific weak areas, a new "research-and-improve" edge function kicks in:
-
-1. Evaluator finishes scoring a call and identifies gaps (e.g., "agent didn't handle price objection well", "agent needs better small talk for insurance callers")
-2. The system generates targeted search queries from those gaps + the agent's use case
-3. Firecrawl searches the web for relevant best practices (sales scripts, objection handling guides, industry conversation techniques)
-4. An AI pass distills the raw research into concise, actionable conversation techniques
-5. The distilled techniques get merged into the agent's `humanization_notes` alongside the evaluator's own suggestions
+This upgrade creates a **per-agent knowledge system** where:
+- Each agent has its own knowledge profile that the system populates automatically
+- The system recognizes knowledge gaps based on the agent's **use case / vertical** and proactively researches product knowledge, industry terminology, objection patterns, and competitor info
+- All auto-researched knowledge is visible to the creator, who can edit or delete individual entries
+- The research function becomes smarter -- it doesn't just search for "conversation techniques" but also for **domain-specific product knowledge** relevant to that agent's vertical
 
 ## Changes
 
-### 1. Connect Firecrawl to the project
-The Firecrawl connector is available in the workspace but not linked to this project. We'll link it so edge functions can use `FIRECRAWL_API_KEY` for web search.
-
-### 2. Create new edge function: `research-and-improve/index.ts`
-This function does the heavy lifting:
-
-**Input**: `{ project_id, evaluation, spec }` (called from evaluate-call after scoring)
-
-**Steps**:
-- Takes the `humanness_suggestions`, `issues_detected`, and `use_case` from the evaluation
-- Generates 2-3 targeted search queries (e.g., "best phone sales conversation techniques for travel agencies", "how to handle objections naturally on cold calls")
-- Calls Firecrawl search API to find relevant articles/guides
-- Sends the search results + the specific gaps to AI (Lovable AI) with a prompt like: "Distill these articles into 3-5 specific, actionable conversation techniques this agent should use. Be concrete -- give example phrases, not abstract advice."
-- Returns the distilled techniques as an array of strings
-
-**Output**: `{ research_notes: string[], sources: string[] }`
-
-### 3. Update `evaluate-call/index.ts` to trigger research
-After the existing humanness auto-apply logic, add a call to `research-and-improve` when:
-- `humanness_score < 80`, OR
-- There are 2+ issues detected, OR  
-- The evaluator flagged specific knowledge gaps
-
-The research results get merged into `humanization_notes` alongside the evaluator's own suggestions (same dedup + cap-at-20 logic).
-
-### 4. Add `research_sources` JSONB column to `agent_specs`
-Track which URLs/articles the system used to generate improvements, so users can see where the knowledge came from. Default `[]`.
-
-### 5. Update the UI (`TestResultsModal.tsx`)
-Add a "Research Sources" section below the learned techniques that shows links to articles/resources the system found and used to improve the agent.
-
-## Files to Create/Modify
-
-- **Firecrawl connector**: Link to project (connect tool)
-- **Database migration**: Add `research_sources JSONB DEFAULT '[]'` to `agent_specs`
-- **`supabase/functions/research-and-improve/index.ts`**: New edge function -- web search + AI distillation
-- **`supabase/config.toml`**: Add `research-and-improve` function config
-- **`supabase/functions/evaluate-call/index.ts`**: Call research-and-improve after evaluation when gaps are found
-- **`src/components/TestResultsModal.tsx`**: Show research sources in results
-
-## The Enhanced Self-Improvement Loop
+### 1. New DB table: `agent_knowledge`
+A dedicated table to store structured knowledge entries per agent, each editable/deletable by the creator.
 
 ```
-Call completes
-  --> Evaluate: humanness_score = 55, suggestions = ["handle objections better", "more small talk"]
-  --> Score < 80, trigger research
-  --> Search: "best objection handling phone sales travel" 
-  --> Found 3 articles with techniques
-  --> AI distills: ["When prospect says 'I need to think about it', respond with 'Totally fair -- what part are you weighing?'", ...]
-  --> Merge into humanization_notes + save sources
-  --> Next call uses both evaluator feedback AND researched best practices
+agent_knowledge
+- id (uuid, PK)
+- project_id (uuid, FK to agent_projects)
+- category (text): "conversation_technique" | "product_knowledge" | "objection_handling" | "industry_insight" | "competitor_info"
+- content (text): the actual knowledge entry
+- source_url (text, nullable): where it came from
+- source_type (text): "auto_research" | "evaluation" | "manual"
+- created_at (timestamptz)
 ```
 
+RLS: org members can view, admins can manage (matching existing patterns).
+
+### 2. Update `research-and-improve` to search for domain knowledge
+Currently it only searches for "conversation techniques." Upgrade it to also generate queries for:
+- Product/industry knowledge based on `use_case` (e.g., "ACA health insurance qualification requirements 2026", "solar panel installation common customer questions")
+- Objection handling specific to the vertical (e.g., "common objections in health insurance sales")
+- Competitor awareness (e.g., "top ACA marketplace providers comparison")
+
+Each distilled item gets categorized and saved to `agent_knowledge` instead of (or in addition to) the flat `humanization_notes` array. The `humanization_notes` array continues to be injected into the prompt, but now it pulls from the full `agent_knowledge` table for that agent.
+
+### 3. Update `evaluate-call` to detect knowledge gaps
+Add a new evaluation output: `knowledge_gaps` -- an array of specific topics the agent lacked knowledge about during the call (e.g., "Agent couldn't answer question about subsidy eligibility", "Agent didn't know competitor pricing"). When gaps are detected, the research function targets those specific topics.
+
+### 4. New UI: Agent Knowledge page
+Replace the generic `/knowledge` page with a per-agent knowledge view accessible from the agents list. Shows:
+- All knowledge entries grouped by category (tabs: All, Conversation, Product, Objections, Industry)
+- Each entry shows content, source link, and source type badge (auto/manual)
+- Delete button on each entry
+- Edit button to modify content inline
+- "Add Knowledge" button for manual entries
+- The agent's use case/vertical displayed at the top
+
+### 5. Update the task prompt to include domain knowledge
+Update `buildTaskPrompt()` in `run-test-run` to load knowledge from `agent_knowledge` and inject relevant product knowledge, objection handling scripts, and industry insights into the prompt alongside the existing humanization notes.
+
+## Technical Details
+
+### Database Migration
+```sql
+CREATE TABLE agent_knowledge (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL,
+  category TEXT NOT NULL DEFAULT 'conversation_technique',
+  content TEXT NOT NULL,
+  source_url TEXT,
+  source_type TEXT NOT NULL DEFAULT 'auto_research',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE agent_knowledge ENABLE ROW LEVEL SECURITY;
+-- RLS: org members view, admins manage (via agent_projects join)
+```
+
+### Files to Create
+- `src/pages/AgentKnowledgePage.tsx` -- per-agent knowledge management UI with category tabs, inline edit, delete, and manual add
+
+### Files to Modify
+- **`supabase/functions/research-and-improve/index.ts`** -- Add domain-specific search queries (product knowledge, objections, industry), save results to `agent_knowledge` table with proper categories, continue merging conversation techniques into `humanization_notes`
+- **`supabase/functions/evaluate-call/index.ts`** -- Add `knowledge_gaps` to the evaluation schema so the evaluator flags topics the agent didn't know about; pass these gaps to the research function
+- **`supabase/functions/run-test-run/index.ts`** -- Load `agent_knowledge` entries for the project and inject them into the prompt by category (product knowledge section, objection handling section, etc.)
+- **`src/App.tsx`** -- Add route `/agents/:id/knowledge` for the new page
+- **`src/pages/AgentsPage.tsx`** -- Add a "Knowledge" link on each agent card alongside the existing "Test" link
+- **`src/components/TestResultsModal.tsx`** -- Show detected knowledge gaps in evaluation results
+
+### How the Smart Knowledge Loop Works
+
+```
+Agent created with use_case = "solar panel sales"
+  |
+  v
+First call --> Evaluation detects:
+  - humanness_score: 62
+  - knowledge_gaps: ["couldn't explain net metering", "didn't know about federal tax credit"]
+  |
+  v
+Research triggers with domain-aware queries:
+  - "solar panel net metering explanation for customers"
+  - "federal solar tax credit 2026 eligibility"
+  - "natural conversation techniques for solar sales calls"
+  |
+  v
+Results saved to agent_knowledge:
+  - [product_knowledge] "Net metering lets homeowners sell excess solar energy back..."
+  - [product_knowledge] "The federal solar ITC provides a 30% tax credit..."
+  - [conversation_technique] "When discussing savings, relate to their current bill..."
+  |
+  v
+Next call prompt includes all knowledge
+  --> Agent can now answer net metering questions naturally
+  --> Creator can see, edit, or delete any entry from the Knowledge page
+```
