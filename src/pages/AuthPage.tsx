@@ -30,6 +30,27 @@ export default function AuthPage() {
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+
+        // Check for pending invitations after login
+        const { data: { user: loggedInUser } } = await supabase.auth.getUser();
+        if (loggedInUser) {
+          const { data: invitations } = await supabase
+            .from("org_invitations")
+            .select("id")
+            .eq("email", email.toLowerCase().trim())
+            .eq("status", "pending")
+            .limit(1);
+          if (invitations && invitations.length > 0) {
+            const { data: result } = await supabase.rpc("accept_invitation", {
+              invitation_id: invitations[0].id,
+            });
+            const r = result as any;
+            if (r?.success) {
+              toast({ title: "Invitation accepted", description: "You've joined the organization." });
+            }
+          }
+        }
+
         navigate("/dashboard");
       } else {
         const { error } = await supabase.auth.signUp({

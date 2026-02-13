@@ -470,6 +470,44 @@ export type Database = {
           },
         ]
       }
+      credit_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          description: string | null
+          id: string
+          org_id: string
+          stripe_session_id: string | null
+          type: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          org_id: string
+          stripe_session_id?: string | null
+          type: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          org_id?: string
+          stripe_session_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_transactions_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dial_list_rows: {
         Row: {
           created_at: string
@@ -711,21 +749,68 @@ export type Database = {
           },
         ]
       }
-      organizations: {
+      org_invitations: {
         Row: {
           created_at: string
+          email: string
+          expires_at: string
           id: string
-          name: string
+          invited_by: string | null
+          org_id: string
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
         }
         Insert: {
           created_at?: string
+          email: string
+          expires_at?: string
           id?: string
-          name: string
+          invited_by?: string | null
+          org_id: string
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
         }
         Update: {
           created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          org_id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_invitations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string
+          credits_balance: number
+          id: string
+          name: string
+          stripe_customer_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          credits_balance?: number
+          id?: string
+          name: string
+          stripe_customer_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          credits_balance?: number
           id?: string
           name?: string
+          stripe_customer_id?: string | null
         }
         Relationships: []
       }
@@ -1027,6 +1112,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_invitation: { Args: { invitation_id: string }; Returns: Json }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -1034,6 +1120,14 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      manage_team_member_role: {
+        Args: {
+          action: string
+          new_role: Database["public"]["Enums"]["app_role"]
+          target_user_id: string
+        }
+        Returns: Json
       }
     }
     Enums: {

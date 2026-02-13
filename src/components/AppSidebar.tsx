@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { 
   LayoutDashboard, Bot, PlusCircle, Megaphone, Phone, PhoneIncoming,
-  BookOpen, Settings, LogOut, Dumbbell, FileSpreadsheet
+  BookOpen, Settings, LogOut, Dumbbell, FileSpreadsheet, Users, CreditCard
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -37,6 +37,8 @@ const navSections = [
     label: "SYSTEM",
     items: [
       { label: "Settings", icon: Settings, path: "/settings" },
+      { label: "Team", icon: Users, path: "/team" },
+      { label: "Billing", icon: CreditCard, path: "/billing" },
     ],
   },
 ];

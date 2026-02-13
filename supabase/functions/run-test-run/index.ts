@@ -233,6 +233,19 @@ serve(async (req) => {
       .from("test_runs").select("*").eq("id", test_run_id).single();
     if (trErr) throw trErr;
 
+    // Check org credit balance before placing calls
+    const { data: orgData } = await supabase
+      .from("organizations")
+      .select("credits_balance")
+      .eq("id", testRun.org_id)
+      .single();
+    if (!orgData || orgData.credits_balance <= 0) {
+      return new Response(JSON.stringify({ error: "Insufficient credits. Please top up your balance." }), {
+        status: 402,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Check concurrency
     const { data: callingContacts } = await supabase
       .from("test_run_contacts").select("id").eq("test_run_id", test_run_id).eq("status", "calling");
