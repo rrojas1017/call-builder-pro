@@ -263,6 +263,38 @@ VOICE TUNING RECOMMENDATIONS:
       }
     }
 
+    // Success-based learning: trigger learn-from-success every 5th qualified call
+    if (call.outcome === "qualified") {
+      try {
+        const { count } = await supabase
+          .from("calls")
+          .select("id", { count: "exact", head: true })
+          .eq("project_id", call.project_id)
+          .eq("outcome", "qualified");
+
+        if (count && count >= 5 && count % 5 === 0) {
+          console.log(`${count}th qualified call for project ${call.project_id}, triggering learn-from-success`);
+          fetch(`${supabaseUrl}/functions/v1/learn-from-success`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${supabaseKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ project_id: call.project_id }),
+          }).then(async (r) => {
+            if (r.ok) {
+              const d = await r.json();
+              console.log(`learn-from-success: ${d.patterns_saved || 0} patterns saved`);
+            } else {
+              console.error("learn-from-success failed:", r.status);
+            }
+          }).catch((e) => console.error("learn-from-success error:", e));
+        }
+      } catch (e) {
+        console.error("Failed to check/trigger success learning:", e);
+      }
+    }
+
     return new Response(JSON.stringify({ evaluation }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
