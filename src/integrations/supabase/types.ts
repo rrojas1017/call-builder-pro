@@ -421,6 +421,38 @@ export type Database = {
           },
         ]
       }
+      global_human_behaviors: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          source_agent_id: string | null
+          source_type: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          source_agent_id?: string | null
+          source_type?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          source_agent_id?: string | null
+          source_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "global_human_behaviors_source_agent_id_fkey"
+            columns: ["source_agent_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       improvements: {
         Row: {
           change_summary: string | null

@@ -213,13 +213,41 @@ ${researchContext}`;
       else console.log(`Saved ${newEntries.length} new knowledge entries`);
     }
 
-    // Also continue merging conversation techniques into humanization_notes for backward compat
+    // Save conversation techniques to global_human_behaviors for cross-agent learning
     const conversationTechniques = entries
       .filter((e) => e.category === "conversation_technique")
       .map((e) => e.content);
 
+    if (conversationTechniques.length > 0) {
+      try {
+        const { data: existingGlobal } = await supabase
+          .from("global_human_behaviors").select("content");
+        const existingGlobalSet = new Set((existingGlobal || []).map((g: any) => g.content.toLowerCase().trim()));
+        const globalNew = conversationTechniques.filter(
+          (t) => !existingGlobalSet.has(t.toLowerCase().trim())
+        );
+        if (globalNew.length > 0) {
+          await supabase.from("global_human_behaviors").insert(
+            globalNew.map((t) => ({
+              content: t,
+              source_type: "auto_learned",
+              source_agent_id: project_id,
+            }))
+          );
+          console.log(`Saved ${globalNew.length} techniques to global human behaviors`);
+        }
+      } catch (e) {
+        console.error("Failed to save global behaviors:", e);
+      }
+    }
+
+    // Also continue merging conversation techniques into humanization_notes for backward compat
+    const conversationTechniques2 = entries
+      .filter((e) => e.category === "conversation_technique")
+      .map((e) => e.content);
+
     const currentNotes: string[] = Array.isArray(spec?.humanization_notes) ? spec.humanization_notes : [];
-    const newTechniques = conversationTechniques.filter(
+    const newTechniques = conversationTechniques2.filter(
       (t) => !currentNotes.some((existing: string) => existing.toLowerCase() === t.toLowerCase())
     );
 

@@ -180,8 +180,21 @@ serve(async (req) => {
       });
     }
 
+    // Load global human behaviors for prompt injection
+    const { data: globalBehaviors } = await supabase
+      .from("global_human_behaviors").select("content")
+      .order("created_at", { ascending: true });
+
+    const globalTechniques = (globalBehaviors || []).map((g: any) => g.content as string);
+
     const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
-    const task = buildTaskPrompt(spec);
+
+    // Inject global behaviors into the task prompt
+    let task = buildTaskPrompt(spec);
+    if (globalTechniques.length > 0) {
+      const behaviorSection = `\n\nLEARNED CONVERSATION TECHNIQUES (apply these naturally):\n${globalTechniques.map((t: string, i: number) => `${i + 1}. ${t}`).join("\n")}`;
+      task += behaviorSection;
+    }
     const results = [];
 
     for (const contact of contacts) {
