@@ -22,15 +22,17 @@ import {
   X,
   Timer,
   Zap,
+  ArrowRight,
+  Sparkles,
 } from "lucide-react";
 import appendifyLogo from "@/assets/appendify-logo.png";
 
 const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
+  hidden: { opacity: 0, y: 24 },
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.1, duration: 0.5, ease: "easeOut" as const },
+    transition: { delay: i * 0.08, duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] as const },
   }),
 };
 
@@ -115,6 +117,8 @@ const metrics = [
   { value: "<1s", label: "Response Latency" },
 ];
 
+const navLinks = ["Guarantee", "Features", "How It Works", "FAQ"];
+
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -129,31 +133,43 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
       {/* Navbar */}
       <nav
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
           scrolled
-            ? "bg-background/80 backdrop-blur-xl border-b border-border"
+            ? "bg-background/70 backdrop-blur-2xl border-b border-border/50"
             : "bg-transparent"
         }`}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-          <Link to="/" className="flex items-center gap-2">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-[72px]">
+          <Link to="/" className="flex items-center gap-2.5">
             <img src={appendifyLogo} alt="Appendify Voz" className="h-8 w-8 object-contain" />
             <span className="text-lg font-bold tracking-tight">Appendify Voz</span>
           </Link>
 
-          <div className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
-            <a href="#guarantee" className="hover:text-foreground transition-colors">Guarantee</a>
-            <a href="#features" className="hover:text-foreground transition-colors">Features</a>
-            <a href="#how-it-works" className="hover:text-foreground transition-colors">How It Works</a>
-            <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
+          <div className="hidden md:flex items-center gap-1 text-sm text-muted-foreground">
+            {navLinks.map((link, i) => (
+              <span key={link} className="flex items-center">
+                <a
+                  href={`#${link.toLowerCase().replace(/ /g, "-")}`}
+                  className="px-3 py-2 rounded-lg hover:text-foreground hover:bg-muted/50 transition-all duration-200"
+                >
+                  {link}
+                </a>
+                {i < navLinks.length - 1 && (
+                  <span className="text-border mx-1">·</span>
+                )}
+              </span>
+            ))}
           </div>
 
           <div className="hidden md:flex items-center gap-3">
-            <Button variant="ghost" size="sm" asChild>
+            <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
               <Link to="/auth">Sign In</Link>
             </Button>
-            <Button size="sm" asChild>
-              <Link to="/auth">Get Started Free</Link>
+            <Button size="sm" asChild className="rounded-full px-5">
+              <Link to="/auth">
+                Get Started Free
+                <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+              </Link>
             </Button>
           </div>
 
@@ -166,16 +182,22 @@ export default function LandingPage() {
         </div>
 
         {mobileMenuOpen && (
-          <div className="md:hidden bg-background/95 backdrop-blur-xl border-b border-border px-4 pb-4 space-y-3">
-            <a href="#guarantee" className="block text-sm text-muted-foreground py-2" onClick={() => setMobileMenuOpen(false)}>Guarantee</a>
-            <a href="#features" className="block text-sm text-muted-foreground py-2" onClick={() => setMobileMenuOpen(false)}>Features</a>
-            <a href="#how-it-works" className="block text-sm text-muted-foreground py-2" onClick={() => setMobileMenuOpen(false)}>How It Works</a>
-            <a href="#faq" className="block text-sm text-muted-foreground py-2" onClick={() => setMobileMenuOpen(false)}>FAQ</a>
-            <div className="flex gap-2 pt-2">
+          <div className="md:hidden glass-card border-t border-border/50 px-4 pb-5 pt-2 space-y-1">
+            {navLinks.map((link) => (
+              <a
+                key={link}
+                href={`#${link.toLowerCase().replace(/ /g, "-")}`}
+                className="block text-sm text-muted-foreground py-2.5 px-3 rounded-lg hover:bg-muted/50"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {link}
+              </a>
+            ))}
+            <div className="flex gap-2 pt-3">
               <Button variant="ghost" size="sm" asChild className="flex-1">
                 <Link to="/auth">Sign In</Link>
               </Button>
-              <Button size="sm" asChild className="flex-1">
+              <Button size="sm" asChild className="flex-1 rounded-full">
                 <Link to="/auth">Get Started Free</Link>
               </Button>
             </div>
@@ -184,41 +206,62 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero */}
-      <section className="relative pt-32 pb-20 sm:pt-40 sm:pb-28 px-4">
-        {/* Gradient orb */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-primary/10 blur-[120px] pointer-events-none" />
+      <section className="relative pt-40 pb-24 sm:pt-48 sm:pb-32 px-4">
+        {/* Multi-layer gradient background */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[600px] rounded-full bg-primary/8 blur-[150px]" />
+          <div className="absolute top-1/3 left-1/4 w-[400px] h-[400px] rounded-full bg-primary/5 blur-[120px]" />
+          <div className="absolute top-1/2 right-1/4 w-[300px] h-[300px] rounded-full bg-accent/10 blur-[100px]" />
+        </div>
 
-        <div className="max-w-4xl mx-auto text-center relative z-10">
+        <div className="max-w-5xl mx-auto text-center relative z-10">
+          {/* Badge pill */}
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.5 }}
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-primary/20 bg-primary/5 text-primary text-sm font-medium mb-8"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>Trusted by 500+ businesses</span>
+          </motion.div>
+
           <motion.h1
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight"
+            transition={{ duration: 0.7, delay: 0.1 }}
+            className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-[-0.03em] leading-[1.08]"
           >
             AI Voice Agents That{" "}
             <span className="text-gradient-primary">Sound Human</span>,{" "}
+            <br className="hidden sm:block" />
             Scale Effortlessly
           </motion.h1>
+
           <motion.p
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.15 }}
-            className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto"
+            transition={{ duration: 0.7, delay: 0.2 }}
+            className="mt-7 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed"
           >
             Build, deploy, and manage next-generation AI phone agents. Automate
             outbound campaigns, handle inbound calls, and qualify leads — all
             with natural conversation.
           </motion.p>
+
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-            className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4"
+            transition={{ duration: 0.7, delay: 0.35 }}
+            className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
           >
-            <Button size="lg" asChild className="px-8 text-base">
-              <Link to="/auth">Get Started Free</Link>
+            <Button size="lg" asChild className="rounded-full px-8 text-base h-12">
+              <Link to="/auth">
+                Get Started Free
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
             </Button>
-            <Button size="lg" variant="outline" asChild className="px-8 text-base">
+            <Button size="lg" variant="outline" asChild className="rounded-full px-8 text-base h-12 border-border/60 hover:bg-muted/50">
               <a href="#how-it-works">See How It Works</a>
             </Button>
           </motion.div>
@@ -226,28 +269,31 @@ export default function LandingPage() {
       </section>
 
       {/* 10-Minute Guarantee */}
-      <section id="guarantee" className="py-16 px-4">
+      <section id="guarantee" className="py-20 sm:py-28 px-4">
         <motion.div
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
           variants={fadeUp}
           custom={0}
-          className="max-w-2xl mx-auto surface-elevated rounded-2xl p-10 text-center"
+          className="max-w-2xl mx-auto gradient-border rounded-2xl p-12 sm:p-16 text-center"
         >
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-6">
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-7">
             <Timer className="h-7 w-7" />
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
             The Fastest, Simplest Way to Deploy an AI Agent
           </h2>
-          <p className="text-lg text-muted-foreground mb-6">
+          <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
             If you don't have a fully functional, well-behaved agent in{" "}
             <span className="font-bold text-primary">10 minutes</span>, we'll
             give you <span className="font-bold text-primary">$100 in credit</span>.
           </p>
-          <Button size="lg" asChild className="px-8 text-base mb-8">
-            <Link to="/auth">Start Your 10-Minute Clock</Link>
+          <Button size="lg" asChild className="rounded-full px-8 text-base h-12 mb-10">
+            <Link to="/auth">
+              Start Your 10-Minute Clock
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
           </Button>
           <Accordion type="single" collapsible className="text-left">
             <AccordionItem value="terms" className="border-none">
@@ -267,29 +313,55 @@ export default function LandingPage() {
         </motion.div>
       </section>
 
-      <section className="py-16 border-y border-border bg-muted/30">
-        <div className="max-w-5xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-          {metrics.map((m) => (
-            <div key={m.label}>
-              <div className="text-3xl sm:text-4xl font-extrabold text-primary">{m.value}</div>
-              <div className="mt-1 text-sm text-muted-foreground">{m.label}</div>
-            </div>
+      {/* Metrics */}
+      <section className="py-20 sm:py-24 border-y border-border/50">
+        <div className="max-w-5xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-10 text-center">
+          {metrics.map((m, i) => (
+            <motion.div
+              key={m.label}
+              custom={i}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              variants={fadeUp}
+            >
+              <div className="text-4xl sm:text-5xl font-extrabold text-primary tracking-tight">{m.value}</div>
+              <div className="mt-2 text-sm text-muted-foreground font-medium">{m.label}</div>
+            </motion.div>
           ))}
         </div>
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 sm:py-28 px-4">
+      <section id="how-it-works" className="py-24 sm:py-32 px-4">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+          <div className="text-center mb-20">
+            <motion.h2
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              variants={fadeUp}
+              custom={0}
+              className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight"
+            >
               How It Works
-            </h2>
-            <p className="mt-4 text-muted-foreground max-w-xl mx-auto">
+            </motion.h2>
+            <motion.p
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              variants={fadeUp}
+              custom={1}
+              className="mt-5 text-muted-foreground max-w-xl mx-auto text-lg"
+            >
               From idea to live calls in three simple steps.
-            </p>
+            </motion.p>
           </div>
-          <div className="grid md:grid-cols-3 gap-8">
+
+          <div className="relative grid md:grid-cols-3 gap-8">
+            {/* Connecting line */}
+            <div className="hidden md:block absolute top-16 left-[20%] right-[20%] h-px bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20" />
+
             {steps.map((s, i) => (
               <motion.div
                 key={s.title}
@@ -298,16 +370,17 @@ export default function LandingPage() {
                 whileInView="visible"
                 viewport={{ once: true, margin: "-50px" }}
                 variants={fadeUp}
-                className="surface-elevated rounded-xl p-8 text-center"
+                className="glass-card rounded-2xl p-10 text-center relative"
               >
+                {/* Step number */}
+                <div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold mb-6">
+                  {i + 1}
+                </div>
                 <div className="inline-flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary mb-5">
                   <s.icon className="h-7 w-7" />
                 </div>
-                <div className="text-xs font-semibold text-primary mb-2 uppercase tracking-wider">
-                  Step {i + 1}
-                </div>
-                <h3 className="text-lg font-semibold mb-2">{s.title}</h3>
-                <p className="text-sm text-muted-foreground">{s.desc}</p>
+                <h3 className="text-lg font-semibold mb-3">{s.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{s.desc}</p>
               </motion.div>
             ))}
           </div>
@@ -315,16 +388,31 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section id="features" className="py-20 sm:py-28 px-4 bg-muted/20">
+      <section id="features" className="py-24 sm:py-32 px-4">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+          <div className="text-center mb-20">
+            <motion.h2
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              variants={fadeUp}
+              custom={0}
+              className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight"
+            >
               Everything You Need to Run AI Phone Agents
-            </h2>
-            <p className="mt-4 text-muted-foreground max-w-xl mx-auto">
+            </motion.h2>
+            <motion.p
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              variants={fadeUp}
+              custom={1}
+              className="mt-5 text-muted-foreground max-w-xl mx-auto text-lg"
+            >
               A complete platform for building, testing, deploying, and optimizing voice AI at scale.
-            </p>
+            </motion.p>
           </div>
+
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((f, i) => (
               <motion.div
@@ -334,12 +422,12 @@ export default function LandingPage() {
                 whileInView="visible"
                 viewport={{ once: true, margin: "-50px" }}
                 variants={fadeUp}
-                className="surface-elevated rounded-xl p-6 hover:border-primary/30 transition-colors"
+                className="glass-card rounded-2xl p-8 hover-lift group"
               >
-                <div className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary mb-4">
-                  <f.icon className="h-5 w-5" />
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-5 group-hover:bg-primary/15 transition-colors">
+                  <f.icon className="h-6 w-6" />
                 </div>
-                <h3 className="text-base font-semibold mb-2">{f.title}</h3>
+                <h3 className="text-base font-semibold mb-2.5">{f.title}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">{f.desc}</p>
               </motion.div>
             ))}
@@ -348,7 +436,10 @@ export default function LandingPage() {
       </section>
 
       {/* Smart Transfer callout */}
-      <section className="py-20 sm:py-28 px-4">
+      <section className="py-24 sm:py-32 px-4 relative">
+        {/* Decorative gradient line */}
+        <div className="absolute left-1/2 top-0 -translate-x-1/2 w-px h-24 bg-gradient-to-b from-transparent via-primary/30 to-transparent" />
+
         <div className="max-w-4xl mx-auto text-center">
           <motion.div
             initial="hidden"
@@ -357,13 +448,13 @@ export default function LandingPage() {
             variants={fadeUp}
             custom={0}
           >
-            <div className="inline-flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary mb-6">
+            <div className="inline-flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary mb-7">
               <PhoneForwarded className="h-7 w-7" />
             </div>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
               Smart Call Transfer
             </h2>
-            <p className="mt-4 text-muted-foreground max-w-xl mx-auto text-lg">
+            <p className="mt-5 text-muted-foreground max-w-xl mx-auto text-lg leading-relaxed">
               When your AI agent qualifies a lead or detects a situation that
               needs human attention, it seamlessly transfers the call to your
               team — with full context.
@@ -373,24 +464,31 @@ export default function LandingPage() {
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="py-20 sm:py-28 px-4 bg-muted/20">
+      <section id="faq" className="py-24 sm:py-32 px-4">
         <div className="max-w-2xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
+          <div className="text-center mb-16">
+            <motion.h2
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              variants={fadeUp}
+              custom={0}
+              className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight"
+            >
               Frequently Asked Questions
-            </h2>
+            </motion.h2>
           </div>
-          <Accordion type="single" collapsible className="space-y-2">
+          <Accordion type="single" collapsible className="space-y-3">
             {faqs.map((f, i) => (
               <AccordionItem
                 key={i}
                 value={`faq-${i}`}
-                className="surface-elevated rounded-lg px-6 border-none"
+                className="glass-card rounded-xl px-7 border-none"
               >
-                <AccordionTrigger className="text-left text-sm font-medium hover:no-underline">
+                <AccordionTrigger className="text-left text-[15px] font-medium hover:no-underline py-5">
                   {f.q}
                 </AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground">
+                <AccordionContent className="text-[15px] text-muted-foreground leading-relaxed pb-5">
                   {f.a}
                 </AccordionContent>
               </AccordionItem>
@@ -400,33 +498,50 @@ export default function LandingPage() {
       </section>
 
       {/* CTA Banner */}
-      <section className="py-20 sm:py-28 px-4">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
-            Ready to Automate Your Calls?
-          </h2>
-          <p className="mt-4 text-muted-foreground text-lg">
-            Join thousands of businesses using AI voice agents to scale conversations, qualify leads, and close deals faster.
-          </p>
-          <div className="mt-8">
-            <Button size="lg" asChild className="px-10 text-base">
-              <Link to="/auth">Get Started Free</Link>
-            </Button>
+      <section className="py-24 sm:py-32 px-4">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={fadeUp}
+          custom={0}
+          className="max-w-3xl mx-auto gradient-border rounded-3xl p-12 sm:p-16 text-center relative overflow-hidden"
+        >
+          {/* Background glow */}
+          <div className="absolute inset-0 mesh-gradient pointer-events-none" />
+
+          <div className="relative z-10">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">
+              Ready to Automate Your Calls?
+            </h2>
+            <p className="mt-5 text-muted-foreground text-lg leading-relaxed max-w-xl mx-auto">
+              Join thousands of businesses using AI voice agents to scale conversations, qualify leads, and close deals faster.
+            </p>
+            <div className="mt-10">
+              <Button size="lg" asChild className="rounded-full px-10 text-base h-12">
+                <Link to="/auth">
+                  Get Started Free
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
           </div>
-        </div>
+        </motion.div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border py-10 px-4">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
+      <footer className="border-t border-border/50 py-12 px-4">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-2.5">
             <img src={appendifyLogo} alt="Appendify Voz" className="h-7 w-7 object-contain" />
             <span className="text-sm font-semibold">Appendify Voz</span>
           </div>
-          <div className="flex items-center gap-6 text-sm text-muted-foreground">
+          <div className="flex items-center gap-8 text-sm text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Features</a>
             <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
             <Link to="/auth" className="hover:text-foreground transition-colors">Sign In</Link>
+            <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
+            <a href="#" className="hover:text-foreground transition-colors">Terms</a>
           </div>
           <p className="text-xs text-muted-foreground">
             © {new Date().getFullYear()} Appendify Voz. All rights reserved.

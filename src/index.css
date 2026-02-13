@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @layer base {
   :root {
@@ -75,5 +75,49 @@
   .surface-elevated {
     background: linear-gradient(135deg, hsl(220 18% 10%), hsl(220 18% 8%));
     border: 1px solid hsl(220 14% 16%);
+  }
+
+  .glass-card {
+    background: hsl(220 18% 9% / 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid hsl(220 14% 18% / 0.5);
+  }
+
+  .gradient-border {
+    position: relative;
+    background: hsl(220 18% 9%);
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, hsl(24 85% 50% / 0.4), hsl(24 85% 50% / 0.05), hsl(24 85% 50% / 0.2));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .hover-lift {
+    @apply transition-all duration-300;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px -12px hsl(24 85% 50% / 0.15);
+  }
+
+  .mesh-gradient {
+    background-image:
+      radial-gradient(at 20% 30%, hsl(24 85% 50% / 0.12) 0px, transparent 50%),
+      radial-gradient(at 80% 70%, hsl(24 85% 50% / 0.08) 0px, transparent 50%),
+      radial-gradient(at 50% 50%, hsl(220 60% 30% / 0.1) 0px, transparent 60%);
   }
 }
