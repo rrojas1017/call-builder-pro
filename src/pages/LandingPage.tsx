@@ -26,6 +26,16 @@ import {
   Sparkles,
 } from "lucide-react";
 import appendifyLogo from "@/assets/appendify-logo.png";
+import { useCountUp } from "@/hooks/useCountUp";
+
+function MetricNumber({ value, delay }: { value: string; delay: number }) {
+  const { ref, display } = useCountUp(value, 1.5, delay);
+  return (
+    <div ref={ref} className="text-4xl sm:text-5xl font-extrabold text-primary tracking-tight">
+      {display}
+    </div>
+  );
+}
 
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
@@ -325,7 +335,7 @@ export default function LandingPage() {
               viewport={{ once: true }}
               variants={fadeUp}
             >
-              <div className="text-4xl sm:text-5xl font-extrabold text-primary tracking-tight">{m.value}</div>
+              <MetricNumber value={m.value} delay={i * 0.1} />
               <div className="mt-2 text-sm text-muted-foreground font-medium">{m.label}</div>
             </motion.div>
           ))}
