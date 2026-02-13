@@ -39,8 +39,11 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
     return Array.from(accents).sort();
   }, [voices]);
 
+  const matchesSelected = (v: BlandVoice) =>
+    v.voice_id === selectedVoice || v.name.toLowerCase() === selectedVoice.toLowerCase();
+
   const pinnedVoice = useMemo(
-    () => (selectedVoice ? voices.find((v) => v.voice_id === selectedVoice) : undefined),
+    () => (selectedVoice ? voices.find(matchesSelected) : undefined),
     [voices, selectedVoice]
   );
 
@@ -49,7 +52,7 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
 
     // Exclude pinned voice from main list
     if (selectedVoice) {
-      result = result.filter((v) => v.voice_id !== selectedVoice);
+      result = result.filter((v) => !matchesSelected(v));
     }
 
     if (languageFilter !== "all") {
@@ -182,7 +185,7 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
                   <VoiceCard
                     key={voice.voice_id}
                     voice={voice}
-                    selected={selectedVoice === voice.voice_id}
+                    selected={matchesSelected(voice)}
                     onSelect={onSelect}
                     sampleText={sampleText}
                   />
@@ -202,7 +205,7 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
                   <VoiceCard
                     key={voice.voice_id}
                     voice={voice}
-                    selected={selectedVoice === voice.voice_id}
+                    selected={matchesSelected(voice)}
                     onSelect={onSelect}
                     sampleText={sampleText}
                   />
