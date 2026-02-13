@@ -138,7 +138,7 @@ export default function CallsPage() {
                   <div className="flex items-center gap-2">
                     {call.direction === "inbound" ? <PhoneIncoming className="h-3 w-3 text-primary" /> : <PhoneOutgoing className="h-3 w-3 text-muted-foreground" />}
                     <p className="text-sm font-medium text-foreground">{call.bland_call_id?.slice(0, 12) || call.retell_call_id?.slice(0, 12) || call.id.slice(0, 8)}...</p>
-                    <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">{call.voice_provider === "retell" ? "Retell" : "Bland"}</span>
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">{call.voice_provider === "retell" ? "Append" : "Voz"}</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
                     <span className={outcomeColor[call.outcome || ""] || "text-muted-foreground"}>
