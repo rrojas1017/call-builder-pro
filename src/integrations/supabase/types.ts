@@ -295,8 +295,45 @@ export type Database = {
           },
         ]
       }
+      campaign_lists: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          id: string
+          list_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          id?: string
+          list_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          id?: string
+          list_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_lists_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_lists_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "dial_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaigns: {
         Row: {
+          agent_project_id: string | null
           created_at: string
           id: string
           max_concurrent_calls: number
@@ -305,6 +342,7 @@ export type Database = {
           status: string
         }
         Insert: {
+          agent_project_id?: string | null
           created_at?: string
           id?: string
           max_concurrent_calls?: number
@@ -313,6 +351,7 @@ export type Database = {
           status?: string
         }
         Update: {
+          agent_project_id?: string | null
           created_at?: string
           id?: string
           max_concurrent_calls?: number
@@ -321,6 +360,13 @@ export type Database = {
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "campaigns_agent_project_id_fkey"
+            columns: ["agent_project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "campaigns_project_id_fkey"
             columns: ["project_id"]
@@ -337,8 +383,10 @@ export type Database = {
           called_at: string | null
           campaign_id: string
           created_at: string
+          extra_data: Json | null
           id: string
           last_error: string | null
+          list_id: string | null
           name: string
           phone: string
           status: string
@@ -349,8 +397,10 @@ export type Database = {
           called_at?: string | null
           campaign_id: string
           created_at?: string
+          extra_data?: Json | null
           id?: string
           last_error?: string | null
+          list_id?: string | null
           name: string
           phone: string
           status?: string
@@ -361,8 +411,10 @@ export type Database = {
           called_at?: string | null
           campaign_id?: string
           created_at?: string
+          extra_data?: Json | null
           id?: string
           last_error?: string | null
+          list_id?: string | null
           name?: string
           phone?: string
           status?: string
@@ -373,6 +425,83 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contacts_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "dial_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dial_list_rows: {
+        Row: {
+          created_at: string
+          id: string
+          list_id: string
+          row_data: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          list_id: string
+          row_data?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          list_id?: string
+          row_data?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dial_list_rows_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "dial_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dial_lists: {
+        Row: {
+          created_at: string
+          detected_fields: Json
+          file_name: string
+          id: string
+          name: string
+          org_id: string
+          row_count: number
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          detected_fields?: Json
+          file_name: string
+          id?: string
+          name: string
+          org_id: string
+          row_count?: number
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          detected_fields?: Json
+          file_name?: string
+          id?: string
+          name?: string
+          org_id?: string
+          row_count?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dial_lists_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
