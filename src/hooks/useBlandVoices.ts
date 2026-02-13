@@ -23,15 +23,27 @@ export function useBlandVoices() {
 
         // Bland API returns { voices: [...] } with id, name, description
         const raw = Array.isArray(data) ? data : data?.voices ?? data?.data ?? [];
-        const mapped: BlandVoice[] = raw.map((v: any) => ({
-          voice_id: v.id ?? v.voice_id ?? v.name,
-          name: v.name ?? v.voice_id ?? "Unknown",
-          description: v.description ?? "",
-          is_custom: !!v.user_id,
-          language: v.language ?? v.lang ?? undefined,
-          gender: v.gender?.toLowerCase() ?? undefined,
-          accent: v.accent?.toLowerCase() ?? undefined,
-        }));
+        const mapped: BlandVoice[] = raw.map((v: any) => {
+          const desc = (v.description ?? "").toLowerCase();
+          let gender: string | undefined;
+          if (desc.includes("female")) gender = "female";
+          else if (desc.includes("male")) gender = "male";
+
+          let accent: string | undefined;
+          if (desc.includes("british")) accent = "british";
+          else if (desc.includes("australian")) accent = "australian";
+          else if (desc.includes("american")) accent = "american";
+
+          return {
+            voice_id: v.id ?? v.voice_id ?? v.name,
+            name: v.name ?? v.voice_id ?? "Unknown",
+            description: v.description ?? "",
+            is_custom: !!v.user_id,
+            language: v.language ?? v.lang ?? undefined,
+            gender,
+            accent,
+          };
+        });
         setVoices(mapped);
       } catch (err) {
         console.error("Failed to load Bland voices:", err);
