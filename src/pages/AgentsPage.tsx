@@ -2,16 +2,24 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "react-router-dom";
-import { Bot, Plus, Loader2, FlaskConical, BookOpen, Pencil } from "lucide-react";
+import { Plus, Loader2, FlaskConical, BookOpen, Pencil, Phone, PhoneIncoming, PhoneForwarded } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Agent {
   id: string;
   name: string;
   description: string | null;
   created_at: string;
-  use_case?: string;
+  mode: "outbound" | "inbound" | "hybrid";
 }
+
+const modeConfig = {
+  outbound: { icon: Phone, label: "Outbound", className: "text-primary", bgClassName: "bg-primary/10" },
+  inbound: { icon: PhoneIncoming, label: "Inbound", className: "text-secondary-foreground", bgClassName: "bg-secondary" },
+  hybrid: { icon: PhoneForwarded, label: "Hybrid", className: "text-accent-foreground", bgClassName: "bg-accent" },
+};
 
 export default function AgentsPage() {
   const { user } = useAuth();
@@ -23,9 +31,17 @@ export default function AgentsPage() {
     const load = async () => {
       const { data } = await supabase
         .from("agent_projects")
-        .select("id, name, description, created_at")
+        .select("id, name, description, created_at, agent_specs(mode)")
         .order("created_at", { ascending: false });
-      setAgents(data || []);
+
+      const mapped: Agent[] = (data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        created_at: p.created_at,
+        mode: p.agent_specs?.mode || "outbound",
+      }));
+      setAgents(mapped);
       setLoading(false);
     };
     load();
@@ -36,72 +52,86 @@ export default function AgentsPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Agents</h1>
-          <p className="text-muted-foreground mt-1">Manage your AI phone agents.</p>
-        </div>
-        <Link to="/create-agent">
-          <Button><Plus className="mr-2 h-4 w-4" /> New Agent</Button>
-        </Link>
-      </div>
-
-      {agents.length === 0 ? (
-        <div className="surface-elevated rounded-xl p-12 text-center space-y-4">
-          <Bot className="h-12 w-12 text-muted-foreground mx-auto" />
-          <p className="text-muted-foreground">No agents yet. Create your first one!</p>
+    <TooltipProvider>
+      <div className="p-8 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Agents</h1>
+            <p className="text-muted-foreground mt-1">Manage your AI phone agents.</p>
+          </div>
           <Link to="/create-agent">
-            <Button><Plus className="mr-2 h-4 w-4" /> Create Agent</Button>
+            <Button><Plus className="mr-2 h-4 w-4" /> New Agent</Button>
           </Link>
         </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {agents.map((agent) => (
-            <Link
-              key={agent.id}
-              to={`/campaigns?project=${agent.id}`}
-              className="surface-elevated rounded-xl p-5 space-y-3 hover:border-primary/50 transition-colors cursor-pointer"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                  <Bot className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-foreground">{agent.name}</h3>
-                  <p className="text-xs text-muted-foreground">{new Date(agent.created_at).toLocaleDateString()}</p>
-                </div>
-              </div>
-              {agent.description && (
-                <p className="text-sm text-muted-foreground line-clamp-2">{agent.description}</p>
-              )}
-              <div className="pt-1 flex items-center gap-3">
-                <Link
-                  to={`/agents/${agent.id}/edit`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  <Pencil className="h-3 w-3" /> Edit
-                </Link>
-                <Link
-                  to={`/test?agent=${agent.id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  <FlaskConical className="h-3 w-3" /> Test
-                </Link>
-                <Link
-                  to={`/agents/${agent.id}/knowledge`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  <BookOpen className="h-3 w-3" /> Knowledge
-                </Link>
-              </div>
+
+        {agents.length === 0 ? (
+          <div className="surface-elevated rounded-xl p-12 text-center space-y-4">
+            <Phone className="h-12 w-12 text-muted-foreground mx-auto" />
+            <p className="text-muted-foreground">No agents yet. Create your first one!</p>
+            <Link to="/create-agent">
+              <Button><Plus className="mr-2 h-4 w-4" /> Create Agent</Button>
             </Link>
-          ))}
-        </div>
-      )}
-    </div>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {agents.map((agent) => {
+              const config = modeConfig[agent.mode] || modeConfig.outbound;
+              const ModeIcon = config.icon;
+              return (
+                <Link
+                  key={agent.id}
+                  to={`/campaigns?project=${agent.id}`}
+                  className="surface-elevated rounded-xl p-5 space-y-3 hover:border-primary/50 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${config.bgClassName}`}>
+                          <ModeIcon className={`h-4 w-4 ${config.className}`} />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>{config.label} Agent</TooltipContent>
+                    </Tooltip>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-foreground truncate">{agent.name}</h3>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{config.label}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{new Date(agent.created_at).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  {agent.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-2">{agent.description}</p>
+                  )}
+                  <div className="pt-1 flex items-center gap-3">
+                    <Link
+                      to={`/agents/${agent.id}/edit`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <Pencil className="h-3 w-3" /> Edit
+                    </Link>
+                    <Link
+                      to={`/test?agent=${agent.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <FlaskConical className="h-3 w-3" /> Test
+                    </Link>
+                    <Link
+                      to={`/agents/${agent.id}/knowledge`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <BookOpen className="h-3 w-3" /> Knowledge
+                    </Link>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </TooltipProvider>
   );
 }
