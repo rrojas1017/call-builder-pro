@@ -50,3 +50,9 @@ verify_jwt = false
 
 [functions.receive-retell-webhook]
 verify_jwt = false
+
+[functions.create-topup-session]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false

@@ -133,6 +133,20 @@ serve(async (req) => {
       });
     }
 
+    // Check org credit balance before placing calls
+    const orgId = campaign.agent_projects.org_id;
+    const { data: orgData } = await supabase
+      .from("organizations")
+      .select("credits_balance")
+      .eq("id", orgId)
+      .single();
+    if (!orgData || orgData.credits_balance <= 0) {
+      return new Response(JSON.stringify({ error: "Insufficient credits. Please top up your balance." }), {
+        status: 402,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Get spec
     const { data: spec, error: specErr } = await supabase
       .from("agent_specs")

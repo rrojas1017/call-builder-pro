@@ -19,6 +19,8 @@ import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import SettingsPage from "./pages/SettingsPage";
 import GymPage from "./pages/GymPage";
 import InboundNumbersPage from "./pages/InboundNumbersPage";
+import TeamPage from "./pages/TeamPage";
+import BillingPage from "./pages/BillingPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +48,8 @@ const App = () => (
             <Route path="/calls" element={<CallsPage />} />
             <Route path="/knowledge" element={<KnowledgeBasePage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/team" element={<TeamPage />} />
+            <Route path="/billing" element={<BillingPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
