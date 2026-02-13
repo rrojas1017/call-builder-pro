@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen, ArrowUp, ArrowDown, Minus, History, StopCircle } from "lucide-react";
+import LiveCallMonitor from "@/components/LiveCallMonitor";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 
@@ -421,6 +422,14 @@ export default function GymPage() {
           </Button>
         )}
       </div>
+
+      {/* Live Call Monitor */}
+      {running && contact?.bland_call_id && (
+        <LiveCallMonitor
+          blandCallId={contact.bland_call_id}
+          isActive={running}
+        />
+      )}
 
       {/* Humanness Trend Chart */}
       {hasTrendData && (
