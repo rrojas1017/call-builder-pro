@@ -1,11 +1,13 @@
 import { Link, useLocation } from "react-router-dom";
 import { 
   LayoutDashboard, Bot, PlusCircle, Megaphone, Phone, PhoneIncoming,
-  BookOpen, Settings, LogOut, Dumbbell, FileSpreadsheet, Users, CreditCard
+  BookOpen, Settings, LogOut, Dumbbell, FileSpreadsheet, Users, CreditCard,
+  Building2, X
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useOrgContext } from "@/hooks/useOrgContext";
 import appendifyLogo from "@/assets/appendify-logo.png";
 
 const navSections = [
@@ -43,14 +45,24 @@ const navSections = [
   },
 ];
 
+const adminSection = {
+  label: "ADMIN",
+  items: [
+    { label: "Companies", icon: Building2, path: "/admin/companies" },
+  ],
+};
+
 export default function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isSuperAdmin, isImpersonating, orgName, resetOrg } = useOrgContext();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
   };
+
+  const allSections = isSuperAdmin ? [adminSection, ...navSections] : navSections;
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar">
@@ -59,8 +71,25 @@ export default function AppSidebar() {
         <span className="text-lg font-bold text-foreground tracking-tight">Appendify Voz</span>
       </div>
 
+      {/* Impersonation Banner */}
+      {isImpersonating && (
+        <div className="mx-3 mt-3 flex items-center justify-between gap-2 rounded-lg bg-primary/15 border border-primary/30 px-3 py-2">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-primary font-semibold">Viewing</p>
+            <p className="text-sm font-medium text-foreground truncate">{orgName}</p>
+          </div>
+          <button
+            onClick={() => { resetOrg(); navigate("/admin/companies"); }}
+            className="shrink-0 rounded-md p-1 hover:bg-primary/20 text-primary transition-colors"
+            title="Exit impersonation"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
-        {navSections.map((section, idx) => (
+        {allSections.map((section, idx) => (
           <div key={section.label} className={cn(idx > 0 && "mt-6")}>
             <h4 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {section.label}
