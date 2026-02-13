@@ -34,23 +34,35 @@ serve(async (req) => {
     const field = rawField.replace(/\s*\(.*\)$/, "").replace(/\//g, ".").trim();
     const patch: Record<string, any> = {};
 
+    // Known columns on agent_specs that are safe to update directly
+    const TEXT_FIELDS = ["tone_style", "opening_line", "disclosure_text", "success_definition", "transfer_phone_number", "language", "use_case", "mode", "voice_id", "background_track", "from_number", "voice_provider", "retell_agent_id"];
+    const JSON_FIELDS = ["must_collect_fields", "qualification_logic", "disqualification_logic", "escalation_rules", "business_rules", "retry_policy", "qualification_rules", "disqualification_rules", "humanization_notes", "research_sources", "business_hours", "pronunciation_guide"];
+    const BOOL_FIELDS = ["consent_required", "disclosure_required", "transfer_required", "sms_enabled"];
+    const NUM_FIELDS = ["temperature", "interruption_threshold", "speaking_speed"];
+    const ALL_KNOWN = [...TEXT_FIELDS, ...JSON_FIELDS, ...BOOL_FIELDS, ...NUM_FIELDS];
+
     // Handle dot-notation fields (e.g. "qualification_rules.income_range")
     if (field.includes(".")) {
       const [parentCol, ...rest] = field.split(".");
-      const nestedKey = rest.join(".");
-
-      // Fetch current value of the parent JSON column
-      const currentParentValue = spec[parentCol] || {};
-      const parentObj = typeof currentParentValue === "string"
-        ? JSON.parse(currentParentValue)
-        : { ...currentParentValue };
-
-      // Set the nested key
-      parentObj[nestedKey] = improvement.suggested_value;
-      patch[parentCol] = parentObj;
-    } else if (["tone_style", "opening_line", "disclosure_text", "success_definition", "transfer_phone_number", "language", "use_case", "mode"].includes(field)) {
+      // Validate that the parent column exists
+      if (!ALL_KNOWN.includes(parentCol)) {
+        // Store in business_rules as fallback
+        const currentBR = spec.business_rules || {};
+        const brObj = typeof currentBR === "string" ? JSON.parse(currentBR) : { ...currentBR };
+        brObj[field.replace(/\./g, "_")] = improvement.suggested_value;
+        patch.business_rules = brObj;
+      } else {
+        const nestedKey = rest.join(".");
+        const currentParentValue = spec[parentCol] || {};
+        const parentObj = typeof currentParentValue === "string"
+          ? JSON.parse(currentParentValue)
+          : { ...currentParentValue };
+        parentObj[nestedKey] = improvement.suggested_value;
+        patch[parentCol] = parentObj;
+      }
+    } else if (TEXT_FIELDS.includes(field)) {
       patch[field] = improvement.suggested_value;
-    } else if (["must_collect_fields", "qualification_logic", "disqualification_logic", "escalation_rules", "business_rules", "retry_policy", "qualification_rules", "disqualification_rules"].includes(field)) {
+    } else if (JSON_FIELDS.includes(field)) {
       try {
         patch[field] = typeof improvement.suggested_value === "string"
           ? JSON.parse(improvement.suggested_value)
@@ -58,10 +70,17 @@ serve(async (req) => {
       } catch {
         patch[field] = improvement.suggested_value;
       }
-    } else if (["consent_required", "disclosure_required", "transfer_required"].includes(field)) {
+    } else if (BOOL_FIELDS.includes(field)) {
       patch[field] = improvement.suggested_value === "true" || improvement.suggested_value === true;
+    } else if (NUM_FIELDS.includes(field)) {
+      patch[field] = Number(improvement.suggested_value);
     } else {
-      patch[field] = improvement.suggested_value;
+      // Unknown field — store in business_rules JSON instead of trying to create a new column
+      console.warn(`Unknown field "${field}", storing in business_rules`);
+      const currentBR = spec.business_rules || {};
+      const brObj = typeof currentBR === "string" ? JSON.parse(currentBR) : { ...currentBR };
+      brObj[field.replace(/\s+/g, "_").toLowerCase()] = improvement.suggested_value;
+      patch.business_rules = brObj;
     }
 
     patch.version = toVersion;
