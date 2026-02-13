@@ -1,59 +1,31 @@
 
 
-## Add Call Distribution by Region Map to Calls Page
+## Improve US Map to Use Realistic State Boundaries
 
-### Overview
-Add a US map visualization to the Calls page showing where calls are concentrated geographically, similar to the reference screenshot. The map will use state data extracted from call results.
+### Problem
+The current `USMapChart` uses manually drawn simplified polygons for each state, resulting in blocky, unrealistic shapes that don't resemble a real US map.
 
-### Data Source
-The `calls.extracted_data` jsonb field contains a `state` field (collected as part of the agent's `must_collect_fields`). We'll aggregate calls by state to generate the distribution data.
+### Solution
+Replace the simplified `STATE_PATHS` data in `src/components/USMapChart.tsx` with accurate SVG path data sourced from a standard US states SVG dataset (based on Albion/equal-area projection coordinates commonly used in D3/topojson).
 
-### Implementation
+### Changes
 
-**1. New component: `src/components/USMapChart.tsx`**
-- An SVG-based US state map component with all 50 states as simplified path outlines
-- Each state gets a fill color based on call count (gradient from light gray to primary/green)
-- States with calls show a colored dot/bubble proportional to call volume
-- Tooltip on hover showing state name and call count
-- Responsive container, dark-theme compatible
-- Uses state abbreviation codes (FL, NY, TX, etc.) to match extracted_data
+**File: `src/components/USMapChart.tsx`**
 
-**2. Update `src/pages/CallsPage.tsx`**
-- Restructure the layout: when no call is selected, show a full-width view with the map at the top and the call list below
-- Parse `extracted_data.state` from each call to build a `Record<string, number>` of state counts
-- Pass the aggregated data to the `USMapChart` component
-- Add "Call Distribution by Region" heading above the map
+1. Replace all 51 entries in `STATE_PATHS` with accurate SVG path data and correct centroid coordinates (cx, cy) for each state
+2. Adjust the SVG `viewBox` to match the new coordinate system (typically `0 0 960 600` for standard US projections)
+3. Reduce stroke width and adjust stroke color for cleaner borders between states
+4. Fine-tune the color palette so empty states blend more subtly into the dark background (matching the reference aesthetic)
+5. Keep Alaska and Hawaii repositioned in the bottom-left as insets
 
-### Layout Changes
-Currently the Calls page is a side-by-side list + detail view. The new layout:
-- **No call selected**: Map section at top, call list below (full width)
-- **Call selected**: Map hidden, existing side-by-side layout (list left, detail right)
+### Technical Approach
+- Use well-known public domain US state boundary SVG paths (Albers USA projection, same as D3's standard)
+- Each state entry will have: `d` (SVG path string), `cx`/`cy` (label/dot centroid)
+- No new dependencies required -- still pure inline SVG + React
+- All existing interactivity (hover, tooltips, color scaling) stays the same
 
-### Technical Details
-
-**State aggregation logic:**
-```typescript
-const stateDistribution = useMemo(() => {
-  const counts: Record<string, number> = {};
-  calls.forEach(call => {
-    const state = call.extracted_data?.state;
-    if (state && typeof state === 'string') {
-      const abbr = state.toUpperCase().trim();
-      counts[abbr] = (counts[abbr] || 0) + 1;
-    }
-  });
-  return counts;
-}, [calls]);
-```
-
-**USMapChart component:**
-- Uses inline SVG with simplified US state boundaries (standard approach for lightweight maps)
-- Color scale: states with 0 calls get `fill: #e5e7eb` (light gray), states with calls get progressively deeper shades of the primary color
-- State labels (2-letter abbreviations) positioned at state centers
-- Dots/circles at state centers sized by call count
-- No external mapping library needed -- pure SVG + React
-
-**Files to create/edit:**
-- Create: `src/components/USMapChart.tsx`
-- Edit: `src/pages/CallsPage.tsx`
-
+### Visual Improvements
+- Realistic state shapes with smooth curves
+- Proper proportions and positioning
+- Cleaner, thinner border strokes
+- Better visual match to the Bland reference map
