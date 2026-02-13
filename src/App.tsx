@@ -8,6 +8,7 @@ import AuthPage from "./pages/AuthPage";
 import DashboardPage from "./pages/DashboardPage";
 import AgentsPage from "./pages/AgentsPage";
 import CreateAgentPage from "./pages/CreateAgentPage";
+import AgentKnowledgePage from "./pages/AgentKnowledgePage";
 import CampaignsPage from "./pages/CampaignsPage";
 import CallsPage from "./pages/CallsPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
@@ -29,6 +30,7 @@ const App = () => (
           <Route element={<ProtectedLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/agents" element={<AgentsPage />} />
+            <Route path="/agents/:id/knowledge" element={<AgentKnowledgePage />} />
             <Route path="/create-agent" element={<CreateAgentPage />} />
             <Route path="/test" element={<QuickTestPage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />

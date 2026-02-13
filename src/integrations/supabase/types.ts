@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_knowledge: {
+        Row: {
+          category: string
+          content: string
+          created_at: string
+          id: string
+          project_id: string
+          source_type: string
+          source_url: string | null
+        }
+        Insert: {
+          category?: string
+          content: string
+          created_at?: string
+          id?: string
+          project_id: string
+          source_type?: string
+          source_url?: string | null
+        }
+        Update: {
+          category?: string
+          content?: string
+          created_at?: string
+          id?: string
+          project_id?: string
+          source_type?: string
+          source_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_knowledge_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_projects: {
         Row: {
           created_at: string

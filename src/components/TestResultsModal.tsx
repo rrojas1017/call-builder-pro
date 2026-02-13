@@ -270,6 +270,20 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                     </div>
                   )}
 
+                  {selected.evaluation.knowledge_gaps?.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">🧠 Knowledge Gaps Detected</p>
+                      <ul className="text-xs text-foreground space-y-1">
+                        {selected.evaluation.knowledge_gaps.map((gap: string, i: number) => (
+                          <li key={i} className="flex items-start gap-1">
+                            <span className="text-yellow-400 shrink-0">⚠️</span>
+                            {gap}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {selected.evaluation.issues_detected?.length > 0 && (
                     <div className="space-y-1">
                       <p className="text-xs font-medium text-muted-foreground">Issues</p>
