@@ -1,69 +1,59 @@
 
 
-## Reorganize Sidebar with Section-Based Grouping
+## Rebrand to "Appendify Voz" with Orange Color Scheme
 
 ### Overview
-The current sidebar has a flat list of navigation items. The reference design organizes items into logical sections (BUILD, DEPLOY, MONITOR, SYSTEM) with section headers and better visual hierarchy. This makes navigation more intuitive and reduces cognitive load for users.
+Replace the current teal/cyan "VoiceForge" branding with an orange-based "Appendify Voz" identity. The uploaded logo (orange triangle/paperclip mark) will be used as the app icon/favicon. The entire color scheme shifts from teal (hsl 172) to a warm orange palette.
 
-### Design Approach (Based on Reference Image)
+### Color Palette (New)
+- **Primary**: Orange ~`24 85% 50%` (matching the logo's #E8611A tone)
+- **Primary foreground**: White `0 0% 100%`
+- **Accent**: Deep orange tint `24 50% 18%`
+- **Accent foreground**: Light orange `24 60% 70%`
+- **Ring**: Orange (same as primary)
+- **Sidebar primary/ring**: Orange
+- **Success/Warning**: Kept as-is (green/yellow)
+- **Gradient**: Orange to amber instead of teal to blue
+- All other dark-mode background, card, border, muted values stay the same (dark navy/slate theme)
 
-**Proposed Section Structure:**
+### Files to Change
 
-1. **BUILD** - Agent creation and configuration
-   - Dashboard
-   - Agents
-   - Create Agent
-   - Knowledge Base
+**1. `src/index.css`** -- CSS Variables
+- Update `--primary` from `172 66% 50%` to `24 85% 50%`
+- Update `--accent` from `172 50% 20%` to `24 50% 18%`
+- Update `--accent-foreground` from `172 66% 70%` to `24 60% 70%`
+- Update `--ring` to match new primary
+- Update all `--sidebar-primary` and `--sidebar-ring` to orange
+- Update `.text-gradient-primary` gradient from teal to orange/amber
+- Update `.glow-primary` box-shadow from teal hue to orange hue
 
-2. **DEPLOY** - Campaigns, contact management, and inbound setup
-   - Campaigns
-   - Lists
-   - Phone Numbers (Inbound)
+**2. Logo Asset**
+- Copy `user-uploads://Asset_15.png` to `src/assets/appendify-logo.png`
+- Copy `user-uploads://Asset_15.png` to `public/favicon.png`
+- Update `index.html` favicon to reference `/favicon.png`
 
-3. **MONITOR** - Execution, testing, and quality assurance
-   - Calls
-   - Gym (Test/QA)
+**3. `src/components/AppSidebar.tsx`** -- Sidebar branding
+- Replace `Zap` icon with an `<img>` tag using the Appendify logo
+- Change "VoiceForge" text to "Appendify Voz"
 
-4. **SYSTEM** - Account management and settings
-   - Settings
+**4. `src/pages/LandingPage.tsx`** -- Landing page branding
+- Replace all "VoiceForge" text with "Appendify Voz"
+- Replace `Zap` icon in navbar, footer with the Appendify logo image
+- Update FAQ answer mentioning "VoiceForge" to "Appendify Voz"
+- Update copyright footer text
+- Update guarantee section text references
 
-### Technical Implementation
+**5. `src/pages/AuthPage.tsx`** -- Auth page branding
+- Replace `Zap` icon with Appendify logo image
+- Replace all "VoiceForge" text with "Appendify Voz"
 
-**File to modify: `src/components/AppSidebar.tsx`**
-
-1. **Restructure data**: Replace flat `navItems` array with a `navSections` object containing:
-   ```
-   {
-     BUILD: [items...],
-     DEPLOY: [items...],
-     MONITOR: [items...],
-     SYSTEM: [items...]
-   }
-   ```
-
-2. **Update render logic**: Loop through sections and render:
-   - Section header with gray/muted styling (uppercase, small font, similar to reference)
-   - Items within that section with spacing
-   - Consistent spacing between sections
-
-3. **Styling adjustments**:
-   - Section headers: `text-xs font-semibold text-muted-foreground uppercase tracking-wider`
-   - Add `mt-6 mb-3` to section headers (more spacing above, less below)
-   - Remove `space-y-1` from nav wrapper, replace with section-specific spacing
-   - Keep all existing item styling (active states, hover effects, icons)
-
-4. **No new dependencies needed** - uses existing Tailwind and lucide-react icons
-
-### Benefits
-- Better mental model for users (organized by workflow stage)
-- Cleaner visual hierarchy
-- Easier to find related features
-- Matches modern SaaS navigation patterns (like the reference image)
+**6. `index.html`**
+- Update `<title>` to "Appendify Voz"
+- Update favicon link to `/favicon.png`
 
 ### What Stays the Same
-- Active route highlighting
-- Logo and branding
-- Sign Out button at bottom
-- Responsive layout and styling system
-- All routing behavior
+- Dark background theme (navy/slate)
+- All layout, spacing, and component structure
+- All functionality, routing, and backend integration
+- Typography (Inter + JetBrains Mono)
 
