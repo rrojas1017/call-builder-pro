@@ -1,4 +1,4 @@
-import { buildFplTableSection } from "./fplThresholds";
+import { buildFplTableSection, shouldIncludeFplTable } from "./fplThresholds";
 
 interface AgentSpec {
   disclosure_text?: string | null;
@@ -9,6 +9,7 @@ interface AgentSpec {
   transfer_phone_number?: string | null;
   tone_style?: string | null;
   language?: string | null;
+  use_case?: string | null;
 }
 
 export function buildTaskPrompt(spec: AgentSpec): string {
@@ -31,7 +32,7 @@ RULES:
 SCREENING QUESTIONS (collect in this order):
 ${fields.map((f, i) => `${i + 1}. ${formatField(f)}`).join("\n")}
 
-${buildFplTableSection()}
+${shouldIncludeFplTable(spec.use_case) ? buildFplTableSection() + "\n\n" : ""}QUALIFICATION LOGIC:
 
 QUALIFICATION LOGIC:
 - If the caller has employer-sponsored insurance (ESI) or Medicare → DISQUALIFY. Say: "Based on your current coverage, you may not be eligible for ACA marketplace plans at this time. Thank you for your time."
