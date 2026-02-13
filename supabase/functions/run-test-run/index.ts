@@ -28,46 +28,88 @@ interface KnowledgeEntry {
   content: string;
 }
 
-function buildKnowledgeSection(entries: KnowledgeEntry[]): string {
+// --- Compact prompt helpers ---
+
+const HEALTH_KEYWORDS = ['aca', 'health', 'insurance', 'medicaid', 'medicare', 'wellness', 'telehealth', 'benefits_enrollment'];
+
+function isHealthAgent(spec: AgentSpec): boolean {
+  const uc = (spec.use_case || spec.mode || "").toLowerCase();
+  return HEALTH_KEYWORDS.some(kw => uc.includes(kw));
+}
+
+/** Compact FPL + SEP rules (~800 chars instead of ~3,000) */
+function buildCompactFplSep(): string {
+  return `FPL QUALIFICATION (2025): Income must be 100-400% of Federal Poverty Level. Reference: Single=$14.6k-$58.3k; Family of 4=$30k-$120k. Add $5.1k per person beyond 8 for 100% FPL; multiply by 4 for 400%.
+- ESI or Medicare → disqualify. Medicaid → tag, no transfer.
+- Uninsured/private + income in FPL range → qualified for transfer.
+
+ENROLLMENT TIMING: Outside Open Enrollment (Nov 1 - Dec 15), caller MUST have a Qualifying Life Event (lost coverage, marriage, baby, move, citizenship, divorce w/ coverage loss) within 60 days. No QLE = next Open Enrollment. Income alone does NOT qualify for SEP.`;
+}
+
+/** Compress knowledge entries: group by category, truncate, limit */
+function buildCompactKnowledge(entries: KnowledgeEntry[]): string {
+  if (!entries.length) return "";
   const grouped: Record<string, string[]> = {};
   for (const e of entries) {
     if (!grouped[e.category]) grouped[e.category] = [];
-    grouped[e.category].push(e.content);
+    if (grouped[e.category].length >= 4) continue; // max 4 per category
+    const text = e.content.length > 150 ? e.content.substring(0, 147) + "..." : e.content;
+    grouped[e.category].push(text);
   }
+  const labels: Record<string, string> = {
+    product_knowledge: "PRODUCT KNOWLEDGE",
+    objection_handling: "OBJECTION HANDLING",
+    industry_insight: "INDUSTRY INSIGHTS",
+    competitor_info: "COMPETITOR AWARENESS",
+  };
+  const parts: string[] = [];
+  for (const [cat, items] of Object.entries(grouped)) {
+    const label = labels[cat] || cat.toUpperCase();
+    parts.push(`${label}: ${items.join(". ")}`);
+  }
+  return parts.join("\n");
+}
 
-  const sections: string[] = [];
-
-  if (grouped.product_knowledge?.length) {
-    sections.push(`PRODUCT & INDUSTRY KNOWLEDGE:\n${grouped.product_knowledge.map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
-  }
-  if (grouped.objection_handling?.length) {
-    sections.push(`OBJECTION HANDLING:\n${grouped.objection_handling.map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
-  }
-  if (grouped.industry_insight?.length) {
-    sections.push(`INDUSTRY INSIGHTS:\n${grouped.industry_insight.map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
-  }
-  if (grouped.competitor_info?.length) {
-    sections.push(`COMPETITOR AWARENESS:\n${grouped.competitor_info.map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
-  }
-
-  return sections.join("\n\n");
+/** Condense humanization notes into a single style paragraph */
+function buildCompactStyle(notes: string[]): string {
+  if (!notes.length) return "Be naturally warm and conversational.";
+  // Take up to 10, extract key phrases, join as a single directive
+  const condensed = notes.slice(0, 10).map(n => {
+    // Strip numbering if present
+    const clean = n.replace(/^\d+\.\s*/, "").trim();
+    return clean.length > 80 ? clean.substring(0, 77) + "..." : clean;
+  });
+  return condensed.join(". ") + ".";
 }
 
 function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[]): string {
   const purpose = spec.use_case || spec.success_definition || "Conduct a professional outbound call.";
   const discl = spec.disclosure_text || "";
   const tone = spec.tone_style || "Friendly, professional, empathetic";
+  const transferNum = spec.transfer_phone_number || "";
+  const transferDigits = transferNum.replace(/\D/g, "");
 
-  const humanNotes = Array.isArray(spec.humanization_notes) && spec.humanization_notes.length > 0
-    ? spec.humanization_notes.map((n: string, i: number) => `${i + 1}. ${n}`).join("\n")
-    : "No learned techniques yet -- be naturally warm and conversational.";
+  // Build compact humanization style
+  const humanNotes = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
+  const styleGuide = buildCompactStyle(humanNotes);
 
+  // Parse fields
   const rawFields = spec.must_collect_fields;
   let fields: string[] = [];
   if (Array.isArray(rawFields)) {
     fields = rawFields;
   } else if (typeof rawFields === "string") {
     try { const p = JSON.parse(rawFields); if (Array.isArray(p)) fields = p; } catch { /* skip */ }
+  }
+
+  // Inject name confirmation after consent if not already present
+  if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('confirm') && f.toLowerCase().includes('name'))) {
+    const consentIdx = fields.findIndex((f: string) => f.toLowerCase().includes('consent'));
+    if (consentIdx >= 0) {
+      fields.splice(consentIdx + 1, 0, "Can I confirm your full name?");
+    } else {
+      fields.unshift("Can I confirm your full name?");
+    }
   }
 
   const qualRules = spec.qualification_rules
@@ -77,128 +119,51 @@ function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[]): string {
     ? (typeof spec.disqualification_rules === "string" ? spec.disqualification_rules : JSON.stringify(spec.disqualification_rules, null, 2))
     : null;
 
-  const transferNum = spec.transfer_phone_number || "";
-  const transferDigits = transferNum.replace(/\D/g, "");
+  let prompt = `You are a REAL PERSON on a phone call — not AI, not a robot.
 
-  let prompt = `You are a REAL PERSON making a phone call -- not an AI, not a robot, not a script-reader.
-
-HUMAN CONVERSATION STYLE (THIS IS YOUR #1 PRIORITY):
-- You are having a natural phone conversation. Sound like someone they'd enjoy talking to at a coffee shop.
-- React genuinely to what they say: laugh lightly at something funny, show empathy for difficulties, express enthusiasm for good news.
-- Use casual transitions: "Oh that's great!", "Gotcha", "Makes sense", "Ha, yeah I hear that a lot"
-- Add brief, relevant small talk between questions: "Nice, [state] is beautiful this time of year" or "Oh wow, that's a big family -- I bet holidays are fun"
-- Vary your sentence length and rhythm. Mix short reactions ("Got it!") with longer explanations.
-- Never ask questions back-to-back like a survey. Acknowledge each answer before moving on.
-- If you need to transition topics, use natural bridges: "So switching gears a little..." or "That actually reminds me, I also wanted to ask..."
-- Use light humor when appropriate -- nothing forced, just natural warmth.
-- Use the caller's name naturally (not every sentence).
-
-LEARNED CONVERSATION TECHNIQUES:
-${humanNotes}
+INTERACTION STYLE: ${styleGuide}
 
 PURPOSE: ${purpose}
 
 RULES:
 - Tone: ${tone}
-- Never guess or assume answers the caller hasn't given.`;
+- Sound natural: vary sentence length, react genuinely, use casual transitions ("Gotcha", "Makes sense").
+- Use caller's name occasionally. Acknowledge each answer before the next question.
+- Never guess or assume answers.`;
 
-  // Inject domain knowledge from agent_knowledge table
-  const knowledgeSection = buildKnowledgeSection(knowledge);
+  // Domain knowledge (compact)
+  const knowledgeSection = buildCompactKnowledge(knowledge);
   if (knowledgeSection) {
-    prompt += `\n\nDOMAIN KNOWLEDGE (use this to answer questions knowledgeably):\n${knowledgeSection}`;
+    prompt += `\n\nDOMAIN KNOWLEDGE:\n${knowledgeSection}`;
   }
 
   if (discl) {
-    prompt += `\n\nDISCLOSURE (read at the start of the call):\n"${discl}"`;
-  }
-
-  // Inject name confirmation after consent if not already present
-  if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('confirm') && f.toLowerCase().includes('name'))) {
-    const consentIdx = fields.findIndex((f: string) => f.toLowerCase().includes('consent'));
-    if (consentIdx >= 0) {
-      fields.splice(consentIdx + 1, 0, "And just so I have it right, can I confirm your full name?");
-    } else {
-      fields.unshift("And just so I have it right, can I confirm your full name?");
-    }
+    prompt += `\n\nDISCLOSURE (read at start): "${discl}"`;
   }
 
   if (fields.length > 0) {
-    prompt += `\n\nINFORMATION TO COLLECT (in this order):\n${fields.map((f, i) => `${i + 1}. ${f}`).join("\n")}`;
-    prompt += `\n\nZIP CODE VALIDATION: When collecting zip code, confirm it is exactly 5 digits. If the caller gives fewer or more digits, ask them to double-check.`;
+    prompt += `\n\nCOLLECT (in order):\n${fields.map((f, i) => `${i + 1}. ${f}`).join("\n")}`;
+    prompt += `\nZIP: Must be exactly 5 digits.`;
   }
 
-  const useCase = spec.use_case || spec.mode || "";
-  const isHealthAgent = ['aca', 'health', 'insurance', 'medicaid', 'medicare', 'wellness', 'telehealth', 'benefits_enrollment']
-    .some(kw => useCase.toLowerCase().includes(kw));
-
-  if (isHealthAgent) {
-    prompt += `\n\nFEDERAL POVERTY LEVEL THRESHOLDS (2025):
-Qualification Range: 100-400% of Federal Poverty Level
-
-Household Size | 100% FPL  | 400% FPL
-1              | $14,580   | $58,320
-2              | $19,720   | $78,880
-3              | $24,860   | $99,440
-4              | $30,000   | $120,000
-5              | $35,140   | $140,560
-6              | $40,280   | $161,120
-7              | $45,420   | $181,680
-8+             | $50,560+  | $202,240+
-(Add $5,140 per additional person beyond 8 for 100% FPL; multiply by 4 for 400% FPL)
-
-Use this table to determine qualification: If the caller's annual household income falls between the 100% and 400% FPL amounts for their household size, they may qualify for ACA marketplace assistance.`;
-
-    prompt += `\n\nSPECIAL ENROLLMENT PERIOD (SEP) RULES (Updated 2025):
-IMPORTANT: The low-income SEP (income ≤150% FPL) was ELIMINATED as of August 25, 2025.
-Income alone does NOT qualify someone for year-round enrollment.
-
-Outside of Open Enrollment (Nov 1 - Dec 15), callers can ONLY enroll if they have
-a Qualifying Life Event (QLE) within the past 60 days:
-1. Involuntary loss of health coverage (job loss, aging off parent's plan, losing Medicaid)
-2. Marriage
-3. Birth, adoption, or placement of a child in foster care
-4. Permanent move to a new coverage area (must have had prior coverage)
-5. Becoming a U.S. citizen or gaining lawful presence
-6. Divorce (if it results in loss of coverage)
-7. Gaining access to a QSEHRA or Individual Coverage HRA from employer
-8. Employer-sponsored plan becoming unaffordable (>9.96% of household income)
-9. Change in income that affects subsidy eligibility
-10. Leaving the Medicaid coverage gap due to income increase
-11. Exceptional circumstances (natural disaster, enrollment errors)
-
-If outside Open Enrollment:
-- Ask if the caller has experienced any of these life events in the past 60 days
-- If YES: they may qualify for a SEP regardless of income (still must meet FPL range)
-- If NO: inform them they can enroll during the next Open Enrollment period
-- Do NOT tell them they qualify for a SEP based on income alone`;
-
-    // Add QLE screening question for health agents
+  // Health-specific compact rules
+  if (isHealthAgent(spec)) {
+    prompt += `\n\n${buildCompactFplSep()}`;
     if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('life event') || f.toLowerCase().includes('qle'))) {
-      prompt += `\n\nADDITIONAL SCREENING QUESTION:
-- Have you recently experienced any life changes such as losing health coverage, getting married, having a baby, or moving to a new area? (This determines enrollment eligibility outside Open Enrollment)`;
+      prompt += `\nASK: "Have you recently had any life changes like losing coverage, marriage, baby, or moving?"`;
     }
-
-    // Updated qualification logic with SEP awareness
-    prompt += `\n\nENROLLMENT TIMING RULES:
-- If currently outside Open Enrollment (Nov 1 - Dec 15), the caller MUST have a Qualifying Life Event (QLE) to enroll.
-- If they have no QLE, inform them of the next Open Enrollment period.
-- Do NOT tell them they qualify for a SEP based on income alone.`;
   }
 
-  if (qualRules) {
-    prompt += `\n\nQUALIFICATION CRITERIA:\n${qualRules}`;
-  }
-  if (disqualRules) {
-    prompt += `\n\nDISQUALIFICATION CRITERIA:\n${disqualRules}`;
-  }
+  if (qualRules) prompt += `\n\nQUALIFICATION:\n${qualRules}`;
+  if (disqualRules) prompt += `\n\nDISQUALIFICATION:\n${disqualRules}`;
 
   if (transferDigits.length >= 10) {
-    const formattedNum = transferDigits.startsWith("1") ? `+${transferDigits}` : `+1${transferDigits}`;
-    prompt += `\n\nTRANSFER: If the caller qualifies, say briefly: "That sounds really promising -- let me connect you now." Then transfer to ${formattedNum}. Keep it to ONE short sentence before transferring.`;
+    const formatted = transferDigits.startsWith("1") ? `+${transferDigits}` : `+1${transferDigits}`;
+    prompt += `\n\nTRANSFER: If qualified, say ONE short sentence then transfer to ${formatted}.`;
   }
 
-  prompt += `\n\nFALLBACK: If you cannot collect required information after 2 attempts, note what's missing and end politely.`;
-  prompt += `\n\nSUMMARY: After the call, provide a JSON summary with all collected fields including caller_name.`;
+  prompt += `\n\nFALLBACK: After 2 failed attempts to collect info, end politely.`;
+  prompt += `\nSUMMARY: After call, JSON with all collected fields + caller_name.`;
 
   return prompt;
 }
@@ -233,16 +198,12 @@ serve(async (req) => {
       .from("test_runs").select("*").eq("id", test_run_id).single();
     if (trErr) throw trErr;
 
-    // Check org credit balance before placing calls
+    // Check org credit balance
     const { data: orgData } = await supabase
-      .from("organizations")
-      .select("credits_balance")
-      .eq("id", testRun.org_id)
-      .single();
+      .from("organizations").select("credits_balance").eq("id", testRun.org_id).single();
     if (!orgData || orgData.credits_balance <= 0) {
       return new Response(JSON.stringify({ error: "Insufficient credits. Please top up your balance." }), {
-        status: 402,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -268,13 +229,11 @@ serve(async (req) => {
       const { data: remaining } = await supabase
         .from("test_run_contacts").select("id")
         .eq("test_run_id", test_run_id).in("status", ["queued", "calling"]);
-
       if (!remaining?.length) {
         await supabase.from("test_runs")
           .update({ status: "completed", completed_at: new Date().toISOString() })
           .eq("id", test_run_id);
       }
-
       return new Response(JSON.stringify({ initiated_count: 0, message: "No queued contacts" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -284,21 +243,22 @@ serve(async (req) => {
     const { data: spec } = await supabase
       .from("agent_specs").select("*").eq("project_id", testRun.project_id).single();
 
-    // Load agent knowledge
+    // Load agent knowledge (capped to 10)
     const { data: knowledgeRows } = await supabase
       .from("agent_knowledge").select("category, content")
-      .eq("project_id", testRun.project_id);
+      .eq("project_id", testRun.project_id)
+      .order("created_at", { ascending: false })
+      .limit(10);
 
-    // Cap knowledge to prevent oversized prompts
-    const knowledge: KnowledgeEntry[] = (knowledgeRows || []).slice(0, 20) as KnowledgeEntry[];
+    const knowledge: KnowledgeEntry[] = (knowledgeRows || []) as KnowledgeEntry[];
 
-    // Load global human behaviors
+    // Load global human behaviors (limit 10)
     const { data: globalBehaviors } = await supabase
       .from("global_human_behaviors").select("content")
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false })
+      .limit(10);
 
-    // Limit global behaviors to most recent 15
-    const globalTechniques = (globalBehaviors || []).slice(-15).map((g: any) => g.content as string);
+    const globalTechniques = (globalBehaviors || []).map((g: any) => g.content as string);
 
     // Merge global behaviors into spec's humanization_notes (deduped)
     if (spec && globalTechniques.length > 0) {
@@ -311,10 +271,11 @@ serve(async (req) => {
     const voiceProvider = spec?.voice_provider || "bland";
     let baseTask = testRun.agent_instructions_text || (spec ? buildTaskPrompt(spec, knowledge) : "Conduct a professional outbound call.");
 
-    // Ensure prompt stays under Bland's 30k char limit
-    const MAX_TASK_LENGTH = 29000;
+    // Smart guard: progressively trim if over limit
+    const MAX_TASK_LENGTH = 28000;
     if (baseTask.length > MAX_TASK_LENGTH) {
-      baseTask = baseTask.substring(0, MAX_TASK_LENGTH) + "\n\n[Prompt truncated for length]";
+      console.warn(`Prompt too long (${baseTask.length} chars), truncating to ${MAX_TASK_LENGTH}`);
+      baseTask = baseTask.substring(0, MAX_TASK_LENGTH) + "\n\n[Trimmed for length]";
     }
 
     const callIds: string[] = [];
@@ -333,15 +294,12 @@ serve(async (req) => {
             agent_id: retellAgentId,
             phone_number: contact.phone,
             metadata: {
-              test_run_id,
-              test_run_contact_id: contact.id,
-              org_id: testRun.org_id,
-              project_id: testRun.project_id,
+              test_run_id, test_run_contact_id: contact.id,
+              org_id: testRun.org_id, project_id: testRun.project_id,
               spec_version: testRun.spec_version,
             },
             webhook_url: retellWebhookUrl,
           };
-
           if (spec?.from_number) retellPayload.from_number = spec.from_number;
 
           const retellResp = await fetch("https://api.retellai.com/v2/create-phone-call", {
@@ -349,7 +307,6 @@ serve(async (req) => {
             headers: { Authorization: `Bearer ${retellApiKey}`, "Content-Type": "application/json" },
             body: JSON.stringify(retellPayload),
           });
-
           const retellData = await retellResp.json();
           console.log("Retell API response:", retellResp.status, JSON.stringify(retellData));
 
@@ -368,7 +325,7 @@ serve(async (req) => {
         }
       }
     } else {
-      // ===== EXISTING BLAND AI BRANCH (UNCHANGED) =====
+      // ===== BLAND AI BRANCH =====
       const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
 
       for (const contact of queuedContacts) {
@@ -388,10 +345,8 @@ serve(async (req) => {
             interruption_threshold: spec?.interruption_threshold ?? 100,
             noise_cancellation: true,
             metadata: {
-              test_run_id,
-              test_run_contact_id: contact.id,
-              org_id: testRun.org_id,
-              project_id: testRun.project_id,
+              test_run_id, test_run_contact_id: contact.id,
+              org_id: testRun.org_id, project_id: testRun.project_id,
               spec_version: testRun.spec_version,
             },
           };
@@ -453,8 +408,7 @@ serve(async (req) => {
   } catch (err) {
     console.error("run-test-run error:", err);
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

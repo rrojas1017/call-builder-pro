@@ -6,11 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-function shouldIncludeFplTable(useCase: string | null | undefined): boolean {
+const HEALTH_KEYWORDS = ['aca', 'health', 'insurance', 'medicaid', 'medicare', 'wellness', 'telehealth', 'benefits_enrollment'];
+
+function isHealthAgent(useCase: string | null | undefined): boolean {
   if (!useCase) return false;
   const lower = useCase.toLowerCase();
-  return ['aca', 'health', 'insurance', 'medicaid', 'medicare', 'wellness', 'telehealth', 'benefits_enrollment']
-    .some(kw => lower.includes(kw));
+  return HEALTH_KEYWORDS.some(kw => lower.includes(kw));
 }
 
 function replaceTemplateVars(text: string, contact: { name: string; phone: string }): string {
@@ -24,84 +25,68 @@ function replaceTemplateVars(text: string, contact: { name: string; phone: strin
     .replace(/\{\{phone\}\}/gi, contact.phone || "");
 }
 
-function buildTaskPrompt(spec: any): string {
+/** Compact FPL + SEP rules */
+function buildCompactFplSep(): string {
+  return `FPL QUALIFICATION (2025): Income must be 100-400% of Federal Poverty Level. Reference: Single=$14.6k-$58.3k; Family of 4=$30k-$120k. Add $5.1k per person beyond 8 for 100% FPL; multiply by 4 for 400%.
+- ESI or Medicare → disqualify. Medicaid → tag, no transfer.
+- Uninsured/private + income in FPL range → qualified for transfer.
+
+ENROLLMENT TIMING: Outside Open Enrollment (Nov 1 - Dec 15), caller MUST have a Qualifying Life Event (lost coverage, marriage, baby, move, citizenship, divorce w/ coverage loss) within 60 days. No QLE = next Open Enrollment. Income alone does NOT qualify for SEP.`;
+}
+
+/** Condense humanization notes into a single style paragraph */
+function buildCompactStyle(notes: string[]): string {
+  if (!notes.length) return "Be naturally warm and conversational.";
+  const condensed = notes.slice(0, 10).map(n => {
+    const clean = n.replace(/^\d+\.\s*/, "").trim();
+    return clean.length > 80 ? clean.substring(0, 77) + "..." : clean;
+  });
+  return condensed.join(". ") + ".";
+}
+
+function buildTaskPrompt(spec: any, globalTechniques: string[]): string {
   const discl = spec.disclosure_text || "This call may be recorded for quality and compliance purposes.";
   const fields = spec.must_collect_fields || ["consent", "state", "zip_code", "age", "household_size", "income_est_annual", "coverage_type"];
   const transferNum = spec.transfer_phone_number || "";
+  const tone = spec.tone_style || "Friendly, professional";
+
+  // Build compact style from global techniques
+  const styleGuide = buildCompactStyle(globalTechniques);
+
   const fieldLabels: Record<string, string> = {
-    consent: "Confirm they requested information and obtain verbal consent",
+    consent: "Obtain verbal consent for screening",
     state: "What state do you live in?",
-    zip_code: "And what's your zip code? (Confirm it's exactly 5 digits)",
+    zip_code: "Zip code? (must be 5 digits)",
     age: "How old are you?",
-    household_size: "How many people are in your household?",
-    income_est_annual: "What is your estimated annual household income?",
-    coverage_type: "Do you currently have health insurance? (uninsured, private, employer, Medicare, Medicaid)",
+    household_size: "How many in your household?",
+    income_est_annual: "Estimated annual household income?",
+    coverage_type: "Current health insurance? (uninsured, private, employer, Medicare, Medicaid)",
   };
 
-  let prompt = `You are a friendly, knowledgeable health benefits advisor having a natural phone conversation.
+  let prompt = `You are a REAL PERSON on a phone call — not AI, not a robot.
+
+INTERACTION STYLE: ${styleGuide}
 
 DISCLOSURE (read verbatim): "${discl}"
 
 RULES:
-- Obtain verbal consent before screening questions
+- Obtain verbal consent before screening. Tone: ${tone}.
 - NEVER give insurance advice. Say: "A licensed agent can explain after transfer."
-- Tone: ${spec.tone_style || "Friendly, professional"}
+- Sound natural, acknowledge answers, use caller's name occasionally.
 
-QUESTIONS:
-${(fields as string[]).map((f: string, i: number) => `${i + 1}. ${fieldLabels[f] || f}`).join("\n")}
-`;
+COLLECT (in order):
+${(fields as string[]).map((f: string, i: number) => `${i + 1}. ${fieldLabels[f] || f}`).join("\n")}`;
 
-  if (shouldIncludeFplTable(spec.use_case)) {
-    prompt += `
-FEDERAL POVERTY LEVEL THRESHOLDS (2025):
-Qualification Range: 100-400% of Federal Poverty Level
-
-Household Size | 100% FPL  | 400% FPL
-1              | $14,580   | $58,320
-2              | $19,720   | $78,880
-3              | $24,860   | $99,440
-4              | $30,000   | $120,000
-5              | $35,140   | $140,560
-6              | $40,280   | $161,120
-7              | $45,420   | $181,680
-8+             | $50,560+  | $202,240+
-(Add $5,140 per additional person beyond 8 for 100% FPL; multiply by 4 for 400% FPL)
-
-SPECIAL ENROLLMENT PERIOD (SEP) RULES (Updated 2025):
-IMPORTANT: The low-income SEP (income ≤150% FPL) was ELIMINATED as of August 25, 2025.
-Income alone does NOT qualify someone for year-round enrollment.
-
-Outside of Open Enrollment (Nov 1 - Dec 15), callers can ONLY enroll if they have
-a Qualifying Life Event (QLE) within the past 60 days:
-1. Involuntary loss of health coverage (job loss, aging off parent's plan, losing Medicaid)
-2. Marriage
-3. Birth, adoption, or placement of a child in foster care
-4. Permanent move to a new coverage area (must have had prior coverage)
-5. Becoming a U.S. citizen or gaining lawful presence
-6. Divorce (if it results in loss of coverage)
-7. Gaining access to a QSEHRA or Individual Coverage HRA from employer
-8. Employer-sponsored plan becoming unaffordable (>9.96% of household income)
-9. Change in income that affects subsidy eligibility
-10. Leaving the Medicaid coverage gap due to income increase
-11. Exceptional circumstances (natural disaster, enrollment errors)
-
-ADDITIONAL SCREENING QUESTION:
-- Have you recently experienced any life changes such as losing health coverage, getting married, having a baby, or moving to a new area?
-
-`;
+  if (isHealthAgent(spec.use_case)) {
+    prompt += `\n\n${buildCompactFplSep()}`;
   }
 
-  prompt += `
-QUALIFICATION:
-- ESI or Medicare → disqualify
-- Medicaid → tag, no transfer
-- Uninsured/private + income within 100-400% FPL${shouldIncludeFplTable(spec.use_case) ? ' (use table above)' : ''} → qualified, transfer
-- ENROLLMENT TIMING: If outside Open Enrollment (Nov 1 - Dec 15), caller MUST have a QLE to enroll. No QLE = inform of next Open Enrollment. Do NOT qualify based on income alone.
-- If qualified, say: "That sounds really promising -- I think you'd qualify for some help here. Let me connect you with someone who can walk you through everything."
-- TRANSFER RULE: Keep your transfer announcement to ONE short sentence. Do not monologue before transferring.
+  prompt += `\n\nQUALIFICATION:
+- If qualified: "That sounds really promising -- let me connect you now."
+- TRANSFER RULE: ONE short sentence before transferring.
 ${transferNum ? `- Transfer to: ${transferNum}` : ""}
 
-After call, provide JSON: consent, state, zip_code, age, household_size, income_est_annual, coverage_type, qualifying_life_event, qualified, disqual_reason, transfer_attempted, transfer_completed`;
+SUMMARY: After call, JSON with: consent, state, zip_code, age, household_size, income_est_annual, coverage_type, qualifying_life_event, qualified, disqual_reason, transfer_attempted, transfer_completed`;
 
   return prompt;
 }
@@ -133,44 +118,31 @@ serve(async (req) => {
       });
     }
 
-    // Check org credit balance before placing calls
+    // Check org credit balance
     const orgId = campaign.agent_projects.org_id;
     const { data: orgData } = await supabase
-      .from("organizations")
-      .select("credits_balance")
-      .eq("id", orgId)
-      .single();
+      .from("organizations").select("credits_balance").eq("id", orgId).single();
     if (!orgData || orgData.credits_balance <= 0) {
       return new Response(JSON.stringify({ error: "Insufficient credits. Please top up your balance." }), {
-        status: 402,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // Get spec
     const { data: spec, error: specErr } = await supabase
-      .from("agent_specs")
-      .select("*")
-      .eq("project_id", campaign.project_id)
-      .single();
+      .from("agent_specs").select("*").eq("project_id", campaign.project_id).single();
     if (specErr) throw specErr;
 
     // Get ALL queued contacts
     const { data: contacts } = await supabase
-      .from("contacts")
-      .select("*")
-      .eq("campaign_id", campaign_id)
-      .eq("status", "queued")
+      .from("contacts").select("*")
+      .eq("campaign_id", campaign_id).eq("status", "queued")
       .order("created_at", { ascending: true });
 
     if (!contacts || contacts.length === 0) {
-      // Check if all done
       const { count: remaining } = await supabase
-        .from("contacts")
-        .select("id", { count: "exact", head: true })
-        .eq("campaign_id", campaign_id)
-        .in("status", ["queued", "calling"]);
-
+        .from("contacts").select("id", { count: "exact", head: true })
+        .eq("campaign_id", campaign_id).in("status", ["queued", "calling"]);
       if ((remaining || 0) === 0) {
         await supabase.from("campaigns").update({ status: "completed" }).eq("id", campaign_id);
       }
@@ -179,21 +151,23 @@ serve(async (req) => {
       });
     }
 
-    // Load global human behaviors
+    // Load global human behaviors (limit 10)
     const { data: globalBehaviors } = await supabase
       .from("global_human_behaviors").select("content")
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false }).limit(10);
 
     const globalTechniques = (globalBehaviors || []).map((g: any) => g.content as string);
 
-    // Build task prompt with global behaviors
-    let task = buildTaskPrompt(spec);
-    if (globalTechniques.length > 0) {
-      task += `\n\nLEARNED CONVERSATION TECHNIQUES (apply these naturally):\n${globalTechniques.map((t: string, i: number) => `${i + 1}. ${t}`).join("\n")}`;
+    // Build compact task prompt
+    let task = buildTaskPrompt(spec, globalTechniques);
+
+    const MAX_TASK_LENGTH = 28000;
+    if (task.length > MAX_TASK_LENGTH) {
+      console.warn(`Campaign prompt too long (${task.length} chars), truncating`);
+      task = task.substring(0, MAX_TASK_LENGTH) + "\n\n[Trimmed for length]";
     }
 
     const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
-
     const voiceProvider = spec.voice_provider || "bland";
 
     if (voiceProvider === "retell") {
@@ -213,13 +187,11 @@ serve(async (req) => {
             metadata: {
               org_id: campaign.agent_projects.org_id,
               project_id: campaign.project_id,
-              campaign_id: campaign_id,
-              contact_id: contact.id,
+              campaign_id, contact_id: contact.id,
               version: spec.version,
             },
             webhook_url: retellWebhookUrl,
           };
-
           if (spec.from_number) retellPayload.from_number = spec.from_number;
 
           const retellResp = await fetch("https://api.retellai.com/v2/create-phone-call", {
@@ -227,7 +199,6 @@ serve(async (req) => {
             headers: { Authorization: `Bearer ${RETELL_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify(retellPayload),
           });
-
           const retellData = await retellResp.json();
           console.log("Retell API response:", retellResp.status, JSON.stringify(retellData));
 
@@ -250,15 +221,10 @@ serve(async (req) => {
       }
 
       return new Response(JSON.stringify({
-        provider: "retell",
-        calls_initiated: callIds.length,
-        contacts_dispatched: contacts.length,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+        provider: "retell", calls_initiated: callIds.length, contacts_dispatched: contacts.length,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     } else {
-      // ===== EXISTING BLAND AI BRANCH (UNCHANGED) =====
-      // Build call_objects array
+      // ===== BLAND AI BRANCH =====
       const callObjects = contacts.map((contact: any) => ({
         phone_number: contact.phone,
         first_sentence: replaceTemplateVars(
@@ -268,20 +234,15 @@ serve(async (req) => {
         metadata: {
           org_id: campaign.agent_projects.org_id,
           project_id: campaign.project_id,
-          campaign_id: campaign_id,
-          contact_id: contact.id,
+          campaign_id, contact_id: contact.id,
           version: spec.version,
         },
       }));
 
-      // Build global settings
       const globalSettings: any = {
-        task,
-        record: true,
-        webhook: webhookUrl,
+        task, record: true, webhook: webhookUrl,
         summary_prompt: "Return JSON with: consent (bool), caller_name, state, age (int), household_size (int), income_est_annual (int), coverage_type, qualified (bool), disqual_reason, transfer_attempted (bool), transfer_completed (bool)",
-        model: "base",
-        language: spec.language || "en",
+        model: "base", language: spec.language || "en",
       };
 
       if (spec.voice_id) globalSettings.voice_id = spec.voice_id;
@@ -289,55 +250,31 @@ serve(async (req) => {
       if (spec.from_number) globalSettings.from = spec.from_number;
       if (spec.background_track && spec.background_track !== "none") globalSettings.background_track = spec.background_track;
 
-      // Send batch request to Bland AI
       const blandResp = await fetch("https://api.bland.ai/v2/batches/create", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": BLAND_API_KEY,
-        },
-        body: JSON.stringify({
-          global: globalSettings,
-          call_objects: callObjects,
-        }),
+        headers: { "Content-Type": "application/json", "Authorization": BLAND_API_KEY },
+        body: JSON.stringify({ global: globalSettings, call_objects: callObjects }),
       });
 
       const blandData = await blandResp.json();
-      if (!blandResp.ok) {
-        throw new Error(`Bland Batch API error [${blandResp.status}]: ${JSON.stringify(blandData)}`);
-      }
+      if (!blandResp.ok) throw new Error(`Bland Batch API error [${blandResp.status}]: ${JSON.stringify(blandData)}`);
 
       const batchId = blandData.batch_id || blandData.id;
+      await supabase.from("campaigns").update({ bland_batch_id: batchId }).eq("id", campaign_id);
 
-      // Store batch_id on campaign
-      await supabase
-        .from("campaigns")
-        .update({ bland_batch_id: batchId })
-        .eq("id", campaign_id);
-
-      // Bulk update all dispatched contacts to "calling"
       const contactIds = contacts.map((c: any) => c.id);
-      await supabase
-        .from("contacts")
-        .update({
-          status: "calling",
-          attempts: 1,
-          called_at: new Date().toISOString(),
-        })
-        .in("id", contactIds);
+      await supabase.from("contacts").update({
+        status: "calling", attempts: 1, called_at: new Date().toISOString(),
+      }).in("id", contactIds);
 
       return new Response(JSON.stringify({
-        batch_id: batchId,
-        contacts_dispatched: contacts.length,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+        batch_id: batchId, contacts_dispatched: contacts.length,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
   } catch (err) {
     console.error("tick-campaign error:", err);
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
