@@ -1,37 +1,69 @@
 
 
-## Add "10-Minute Guarantee" Section Below the Hero
+## Reorganize Sidebar with Section-Based Grouping
 
 ### Overview
-Add a bold, attention-grabbing guarantee section directly below the hero that communicates VoiceForge's core promise: deploy a fully functional AI agent in 10 minutes or get $100 in credit. Includes terms and conditions in a collapsible/expandable format.
+The current sidebar has a flat list of navigation items. The reference design organizes items into logical sections (BUILD, DEPLOY, MONITOR, SYSTEM) with section headers and better visual hierarchy. This makes navigation more intuitive and reduces cognitive load for users.
 
-### Design
-The section will be a centered callout with:
-- A prominent tagline: **"The fastest, simplest way to deploy an AI agent"**
-- The guarantee: **"If you don't have a fully functional, well-behaved agent in 10 minutes, we'll give you $100 in credit."**
-- A subtle timer/clock icon for visual emphasis
-- An expandable "Terms & Conditions" accordion below the guarantee text
-- Framer-motion fade-up animation consistent with the rest of the page
+### Design Approach (Based on Reference Image)
 
-### Terms & Conditions (expandable)
-- "Fully functional" means the agent can hold a natural conversation, follow your script, and handle basic objections as demonstrated in a test call via the Gym.
-- The 10-minute clock starts when you begin the agent creation wizard and stops when you run your first successful test call.
-- Credit is applied to your VoiceForge account and can be used toward calling minutes.
-- Limit one claim per account. Must be a new account created after this promotion launches.
-- To claim, contact support with your account email and a screenshot of your wizard start time.
+**Proposed Section Structure:**
 
-### Technical Details
+1. **BUILD** - Agent creation and configuration
+   - Dashboard
+   - Agents
+   - Create Agent
+   - Knowledge Base
 
-**File modified: `src/pages/LandingPage.tsx`**
+2. **DEPLOY** - Campaigns, contact management, and inbound setup
+   - Campaigns
+   - Lists
+   - Phone Numbers (Inbound)
 
-1. Import the `Timer` icon from `lucide-react`
-2. Add a new section between the Hero (`</section>`) at ~line 227 and the Metrics section at ~line 230
-3. The new section contains:
-   - A `motion.div` with `fadeUp` animation
-   - Timer icon in a primary-tinted circle
-   - Headline and guarantee text
-   - A small `Accordion` component (already imported) for terms and conditions
-   - Styled with `surface-elevated` card look, max-width constrained, centered
-4. Add a "Guarantee" link to the navbar anchoring to `#guarantee`
+3. **MONITOR** - Execution, testing, and quality assurance
+   - Calls
+   - Gym (Test/QA)
 
-No new files, no new dependencies, no backend changes needed.
+4. **SYSTEM** - Account management and settings
+   - Settings
+
+### Technical Implementation
+
+**File to modify: `src/components/AppSidebar.tsx`**
+
+1. **Restructure data**: Replace flat `navItems` array with a `navSections` object containing:
+   ```
+   {
+     BUILD: [items...],
+     DEPLOY: [items...],
+     MONITOR: [items...],
+     SYSTEM: [items...]
+   }
+   ```
+
+2. **Update render logic**: Loop through sections and render:
+   - Section header with gray/muted styling (uppercase, small font, similar to reference)
+   - Items within that section with spacing
+   - Consistent spacing between sections
+
+3. **Styling adjustments**:
+   - Section headers: `text-xs font-semibold text-muted-foreground uppercase tracking-wider`
+   - Add `mt-6 mb-3` to section headers (more spacing above, less below)
+   - Remove `space-y-1` from nav wrapper, replace with section-specific spacing
+   - Keep all existing item styling (active states, hover effects, icons)
+
+4. **No new dependencies needed** - uses existing Tailwind and lucide-react icons
+
+### Benefits
+- Better mental model for users (organized by workflow stage)
+- Cleaner visual hierarchy
+- Easier to find related features
+- Matches modern SaaS navigation patterns (like the reference image)
+
+### What Stays the Same
+- Active route highlighting
+- Logo and branding
+- Sign Out button at bottom
+- Responsive layout and styling system
+- All routing behavior
+
