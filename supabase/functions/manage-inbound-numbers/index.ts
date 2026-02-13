@@ -69,17 +69,18 @@ serve(async (req) => {
         body: JSON.stringify({ area_code }),
       });
       const purchaseData = await purchaseResp.json();
+      console.log("Bland purchase response:", JSON.stringify(purchaseData));
       if (!purchaseResp.ok) {
         // Parse Bland-specific errors for better UX
         const blandErrors = purchaseData?.errors || [];
         const unavailable = blandErrors.some((e: any) => e.error === "NUMBER_UNAVAILABLE_ERROR");
         if (unavailable) {
-          throw new Error(`No phone numbers available for area code ${area_code}. Try a different area code (e.g. 213, 312, 469, 786).`);
+          throw new Error(`No phone numbers available for area code ${area_code}. Try a different area code (e.g. 213, 312, 786).`);
         }
         throw new Error(`Bland purchase error: ${JSON.stringify(purchaseData)}`);
       }
-      const phoneNumber = purchaseData.phone_number || purchaseData.number;
-      if (!phoneNumber) throw new Error("No phone number returned from Bland");
+      const phoneNumber = purchaseData.phone_number || purchaseData.number || purchaseData.data?.phone_number || purchaseData.data?.number;
+      if (!phoneNumber) throw new Error(`No phone number in Bland response: ${JSON.stringify(purchaseData)}`);
 
       // Insert into our table
       const { data: inserted, error: insertErr } = await supabase
