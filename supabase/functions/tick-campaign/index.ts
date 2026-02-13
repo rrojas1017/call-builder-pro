@@ -151,6 +151,22 @@ serve(async (req) => {
       });
     }
 
+    // Summarize agent knowledge via AI
+    let knowledgeBriefing = "";
+    try {
+      const { data: summaryData, error: summaryErr } = await supabase.functions.invoke("summarize-agent-knowledge", {
+        body: { project_id: campaign.project_id },
+      });
+      if (summaryErr) {
+        console.error("Knowledge summarization error:", summaryErr);
+      } else if (summaryData?.briefing) {
+        knowledgeBriefing = summaryData.briefing;
+        console.log(`Campaign knowledge briefing: ${summaryData.entries_count} entries → ${knowledgeBriefing.length} chars`);
+      }
+    } catch (sumErr: any) {
+      console.error("Failed to invoke summarize-agent-knowledge:", sumErr.message);
+    }
+
     // Load global human behaviors (limit 10)
     const { data: globalBehaviors } = await supabase
       .from("global_human_behaviors").select("content")
@@ -158,8 +174,11 @@ serve(async (req) => {
 
     const globalTechniques = (globalBehaviors || []).map((g: any) => g.content as string);
 
-    // Build compact task prompt
+    // Build compact task prompt with knowledge briefing
     let task = buildTaskPrompt(spec, globalTechniques);
+    if (knowledgeBriefing) {
+      task += `\n\nKNOWLEDGE BRIEFING:\n${knowledgeBriefing}`;
+    }
 
     const MAX_TASK_LENGTH = 28000;
     if (task.length > MAX_TASK_LENGTH) {
