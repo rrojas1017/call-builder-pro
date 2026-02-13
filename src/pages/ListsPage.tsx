@@ -1,16 +1,17 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Upload, FileSpreadsheet, Check, X, Eye } from "lucide-react";
+import { Loader2, Upload, FileSpreadsheet, Check, X, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface DialList {
   id: string;
@@ -29,9 +30,32 @@ interface ParseResult {
   rows: Record<string, string>[];
   count: number;
   preview: Record<string, string>[];
+  suggested_name: string;
+  field_map: Record<string, string>;
+  quality_notes: string[];
+  valid_count: number;
+  skip_count: number;
 }
 
-type Step = "idle" | "parsing" | "preview" | "saving";
+type Step = "idle" | "analyzing" | "confirm" | "saving";
+
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/[^\d]/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  if (digits.length > 10) return `+${digits}`;
+  return digits;
+}
+
+function isValidPhone(raw: string): boolean {
+  const digits = raw.replace(/[^\d]/g, "");
+  return digits.length >= 7 && digits.length <= 15;
+}
+
+const ROLE_COLORS: Record<string, "default" | "secondary" | "outline"> = {
+  phone: "default",
+  name: "secondary",
+};
 
 export default function ListsPage() {
   const { user } = useAuth();
@@ -44,9 +68,8 @@ export default function ListsPage() {
   const [listName, setListName] = useState("");
   const [fileName, setFileName] = useState("");
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
-  const [phoneCol, setPhoneCol] = useState("");
-  const [nameCol, setNameCol] = useState("");
   const [allRows, setAllRows] = useState<Record<string, string>[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const loadLists = async () => {
     const { data } = await supabase
@@ -65,9 +88,8 @@ export default function ListsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setStep("parsing");
+    setStep("analyzing");
     setFileName(file.name);
-    setListName(file.name.replace(/\.csv$/i, ""));
 
     try {
       const text = await file.text();
@@ -78,9 +100,8 @@ export default function ListsPage() {
 
       setParseResult(data);
       setAllRows(data.rows);
-      setPhoneCol(data.phone_column || "");
-      setNameCol(data.name_column || "");
-      setStep("preview");
+      setListName(data.suggested_name || file.name.replace(/\.csv$/i, ""));
+      setStep("confirm");
     } catch (err: any) {
       toast({ title: "Parse error", description: err.message, variant: "destructive" });
       setStep("idle");
@@ -88,11 +109,23 @@ export default function ListsPage() {
   };
 
   const handleSave = async () => {
-    if (!parseResult || !phoneCol) return;
+    if (!parseResult || !parseResult.phone_column) return;
     setStep("saving");
 
+    const phoneCol = parseResult.phone_column;
+
+    // Filter & normalize
+    const cleanedRows = allRows
+      .filter((row) => {
+        const phone = row[phoneCol] || "";
+        return isValidPhone(phone);
+      })
+      .map((row) => ({
+        ...row,
+        [phoneCol]: normalizePhone(row[phoneCol] || ""),
+      }));
+
     try {
-      // Get org_id
       const { data: profile } = await supabase
         .from("profiles")
         .select("org_id")
@@ -100,24 +133,22 @@ export default function ListsPage() {
         .single();
       if (!profile?.org_id) throw new Error("No organization found");
 
-      // Insert dial_list
       const { data: list, error: listErr } = await supabase
         .from("dial_lists")
         .insert({
           org_id: profile.org_id,
           name: listName,
           file_name: fileName,
-          row_count: allRows.length,
-          detected_fields: parseResult.detected_fields,
+          row_count: cleanedRows.length,
+          detected_fields: parseResult.field_map ? parseResult.field_map : parseResult.detected_fields,
         } as any)
         .select()
         .single();
       if (listErr) throw listErr;
 
-      // Insert rows in batches
       const batchSize = 500;
-      for (let i = 0; i < allRows.length; i += batchSize) {
-        const batch = allRows.slice(i, i + batchSize).map((row) => ({
+      for (let i = 0; i < cleanedRows.length; i += batchSize) {
+        const batch = cleanedRows.slice(i, i + batchSize).map((row) => ({
           list_id: (list as any).id,
           row_data: row,
         }));
@@ -125,12 +156,12 @@ export default function ListsPage() {
         if (rowErr) throw rowErr;
       }
 
-      toast({ title: "List saved", description: `${allRows.length} contacts imported.` });
+      toast({ title: "List imported", description: `${cleanedRows.length} contacts imported successfully.` });
       resetUpload();
       loadLists();
     } catch (err: any) {
       toast({ title: "Save error", description: err.message, variant: "destructive" });
-      setStep("preview");
+      setStep("confirm");
     }
   };
 
@@ -138,10 +169,9 @@ export default function ListsPage() {
     setStep("idle");
     setParseResult(null);
     setAllRows([]);
-    setPhoneCol("");
-    setNameCol("");
     setListName("");
     setFileName("");
+    setPreviewOpen(false);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -170,7 +200,7 @@ export default function ListsPage() {
               <Upload className="h-8 w-8 text-muted-foreground" />
               <div>
                 <p className="font-medium text-foreground">Drop a CSV file or click to upload</p>
-                <p className="text-sm text-muted-foreground">We'll auto-detect columns like name, phone, state, etc.</p>
+                <p className="text-sm text-muted-foreground">AI will automatically detect columns and organize your data.</p>
               </div>
               <input
                 ref={fileRef}
@@ -184,99 +214,117 @@ export default function ListsPage() {
         </Card>
       )}
 
-      {step === "parsing" && (
+      {/* AI Analyzing */}
+      {step === "analyzing" && (
         <Card>
-          <CardContent className="flex items-center justify-center gap-3 p-12">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <span className="text-muted-foreground">Analyzing {fileName}...</span>
+          <CardContent className="flex flex-col items-center justify-center gap-4 p-12">
+            <div className="relative">
+              <Sparkles className="h-8 w-8 text-primary animate-pulse" />
+            </div>
+            <div className="text-center space-y-2">
+              <p className="font-medium text-foreground">AI is analyzing your file...</p>
+              <p className="text-sm text-muted-foreground">Detecting columns, mapping fields, and checking data quality</p>
+            </div>
+            <div className="w-64 space-y-2">
+              <Skeleton className="h-2 w-full" />
+              <Skeleton className="h-2 w-3/4" />
+              <Skeleton className="h-2 w-1/2" />
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Preview & confirm */}
-      {step === "preview" && parseResult && (
+      {/* AI Confirm Card */}
+      {step === "confirm" && parseResult && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Eye className="h-5 w-5" />
-              Preview — {parseResult.count} rows detected
+              <Sparkles className="h-5 w-5 text-primary" />
+              Ready to Import
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>List Name</Label>
-                <Input value={listName} onChange={(e) => setListName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Phone Column <span className="text-destructive">*</span></Label>
-                <Select value={phoneCol} onValueChange={setPhoneCol}>
-                  <SelectTrigger><SelectValue placeholder="Select phone column" /></SelectTrigger>
-                  <SelectContent>
-                    {parseResult.detected_fields.map((f) => (
-                      <SelectItem key={f} value={f}>{f}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Name Column</Label>
-                <Select value={nameCol} onValueChange={setNameCol}>
-                  <SelectTrigger><SelectValue placeholder="Select name column" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none_">(none)</SelectItem>
-                    {parseResult.detected_fields.map((f) => (
-                      <SelectItem key={f} value={f}>{f}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* List Name */}
+            <div className="space-y-2">
+              <Label>List Name</Label>
+              <Input value={listName} onChange={(e) => setListName(e.target.value)} />
             </div>
 
-            <div>
-              <Label className="mb-2 block">Detected Fields</Label>
-              <div className="flex flex-wrap gap-2">
-                {parseResult.detected_fields.map((f) => (
-                  <Badge
-                    key={f}
-                    variant={f === phoneCol ? "default" : f === nameCol ? "secondary" : "outline"}
-                  >
-                    {f}
-                    {f === phoneCol && " (phone)"}
-                    {f === nameCol && " (name)"}
-                  </Badge>
+            {/* Field Map Badges */}
+            {parseResult.field_map && Object.keys(parseResult.field_map).length > 0 && (
+              <div>
+                <Label className="mb-2 block">Detected Fields</Label>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(parseResult.field_map).map(([header, role]) => (
+                    <Badge
+                      key={header}
+                      variant={ROLE_COLORS[role] || "outline"}
+                    >
+                      {role}: {header}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Quality Summary */}
+            <div className="flex items-center gap-4 text-sm">
+              <span className="font-medium text-foreground">
+                {parseResult.valid_count} valid contacts
+              </span>
+              {parseResult.skip_count > 0 && (
+                <span className="text-muted-foreground">
+                  • {parseResult.skip_count} skipped (no phone)
+                </span>
+              )}
+            </div>
+
+            {/* Quality Notes */}
+            {parseResult.quality_notes && parseResult.quality_notes.length > 0 && (
+              <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-1">
+                {parseResult.quality_notes.map((note, i) => (
+                  <p key={i} className="text-xs text-muted-foreground">• {note}</p>
                 ))}
               </div>
-            </div>
+            )}
 
-            <div>
-              <Label className="mb-2 block">Sample Data (first 5 rows)</Label>
-              <ScrollArea className="max-h-[240px] rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {parseResult.detected_fields.map((f) => (
-                        <TableHead key={f} className="whitespace-nowrap">{f}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {parseResult.preview.map((row, i) => (
-                      <TableRow key={i}>
+            {/* Collapsible Preview */}
+            <Collapsible open={previewOpen} onOpenChange={setPreviewOpen}>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground">
+                  {previewOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  Preview data
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <ScrollArea className="max-h-[240px] rounded-lg border mt-2">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
                         {parseResult.detected_fields.map((f) => (
-                          <TableCell key={f} className="whitespace-nowrap">{row[f]}</TableCell>
+                          <TableHead key={f} className="whitespace-nowrap">{f}</TableHead>
                         ))}
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
-            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {parseResult.preview.map((row, i) => (
+                        <TableRow key={i}>
+                          {parseResult.detected_fields.map((f) => (
+                            <TableCell key={f} className="whitespace-nowrap">{row[f]}</TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              </CollapsibleContent>
+            </Collapsible>
 
+            {/* Actions */}
             <div className="flex gap-3">
-              <Button onClick={handleSave} disabled={!phoneCol || !listName.trim()}>
+              <Button onClick={handleSave} disabled={!parseResult.phone_column || !listName.trim()}>
                 <Check className="mr-2 h-4 w-4" />
-                Confirm & Save ({parseResult.count} contacts)
+                Import {parseResult.valid_count} Contacts
               </Button>
               <Button variant="outline" onClick={resetUpload}>
                 <X className="mr-2 h-4 w-4" />
@@ -291,7 +339,7 @@ export default function ListsPage() {
         <Card>
           <CardContent className="flex items-center justify-center gap-3 p-12">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <span className="text-muted-foreground">Saving list...</span>
+            <span className="text-muted-foreground">Importing contacts...</span>
           </CardContent>
         </Card>
       )}
@@ -318,8 +366,10 @@ export default function ListsPage() {
                   </div>
                   {l.detected_fields && (
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {(l.detected_fields as string[]).map((f) => (
-                        <Badge key={f} variant="outline" className="text-[10px]">{f}</Badge>
+                      {(Array.isArray(l.detected_fields) ? l.detected_fields : Object.entries(l.detected_fields as Record<string, string>)).map((f, i) => (
+                        <Badge key={i} variant="outline" className="text-[10px]">
+                          {Array.isArray(l.detected_fields) ? f : `${(f as [string, string])[1]}: ${(f as [string, string])[0]}`}
+                        </Badge>
                       ))}
                     </div>
                   )}
