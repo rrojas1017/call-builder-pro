@@ -1,22 +1,21 @@
 
 
-## Update BLAND_API_KEY and Verify Connection
+## Fix Bland API 403 Error -- Update API Base URL
 
-### Step 1: Update the Secret
-Save the new Bland API key (`org_a31821cead...`) as the `BLAND_API_KEY` secret in the project, replacing the old/invalid key.
+### Problem
+The edge functions are calling `https://api.bland.ai/v1/calls`, but Bland's documentation shows the correct endpoint is `https://us.api.bland.ai/v1/calls`. The old URL returns a 403 Forbidden with an HTML error page instead of JSON.
 
-### Step 2: Verify the Authorization Header Format
-Review how the Bland API key is being sent in the edge functions. Currently the code sends:
-```
-Authorization: blandApiKey
-```
-Bland.ai may expect a different format (e.g., no prefix, or a specific prefix). If the 403 persists after updating the key, we will check the Bland API docs for the correct header format and update accordingly.
+### Solution
+Update the Bland API base URL in both edge functions that make outbound calls:
 
-### Step 3: Run a Test Call
-Trigger a test call via the edge function to confirm the 403 error is resolved and calls are initiated successfully.
+1. **`supabase/functions/run-test-run/index.ts`** (line 255): Change `https://api.bland.ai/v1/calls` to `https://us.api.bland.ai/v1/calls`
+2. **`supabase/functions/tick-campaign/index.ts`** (line 112): Change `https://api.bland.ai/v1/calls` to `https://us.api.bland.ai/v1/calls`
+
+### Verification
+After deploying, run a Quick Test call to confirm the 403 is resolved and calls are placed successfully.
 
 ### Technical Details
-- **Files involved**: `supabase/functions/run-test-run/index.ts`, `supabase/functions/tick-campaign/index.ts`
-- **Secret to update**: `BLAND_API_KEY`
-- **Validation**: Check edge function logs after test call for successful Bland API response
+- The `Authorization` header format (`Authorization: <api_key>`) is already correct per Bland's docs
+- Only the base URL needs to change from `api.bland.ai` to `us.api.bland.ai`
+- Two files need this one-line change each
 
