@@ -252,7 +252,7 @@ serve(async (req) => {
           }
         }
 
-        const blandResp = await fetch("https://api.bland.ai/v1/calls", {
+        const blandResp = await fetch("https://us.api.bland.ai/v1/calls", {
           method: "POST",
           headers: { Authorization: blandApiKey, "Content-Type": "application/json" },
           body: JSON.stringify(blandPayload),
