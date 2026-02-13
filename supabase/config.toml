@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.list-bland-voices]
 verify_jwt = false
+
+[functions.generate-voice-sample]
+verify_jwt = false

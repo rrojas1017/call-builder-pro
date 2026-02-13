@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, Shield, Target, Users, Mic, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBlandVoices } from "@/hooks/useBlandVoices";
+import { VoicePlayButton } from "@/components/VoicePlayButton";
 
 const STEPS = ["Build Your Agent", "Clarify Details", "Review & Save"];
 
@@ -318,7 +319,10 @@ export default function CreateAgentPage() {
                         : "border-border hover:border-primary/50"
                     )}
                   >
-                    <p className="text-sm font-medium text-foreground">{voice.name}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-foreground">{voice.name}</p>
+                      <VoicePlayButton voiceId={voice.voice_id} sampleText={spec?.opening_line || undefined} />
+                    </div>
                     {voice.description && <p className="text-xs text-muted-foreground">{voice.description}</p>}
                     {voice.is_custom && <span className="text-xs text-primary">Custom clone</span>}
                   </button>
