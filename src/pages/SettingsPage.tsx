@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrgContext } from "@/hooks/useOrgContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +10,7 @@ import { Loader2, Save } from "lucide-react";
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const { activeOrgId, isAdmin } = useOrgContext();
   const { toast } = useToast();
   const [fullName, setFullName] = useState("");
   const [orgName, setOrgName] = useState("");
@@ -21,21 +23,28 @@ export default function SettingsPage() {
       const { data: profile } = await supabase.from("profiles").select("full_name, org_id").eq("id", user.id).single();
       if (profile) {
         setFullName(profile.full_name || "");
-        if (profile.org_id) {
-          const { data: org } = await supabase.from("organizations").select("name").eq("id", profile.org_id).single();
+        const orgIdToUse = activeOrgId || profile.org_id;
+        if (orgIdToUse) {
+          const { data: org } = await supabase.from("organizations").select("name").eq("id", orgIdToUse).single();
           setOrgName(org?.name || "");
         }
       }
       setLoading(false);
     };
     load();
-  }, [user]);
+  }, [user, activeOrgId]);
 
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
     try {
       await supabase.from("profiles").update({ full_name: fullName }).eq("id", user.id);
+
+      // Save org name if admin
+      if (isAdmin && activeOrgId && orgName.trim()) {
+        await supabase.from("organizations").update({ name: orgName.trim() }).eq("id", activeOrgId);
+      }
+
       toast({ title: "Settings saved" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -66,7 +75,15 @@ export default function SettingsPage() {
         </div>
         <div className="space-y-2">
           <Label>Organization</Label>
-          <Input value={orgName} disabled className="opacity-60" />
+          <Input
+            value={orgName}
+            onChange={(e) => setOrgName(e.target.value)}
+            disabled={!isAdmin}
+            className={!isAdmin ? "opacity-60" : ""}
+          />
+          {!isAdmin && (
+            <p className="text-xs text-muted-foreground">Only admins can edit the organization name.</p>
+          )}
         </div>
         <Button onClick={handleSave} disabled={saving}>
           {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrgContext } from "@/hooks/useOrgContext";
 import {
   Bot, Phone, Megaphone, CheckCircle, Loader2, TrendingUp, TrendingDown,
   Clock, DollarSign, BarChart3, ArrowRight, PhoneIncoming, PhoneOutgoing,
@@ -85,6 +86,7 @@ function pctChange(current: number, previous: number): number | null {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const { activeOrgId } = useOrgContext();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<{ full_name: string; org_id: string } | null>(null);
   const [period, setPeriod] = useState<Period>("7");
@@ -98,7 +100,7 @@ export default function DashboardPage() {
 
   // ── Data Fetching ──
   useEffect(() => {
-    if (!user) return;
+    if (!user || !activeOrgId) return;
     let cancelled = false;
 
     const load = async () => {
@@ -110,8 +112,8 @@ export default function DashboardPage() {
         .single();
       if (cancelled) return;
       setProfile(prof);
-      if (!prof?.org_id) { setLoading(false); return; }
 
+      const orgId = activeOrgId;
       const cutoff = getCutoff(period);
       const prevCutoff = period !== "all" ? startOfDay(subDays(new Date(), Number(period) * 2)) : null;
 
@@ -119,7 +121,7 @@ export default function DashboardPage() {
       let callsQ = supabase
         .from("calls")
         .select("id, created_at, direction, outcome, duration_seconds, cost_estimate_usd, evaluation, project_id, campaign_id")
-        .eq("org_id", prof.org_id)
+        .eq("org_id", orgId)
         .order("created_at", { ascending: false })
         .limit(1000);
       if (cutoff) callsQ = callsQ.gte("created_at", cutoff.toISOString());
@@ -127,14 +129,14 @@ export default function DashboardPage() {
       let prevCallsQ = supabase
         .from("calls")
         .select("id, created_at, direction, outcome, duration_seconds, cost_estimate_usd, evaluation, project_id, campaign_id")
-        .eq("org_id", prof.org_id)
+        .eq("org_id", orgId)
         .limit(1000);
       if (prevCutoff && cutoff) {
         prevCallsQ = prevCallsQ.gte("created_at", prevCutoff.toISOString()).lt("created_at", cutoff.toISOString());
       }
 
       const [agentsRes, specsRes, callsRes, prevCallsRes, campaignsRes, contactsRes] = await Promise.all([
-        supabase.from("agent_projects").select("id, name, org_id").eq("org_id", prof.org_id),
+        supabase.from("agent_projects").select("id, name, org_id").eq("org_id", orgId),
         supabase.from("agent_specs").select("project_id, mode"),
         callsQ,
         period !== "all" ? prevCallsQ : Promise.resolve({ data: [] as CallRow[] }),
@@ -154,7 +156,7 @@ export default function DashboardPage() {
 
     load();
     return () => { cancelled = true; };
-  }, [user, period]);
+  }, [user, period, activeOrgId]);
 
   // ── Derived data ──
   const specMap = useMemo(() => {

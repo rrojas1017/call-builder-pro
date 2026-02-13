@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrgContext } from "@/hooks/useOrgContext";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,7 @@ const TOPUP_AMOUNTS = [25, 50, 100, 250];
 
 export default function BillingPage() {
   const { user } = useAuth();
+  const { activeOrgId } = useOrgContext();
   const { toast } = useToast();
   const [balance, setBalance] = useState<number>(0);
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
@@ -27,23 +29,12 @@ export default function BillingPage() {
   const [customAmount, setCustomAmount] = useState("");
 
   const loadBilling = async () => {
-    if (!user) return;
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("org_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.org_id) {
-      setLoading(false);
-      return;
-    }
+    if (!user || !activeOrgId) return;
 
     const { data: org } = await supabase
       .from("organizations")
       .select("credits_balance")
-      .eq("id", profile.org_id)
+      .eq("id", activeOrgId)
       .single();
 
     setBalance(org?.credits_balance ?? 0);
@@ -51,7 +42,7 @@ export default function BillingPage() {
     const { data: txns } = await supabase
       .from("credit_transactions")
       .select("*")
-      .eq("org_id", profile.org_id)
+      .eq("org_id", activeOrgId)
       .order("created_at", { ascending: false })
       .limit(50);
 
@@ -61,7 +52,7 @@ export default function BillingPage() {
 
   useEffect(() => {
     loadBilling();
-  }, [user]);
+  }, [user, activeOrgId]);
 
   // Auto-refresh after returning from Stripe
   useEffect(() => {

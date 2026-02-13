@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrgContext } from "@/hooks/useOrgContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +30,7 @@ interface Invitation {
 
 export default function TeamPage() {
   const { user } = useAuth();
+  const { activeOrgId } = useOrgContext();
   const { toast } = useToast();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -37,29 +39,15 @@ export default function TeamPage() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<string>("viewer");
   const [inviting, setInviting] = useState(false);
-  const [userOrgId, setUserOrgId] = useState<string | null>(null);
 
   const loadTeam = async () => {
-    if (!user) return;
-
-    // Get user's org_id
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("org_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.org_id) {
-      setLoading(false);
-      return;
-    }
-    setUserOrgId(profile.org_id);
+    if (!user || !activeOrgId) return;
 
     // Get all profiles in the org
     const { data: profiles } = await supabase
       .from("profiles")
       .select("id, full_name, org_id")
-      .eq("org_id", profile.org_id);
+      .eq("org_id", activeOrgId);
 
     // Get roles for those users
     const { data: roles } = await supabase
@@ -82,7 +70,7 @@ export default function TeamPage() {
     const { data: invs } = await supabase
       .from("org_invitations")
       .select("*")
-      .eq("org_id", profile.org_id)
+      .eq("org_id", activeOrgId)
       .eq("status", "pending")
       .order("created_at", { ascending: false });
 
@@ -92,14 +80,14 @@ export default function TeamPage() {
 
   useEffect(() => {
     loadTeam();
-  }, [user]);
+  }, [user, activeOrgId]);
 
   const handleInvite = async () => {
-    if (!user || !userOrgId || !inviteEmail) return;
+    if (!user || !activeOrgId || !inviteEmail) return;
     setInviting(true);
     try {
       const { error } = await supabase.from("org_invitations").insert({
-        org_id: userOrgId,
+        org_id: activeOrgId,
         email: inviteEmail.toLowerCase().trim(),
         role: inviteRole as "admin" | "analyst" | "viewer" | "super_admin",
         invited_by: user.id,
