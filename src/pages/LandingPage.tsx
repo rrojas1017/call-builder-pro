@@ -21,6 +21,7 @@ import {
   Rocket,
   Menu,
   X,
+  Timer,
 } from "lucide-react";
 
 const fadeUp = {
@@ -142,6 +143,7 @@ export default function LandingPage() {
           </Link>
 
           <div className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
+            <a href="#guarantee" className="hover:text-foreground transition-colors">Guarantee</a>
             <a href="#features" className="hover:text-foreground transition-colors">Features</a>
             <a href="#how-it-works" className="hover:text-foreground transition-colors">How It Works</a>
             <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
@@ -166,6 +168,7 @@ export default function LandingPage() {
 
         {mobileMenuOpen && (
           <div className="md:hidden bg-background/95 backdrop-blur-xl border-b border-border px-4 pb-4 space-y-3">
+            <a href="#guarantee" className="block text-sm text-muted-foreground py-2" onClick={() => setMobileMenuOpen(false)}>Guarantee</a>
             <a href="#features" className="block text-sm text-muted-foreground py-2" onClick={() => setMobileMenuOpen(false)}>Features</a>
             <a href="#how-it-works" className="block text-sm text-muted-foreground py-2" onClick={() => setMobileMenuOpen(false)}>How It Works</a>
             <a href="#faq" className="block text-sm text-muted-foreground py-2" onClick={() => setMobileMenuOpen(false)}>FAQ</a>
@@ -223,7 +226,49 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Metrics */}
+      {/* 10-Minute Guarantee */}
+      <section id="guarantee" className="py-16 px-4">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={fadeUp}
+          custom={0}
+          className="max-w-2xl mx-auto surface-elevated rounded-2xl p-10 text-center"
+        >
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary mb-6">
+            <Timer className="h-7 w-7" />
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">
+            The Fastest, Simplest Way to Deploy an AI Agent
+          </h2>
+          <p className="text-lg text-muted-foreground mb-6">
+            If you don't have a fully functional, well-behaved agent in{" "}
+            <span className="font-bold text-primary">10 minutes</span>, we'll
+            give you <span className="font-bold text-primary">$100 in credit</span>.
+          </p>
+          <Button size="lg" asChild className="px-8 text-base mb-8">
+            <Link to="/auth">Start Your 10-Minute Clock</Link>
+          </Button>
+          <Accordion type="single" collapsible className="text-left">
+            <AccordionItem value="terms" className="border-none">
+              <AccordionTrigger className="text-xs text-muted-foreground hover:no-underline justify-center gap-2 py-2">
+                Terms &amp; Conditions
+              </AccordionTrigger>
+              <AccordionContent className="text-xs text-muted-foreground space-y-2">
+                <ul className="list-disc pl-5 space-y-1.5">
+                  <li>"Fully functional" means the agent can hold a natural conversation, follow your script, and handle basic objections as demonstrated in a test call via the Gym.</li>
+                  <li>The 10-minute clock starts when you begin the agent creation wizard and stops when you run your first successful test call.</li>
+                  <li>Credit is applied to your VoiceForge account and can be used toward calling minutes.</li>
+                  <li>Limit one claim per account. Must be a new account created after this promotion launches.</li>
+                  <li>To claim, contact support with your account email and a screenshot of your wizard start time.</li>
+                </ul>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </motion.div>
+      </section>
+
       <section className="py-16 border-y border-border bg-muted/30">
         <div className="max-w-5xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
           {metrics.map((m) => (
