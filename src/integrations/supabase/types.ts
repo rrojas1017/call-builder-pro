@@ -116,6 +116,7 @@ export type Database = {
           qualification_rules: Json | null
           research_sources: Json | null
           retry_policy: Json | null
+          sms_enabled: boolean
           speaking_speed: number | null
           success_definition: string | null
           temperature: number | null
@@ -149,6 +150,7 @@ export type Database = {
           qualification_rules?: Json | null
           research_sources?: Json | null
           retry_policy?: Json | null
+          sms_enabled?: boolean
           speaking_speed?: number | null
           success_definition?: string | null
           temperature?: number | null
@@ -182,6 +184,7 @@ export type Database = {
           qualification_rules?: Json | null
           research_sources?: Json | null
           retry_policy?: Json | null
+          sms_enabled?: boolean
           speaking_speed?: number | null
           success_definition?: string | null
           temperature?: number | null
@@ -736,6 +739,92 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_conversations: {
+        Row: {
+          created_at: string
+          from_number: string
+          id: string
+          org_id: string
+          project_id: string | null
+          status: string
+          to_number: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          from_number: string
+          id?: string
+          org_id: string
+          project_id?: string | null
+          status?: string
+          to_number: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          from_number?: string
+          id?: string
+          org_id?: string
+          project_id?: string | null
+          status?: string
+          to_number?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_conversations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_conversations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_messages: {
+        Row: {
+          body: string
+          clicksend_message_id: string | null
+          conversation_id: string
+          created_at: string
+          direction: string
+          id: string
+          status: string
+        }
+        Insert: {
+          body: string
+          clicksend_message_id?: string | null
+          conversation_id: string
+          created_at?: string
+          direction?: string
+          id?: string
+          status?: string
+        }
+        Update: {
+          body?: string
+          clicksend_message_id?: string | null
+          conversation_id?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "sms_conversations"
             referencedColumns: ["id"]
           },
         ]
