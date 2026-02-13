@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, Save, ArrowLeft, Phone, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { VoicePlayButton } from "@/components/VoicePlayButton";
 
 export default function EditAgentPage() {
   const { id } = useParams<{ id: string }>();
@@ -144,7 +145,10 @@ export default function EditAgentPage() {
                     : "border-border hover:border-primary/50"
                 )}
               >
-                <p className="text-sm font-medium text-foreground">{voice.name}</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-foreground">{voice.name}</p>
+                  <VoicePlayButton voiceId={voice.voice_id} sampleText={openingLine || undefined} />
+                </div>
                 {voice.description && <p className="text-xs text-muted-foreground">{voice.description}</p>}
                 {voice.is_custom && <span className="text-xs text-primary">Custom clone</span>}
               </button>
