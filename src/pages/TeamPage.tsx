@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrgContext } from "@/hooks/useOrgContext";
+import { useUserRole } from "@/hooks/useUserRole";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UserPlus, Trash2, Users } from "lucide-react";
+import { Loader2, UserPlus, Trash2, Users, Plus } from "lucide-react";
+import CreateUserDialog from "@/components/CreateUserDialog";
 
 interface TeamMember {
   id: string;
@@ -32,10 +34,12 @@ export default function TeamPage() {
   const { user } = useAuth();
   const { activeOrgId } = useOrgContext();
   const { toast } = useToast();
+  const { isAdmin } = useUserRole();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [createUserOpen, setCreateUserOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<string>("viewer");
   const [inviting, setInviting] = useState(false);
@@ -182,10 +186,15 @@ export default function TeamPage() {
           </h1>
           <p className="text-muted-foreground mt-1">Manage your organization's members and roles.</p>
         </div>
-        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-          <DialogTrigger asChild>
-            <Button><UserPlus className="mr-2 h-4 w-4" /> Invite Member</Button>
-          </DialogTrigger>
+        {isAdmin && (
+          <div className="flex gap-2">
+            <Button onClick={() => setCreateUserOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" /> Create User
+            </Button>
+            <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline"><UserPlus className="mr-2 h-4 w-4" /> Invite Member</Button>
+              </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Invite a Team Member</DialogTitle>
@@ -219,8 +228,15 @@ export default function TeamPage() {
             </div>
           </DialogContent>
         </Dialog>
+          </div>
+        )}
       </div>
-
+      <CreateUserDialog
+        open={createUserOpen}
+        onOpenChange={setCreateUserOpen}
+        orgId={activeOrgId!}
+        onSuccess={loadTeam}
+      />
       {/* Members Table */}
       <div className="surface-elevated rounded-xl overflow-hidden">
         <Table>
