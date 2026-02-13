@@ -112,6 +112,16 @@ RULES:
     prompt += `\n\nDISCLOSURE (read at the start of the call):\n"${discl}"`;
   }
 
+  // Inject name confirmation after consent if not already present
+  if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('confirm') && f.toLowerCase().includes('name'))) {
+    const consentIdx = fields.findIndex((f: string) => f.toLowerCase().includes('consent'));
+    if (consentIdx >= 0) {
+      fields.splice(consentIdx + 1, 0, "And just so I have it right, can I confirm your full name?");
+    } else {
+      fields.unshift("And just so I have it right, can I confirm your full name?");
+    }
+  }
+
   if (fields.length > 0) {
     prompt += `\n\nINFORMATION TO COLLECT (in this order):\n${fields.map((f, i) => `${i + 1}. ${f}`).join("\n")}`;
     prompt += `\n\nZIP CODE VALIDATION: When collecting zip code, confirm it is exactly 5 digits. If the caller gives fewer or more digits, ask them to double-check.`;
@@ -188,7 +198,7 @@ If outside Open Enrollment:
   }
 
   prompt += `\n\nFALLBACK: If you cannot collect required information after 2 attempts, note what's missing and end politely.`;
-  prompt += `\n\nSUMMARY: After the call, provide a JSON summary with all collected fields.`;
+  prompt += `\n\nSUMMARY: After the call, provide a JSON summary with all collected fields including caller_name.`;
 
   return prompt;
 }

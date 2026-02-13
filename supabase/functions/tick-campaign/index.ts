@@ -202,7 +202,7 @@ serve(async (req) => {
             contact_id: contact.id,
             version: spec.version,
           },
-          summary_prompt: "Return JSON with: consent (bool), state, age (int), household_size (int), income_est_annual (int), coverage_type, qualified (bool), disqual_reason, transfer_attempted (bool), transfer_completed (bool)",
+          summary_prompt: "Return JSON with: consent (bool), caller_name, state, age (int), household_size (int), income_est_annual (int), coverage_type, qualified (bool), disqual_reason, transfer_attempted (bool), transfer_completed (bool)",
         };
 
         if (spec.transfer_phone_number) {
