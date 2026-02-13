@@ -13,20 +13,32 @@ function shouldIncludeFplTable(useCase: string | null | undefined): boolean {
     .some(kw => lower.includes(kw));
 }
 
+function replaceTemplateVars(text: string, contact: { name: string; phone: string }): string {
+  const parts = (contact.name || "").trim().split(/\s+/);
+  const firstName = parts[0] || "";
+  const lastName = parts.length > 1 ? parts[parts.length - 1] : "";
+  return text
+    .replace(/\{\{first_name\}\}/gi, firstName)
+    .replace(/\{\{last_name\}\}/gi, lastName)
+    .replace(/\{\{name\}\}/gi, contact.name || "")
+    .replace(/\{\{phone\}\}/gi, contact.phone || "");
+}
+
 function buildTaskPrompt(spec: any): string {
   const discl = spec.disclosure_text || "This call may be recorded for quality and compliance purposes.";
-  const fields = spec.must_collect_fields || ["consent", "state", "age", "household_size", "income_est_annual", "coverage_type"];
+  const fields = spec.must_collect_fields || ["consent", "state", "zip_code", "age", "household_size", "income_est_annual", "coverage_type"];
   const transferNum = spec.transfer_phone_number || "";
   const fieldLabels: Record<string, string> = {
     consent: "Confirm they requested information and obtain verbal consent",
     state: "What state do you live in?",
+    zip_code: "And what's your zip code? (Confirm it's exactly 5 digits)",
     age: "How old are you?",
     household_size: "How many people are in your household?",
     income_est_annual: "What is your estimated annual household income?",
     coverage_type: "Do you currently have health insurance? (uninsured, private, employer, Medicare, Medicaid)",
   };
 
-  let prompt = `You are a professional ACA pre-qualification screening agent.
+  let prompt = `You are a friendly, knowledgeable health benefits advisor having a natural phone conversation.
 
 DISCLOSURE (read verbatim): "${discl}"
 
@@ -85,9 +97,11 @@ QUALIFICATION:
 - Medicaid → tag, no transfer
 - Uninsured/private + income within 100-400% FPL${shouldIncludeFplTable(spec.use_case) ? ' (use table above)' : ''} → qualified, transfer
 - ENROLLMENT TIMING: If outside Open Enrollment (Nov 1 - Dec 15), caller MUST have a QLE to enroll. No QLE = inform of next Open Enrollment. Do NOT qualify based on income alone.
+- If qualified, say: "That sounds really promising -- I think you'd qualify for some help here. Let me connect you with someone who can walk you through everything."
+- TRANSFER RULE: Keep your transfer announcement to ONE short sentence. Do not monologue before transferring.
 ${transferNum ? `- Transfer to: ${transferNum}` : ""}
 
-After call, provide JSON: consent, state, age, household_size, income_est_annual, coverage_type, qualifying_life_event, qualified, disqual_reason, transfer_attempted, transfer_completed`;
+After call, provide JSON: consent, state, zip_code, age, household_size, income_est_annual, coverage_type, qualifying_life_event, qualified, disqual_reason, transfer_attempted, transfer_completed`;
 
   return prompt;
 }
@@ -175,7 +189,10 @@ serve(async (req) => {
         const payload: any = {
           phone_number: contact.phone,
           task,
-          first_sentence: `Hi ${contact.name}, this is a quick call about health coverage options you requested information about. Do you have a moment?`,
+          first_sentence: replaceTemplateVars(
+            spec.opening_line || "Hey {{first_name}}, this is just a quick follow-up on the health coverage info you were looking into. Got a sec?",
+            contact
+          ),
           record: true,
           webhook: webhookUrl,
           metadata: {
