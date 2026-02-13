@@ -1,74 +1,48 @@
 
-## Add 2025 Federal Poverty Level (FPL) Guidelines to Agent Prompt
+## Conditionally Apply FPL Guidelines Only to Health/ACA Agents
 
-### Current State
-The agent prompts in `src/lib/buildTaskPrompt.ts` and `supabase/functions/` currently instruct the AI to qualify callers if their "income is within 100-400% of Federal Poverty Level," but there's no reference data. The AI relies on its training knowledge, which may be inaccurate or outdated.
+### Problem
+The 2025 Federal Poverty Level (FPL) guidelines are currently being injected into **all agent prompts**, regardless of their use case. This is inappropriate for non-health-related agents (e.g., sales, lead generation, survey agents) that don't need FPL qualification logic.
 
-### Goal
-Embed 2025 Federal Poverty Level guidelines directly into the agent task prompt so the AI has explicit thresholds to calculate whether a caller's income qualifies based on their household size.
+### Solution
+Conditionally include the FPL table only when the agent's `use_case` field indicates it's a health-related or ACA agent.
 
-### Implementation Plan
+### Implementation
 
-**1. Create a new utility file: `src/lib/fplThresholds.ts`**
-   - Define a constant `FPL_2025_THRESHOLDS` object with 2025 federal poverty levels for household sizes 1-8+ 
-   - Include the actual HHS-issued poverty guidelines (e.g., 1 person: $14,580, 2 people: $19,720, etc.)
-   - Add a helper function `getFplRange(householdSize: number, percentageRange: [number, number])` that calculates the income range (100-400% FPL) for a given household size
-   - Export both for use in multiple places
+**1. Update `src/lib/fplThresholds.ts`**
+   - Add a new helper function `shouldIncludeFplTable(useCase: string | null | undefined): boolean`
+   - Return `true` only if `use_case` contains health-related keywords: 'aca', 'health', 'insurance', 'medicaid', 'medicare', 'wellness'
+   - Export this function for use in prompt builders
 
 **2. Update `src/lib/buildTaskPrompt.ts`**
-   - Import FPL thresholds
-   - Add a new section to the prompt called `FEDERAL POVERTY LEVEL THRESHOLDS` that displays a clear table of:
-     - Household size → 100% FPL amount → 400% FPL amount (the qualification range)
-   - Modify the QUALIFICATION LOGIC section to reference this table explicitly:
-     - "Use the table below to determine if their income falls within the 100-400% FPL range based on their household size."
+   - Import the new `shouldIncludeFplTable` function
+   - Update the `AgentSpec` interface to include the `use_case` field
+   - Conditionally include the FPL table section only if `shouldIncludeFplTable(spec.use_case)` returns true
+   - Non-ACA agents will skip the FPL section entirely
 
-**3. Update `supabase/functions/tick-campaign/index.ts`**
-   - Import the FPL utility or embed the thresholds directly
-   - Add the FPL table to the task prompt generation (same format as buildTaskPrompt)
+**3. Update `supabase/functions/run-test-run/index.ts`**
+   - Update the `AgentSpec` interface to include `use_case` field
+   - Import the FPL utility function
+   - Conditionally include the FPL table in the `buildTaskPrompt` function only for health-related agents
+   - This ensures test runs respect the agent's actual use case
 
-**4. Update `supabase/functions/run-test-run/index.ts`**
-   - Import the FPL utility or embed the thresholds directly  
-   - Add the FPL table to the task prompt generation in the `buildTaskPrompt` function
+**4. Update `supabase/functions/tick-campaign/index.ts`**
+   - Add conditional logic in the `buildTaskPrompt` function to include FPL only if the spec's `use_case` is health-related
+   - Retrieve the `use_case` from the agent spec when building the prompt
 
-### FPL Data (2025 HHS Guidelines)
-The 2025 federal poverty line thresholds per household size:
-- 1 person: $14,580
-- 2 people: $19,720
-- 3 people: $24,860
-- 4 people: $30,000
-- 5 people: $35,140
-- 6 people: $40,280
-- 7 people: $45,420
-- 8+ people: $50,560 (plus $5,140 per additional person)
+### Design Decision
+- Define a whitelist of health-related keywords in the `shouldIncludeFplTable` function to keep logic maintainable
+- This allows future use cases to be added without code changes (e.g., 'telehealth', 'benefits_enrollment')
+- Non-matching agents simply get no FPL reference in their prompt
 
-### Prompt Section Example
-```
-FEDERAL POVERTY LEVEL THRESHOLDS (2025):
-Qualification Range: 100-400% of Federal Poverty Level
-
-Household Size | 100% FPL  | 400% FPL
-1              | $14,580   | $58,320
-2              | $19,720   | $78,880
-3              | $24,860   | $99,440
-4              | $30,000   | $120,000
-5              | $35,140   | $140,560
-6              | $40,280   | $161,120
-7              | $45,420   | $181,680
-8+             | $50,560+  | $202,240+
-(Add $5,140 per additional person for 100% FPL; multiply by 4 for 400% FPL)
-
-Use this table to determine qualification: If the caller's annual household income falls between the 100% and 400% FPL amounts for their household size, they may qualify for ACA marketplace assistance.
-```
-
-### Files to Create/Modify
-- **Create**: `src/lib/fplThresholds.ts` (utility with FPL data and helper functions)
-- **Modify**: `src/lib/buildTaskPrompt.ts` (add FPL section to prompt)
-- **Modify**: `supabase/functions/tick-campaign/index.ts` (add FPL section to prompt)
-- **Modify**: `supabase/functions/run-test-run/index.ts` (add FPL section to prompt)
+### Files to Modify
+- **Modify**: `src/lib/fplThresholds.ts` (add `shouldIncludeFplTable` function)
+- **Modify**: `src/lib/buildTaskPrompt.ts` (add `use_case` to interface, conditionally include FPL)
+- **Modify**: `supabase/functions/run-test-run/index.ts` (add `use_case` to interface, conditional FPL)
+- **Modify**: `supabase/functions/tick-campaign/index.ts` (conditional FPL in prompt builder)
 
 ### Benefits
-- ✅ AI agent has explicit, accurate qualification thresholds
-- ✅ Consistent FPL calculations across all prompt generation
-- ✅ Easy to update annually when new HHS guidelines are released
-- ✅ Reduces reliance on AI's internal training knowledge
-- ✅ Improves compliance accuracy for ACA pre-qualification screening
+- ✅ FPL guidelines only appear in health/ACA agent prompts
+- ✅ Sales, lead gen, and other agents won't have irrelevant FPL qualification logic
+- ✅ Easy to add new health-related use cases in the future
+- ✅ Maintains consistency across test runs and live campaigns
