@@ -1,41 +1,29 @@
 
 
-## Fix Voice Filtering and Selected Voice Display
+## Fix: Surface Backend Error Messages and Improve Credit Check UX
 
-Two bugs are causing the issues you see:
+### Problem
+1. The `run-test-run` edge function checks `organizations.credits_balance` in the database (not Bland's balance). When it's 0, it returns HTTP 402 with `"Insufficient credits"` -- but the frontend shows a generic "non-2xx status code" error instead.
+2. Users have no way to know their in-app credit balance from the Test Lab page.
 
-### Problem 1: Gender filter shows 0 results
-The Bland API does not return a separate `gender` field. Instead, gender is embedded in the voice description (e.g., "American Male", "Casual American Female"). The current code tries to read `v.gender` which doesn't exist, so every voice has `undefined` gender and no filter ever matches.
+### Changes
 
-### Problem 2: Your chosen voice ("maya") doesn't appear
-The agent has `voice_id` stored as `"maya"` (the name), but the API returns UUIDs like `"2f9fdbc7-..."` as the voice ID. Since the selector looks for a voice where `voice_id === "maya"`, it finds nothing.
+**`src/pages/GymPage.tsx`** -- Better error handling in `handleRunTest`
 
----
+The Supabase `functions.invoke` returns errors in a special way for non-2xx responses. When the edge function returns 402, the SDK wraps it in a `FunctionsHttpError`. The fix:
 
-### Fixes
+- After `supabase.functions.invoke("run-test-run", ...)`, check if the response contains an error object with a `context` property (which holds the Response)
+- Parse the response body JSON to extract the real error message (e.g., "Insufficient credits. Please top up your balance.")
+- Display that message in the toast instead of the generic SDK message
+- Apply the same pattern to the `create-test-run` invoke call
 
-**`src/hooks/useBlandVoices.ts`**
-- Parse gender from the `description` field using simple keyword matching: if description contains "female" -> female, "male" -> male
-- Parse accent the same way from description (e.g., "British", "American", "Australian")
-- Match voices by both `id` AND `name` so that stored name-based IDs like "maya" still resolve
-
-**`src/components/VoiceSelector.tsx`**
-- Update the pinned voice lookup to also match by `name` (case-insensitive), not just `voice_id`
-- Same for the "selected" highlight in the main list
-
-### Technical Details
-
-In `useBlandVoices.ts`, the mapping will change to:
-
-```text
-gender:  extract from description ("Male"/"Female" keywords)
-accent:  extract from description ("American"/"British"/etc.)
+The error handling block (around lines 268-275) will change from:
 ```
-
-In `VoiceSelector.tsx`, voice matching will use:
-
-```text
-voice_id === selectedVoice OR name === selectedVoice (case-insensitive)
+if (runErr) throw runErr;
 ```
+to parsing the actual response body from `runErr.context` to get the real error message.
 
-No database or backend changes needed.
+- Same improvement applied to the `create-test-run` call (around line 262)
+
+### No backend changes needed
+The backend already returns proper error messages -- this is purely a frontend fix to surface them.
