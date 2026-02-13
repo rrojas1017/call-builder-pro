@@ -1,29 +1,35 @@
 
 
-## Fix: Surface Backend Error Messages and Improve Credit Check UX
+## Delete User: jfine@coverallhc.com
 
-### Problem
-1. The `run-test-run` edge function checks `organizations.credits_balance` in the database (not Bland's balance). When it's 0, it returns HTTP 402 with `"Insufficient credits"` -- but the frontend shows a generic "non-2xx status code" error instead.
-2. Users have no way to know their in-app credit balance from the Test Lab page.
+### What will be deleted
 
-### Changes
+- **Auth user** (jfine@coverallhc.com) -- removed via admin API
+- **Profile** -- cascades automatically (foreign key to auth.users)
+- **User role** -- cascades automatically (foreign key to auth.users)
+- **Organization** ("'s Org") -- only 1 member, will be orphaned, so we clean it up
+- **2 agent projects** -- belong to the org
+- **8 test runs** -- belong to the org
+- **Any org_invitations, dial_lists, credit_transactions** for this org
 
-**`src/pages/GymPage.tsx`** -- Better error handling in `handleRunTest`
+### Implementation
 
-The Supabase `functions.invoke` returns errors in a special way for non-2xx responses. When the edge function returns 402, the SDK wraps it in a `FunctionsHttpError`. The fix:
+**New edge function: `supabase/functions/delete-user/index.ts`**
 
-- After `supabase.functions.invoke("run-test-run", ...)`, check if the response contains an error object with a `context` property (which holds the Response)
-- Parse the response body JSON to extract the real error message (e.g., "Insufficient credits. Please top up your balance.")
-- Display that message in the toast instead of the generic SDK message
-- Apply the same pattern to the `create-test-run` invoke call
+A super-admin-only edge function that:
+1. Verifies the caller is a super_admin (same pattern as `create-user`)
+2. Accepts `{ user_id }` in the request body
+3. Looks up the user's org and checks if they're the sole member
+4. If sole member: deletes all org-related data (agent_projects, test_runs, dial_lists, calls, credit_transactions, org_invitations, sms_conversations, inbound_numbers) then deletes the organization
+5. Deletes the auth user via `adminClient.auth.admin.deleteUser(user_id)` (which cascades to profiles and user_roles)
+6. Returns success confirmation
 
-The error handling block (around lines 268-275) will change from:
-```
-if (runErr) throw runErr;
-```
-to parsing the actual response body from `runErr.context` to get the real error message.
+### Execution
 
-- Same improvement applied to the `create-test-run` call (around line 262)
+After creating the edge function, I will invoke it directly to delete this specific user (`8bc7242b-aee0-41e7-9001-966894cf9071`).
 
-### No backend changes needed
-The backend already returns proper error messages -- this is purely a frontend fix to surface them.
+### Safety
+
+- The function requires super_admin authorization
+- Only deletes the specified user -- no batch operations
+- Cleans up orphaned org data to prevent dangling references
