@@ -114,6 +114,7 @@ RULES:
 
   if (fields.length > 0) {
     prompt += `\n\nINFORMATION TO COLLECT (in this order):\n${fields.map((f, i) => `${i + 1}. ${f}`).join("\n")}`;
+    prompt += `\n\nZIP CODE VALIDATION: When collecting zip code, confirm it is exactly 5 digits. If the caller gives fewer or more digits, ask them to double-check.`;
   }
 
   const useCase = spec.use_case || spec.mode || "";
@@ -183,7 +184,7 @@ If outside Open Enrollment:
 
   if (transferDigits.length >= 10) {
     const formattedNum = transferDigits.startsWith("1") ? `+${transferDigits}` : `+1${transferDigits}`;
-    prompt += `\n\nTRANSFER: If the caller qualifies, transfer them to ${formattedNum}.`;
+    prompt += `\n\nTRANSFER: If the caller qualifies, say briefly: "That sounds really promising -- let me connect you now." Then transfer to ${formattedNum}. Keep it to ONE short sentence before transferring.`;
   }
 
   prompt += `\n\nFALLBACK: If you cannot collect required information after 2 attempts, note what's missing and end politely.`;
