@@ -1,87 +1,111 @@
 
 
-## Connect SMS via ClickSend
+## Add Retell AI as A/B Voice Provider (Safety-First Approach)
 
-### Overview
-Integrate ClickSend as the SMS provider so AI agents can use SMS as a journey/campaign strategy. This adds the ability to send SMS messages, track conversations, and enable SMS as a channel on a per-agent basis.
+### Guiding Principle: Zero Risk to Existing Bland AI Flows
 
-### Prerequisites
-You'll need a ClickSend account with API credentials:
-1. Sign up at [clicksend.com](https://www.clicksend.com)
-2. Go to the dashboard and click "API Credentials" in the top right
-3. You'll need your **API Username** and **API Key**
+Every modification uses an **additive-only** pattern. Existing Bland AI logic stays completely untouched -- Retell code runs in separate branches that only activate when `voice_provider = 'retell'` is explicitly set on an agent. Default is always `'bland'`.
 
-We'll securely store both as backend secrets.
+### Database Changes (All Additive -- No Existing Columns Modified)
 
-### What We'll Build
+**Alter `agent_specs`**: Add two new columns with safe defaults
+- `voice_provider` (text, default `'bland'`) -- existing agents remain on Bland automatically
+- `retell_agent_id` (text, nullable)
 
-1. **Two new secrets** -- `CLICKSEND_USERNAME` and `CLICKSEND_API_KEY`
-2. **Two new database tables** -- `sms_conversations` and `sms_messages`
-3. **New column on `agent_specs`** -- `sms_enabled` boolean
-4. **New backend function** -- `manage-sms` for sending/receiving SMS via ClickSend
-5. **New SMS page** -- View conversations and send messages
-6. **Navigation + routing updates** -- SMS entry in sidebar, new route
+**Alter `calls`**: Add two new columns
+- `retell_call_id` (text, nullable, unique) -- parallel to existing `bland_call_id`
+- `voice_provider` (text, default `'bland'`) -- tags which provider made the call
 
-### Database Changes
+**Alter `test_run_contacts`**: Add one column
+- `retell_call_id` (text, nullable)
 
-**New table: `sms_conversations`**
-- `id` (uuid, PK, default gen_random_uuid())
-- `org_id` (uuid, FK to organizations, not null)
-- `project_id` (uuid, FK to agent_projects, nullable) -- which agent handles this
-- `from_number` (text) -- the number messages are sent from
-- `to_number` (text) -- the recipient's number
-- `status` (text, default 'active')
-- `created_at`, `updated_at` (timestamptz)
-- RLS: scoped to user's org via `get_user_org_id()`
+**Alter `campaigns`**: Add one column
+- `retell_batch_id` (text, nullable)
 
-**New table: `sms_messages`**
-- `id` (uuid, PK, default gen_random_uuid())
-- `conversation_id` (uuid, FK to sms_conversations)
-- `direction` (text) -- 'outbound' or 'inbound'
-- `body` (text)
-- `clicksend_message_id` (text, nullable)
-- `status` (text, default 'queued') -- queued, sent, delivered, failed
-- `created_at` (timestamptz)
-- RLS: scoped via join to sms_conversations.org_id
+All new columns are nullable or have defaults that match existing behavior. No existing columns are renamed, removed, or retyped.
 
-**Alter `agent_specs`**: Add `sms_enabled` (boolean, default false)
+### Secret Required
+- `RETELL_API_KEY` -- stored securely as a backend secret
 
-### New Backend Function: `manage-sms`
+### New Backend Function: `receive-retell-webhook` (New File Only)
 
-Actions:
-- **`send`** -- Send an SMS via ClickSend `POST /v3/sms/send` (Basic Auth), log the message in `sms_messages`, auto-create conversation if needed
-- **`list_conversations`** -- Fetch conversations for the user's org
-- **`get_messages`** -- Fetch messages for a given conversation
+A brand new edge function (`supabase/functions/receive-retell-webhook/index.ts`) that:
+- Parses Retell's post-call webhook payload
+- Maps Retell statuses to internal statuses (completed, no_answer, failed, etc.)
+- Upserts into the `calls` table using `retell_call_id`
+- Handles test lab flow (updates `test_run_contacts`) and campaign flow (triggers `tick-campaign`)
+- Triggers `evaluate-call` for completed calls (reuses existing evaluation pipeline)
 
-ClickSend API details:
-- Base URL: `https://rest.clicksend.com`
-- Auth: Basic HTTP (`username:api_key` base64 encoded)
-- Send endpoint: `POST /v3/sms/send` with body `{ messages: [{ to, body, source, from }] }`
+This is an entirely new file -- no existing webhook code is touched.
 
-### New Page: `SMSPage.tsx`
+### Modified Backend Functions (Additive Branching Only)
 
-- Left panel: list of conversations (grouped by contact number)
-- Right panel: message thread for selected conversation
-- Compose area at the bottom to send a new SMS
-- Button to start a new conversation (enter phone number + message)
-- Shows message status (sent, delivered, failed)
+**`run-test-run/index.ts`** -- Safety approach:
+- After loading the agent spec (line ~272), read `voice_provider`
+- If `voice_provider === 'retell'`: branch into a NEW code block that calls Retell's `POST /v2/create-phone-call` API
+- If `voice_provider === 'bland'` (the default): the EXISTING Bland code runs exactly as-is, completely unchanged
+- The Bland code path is wrapped in an `else` block -- no lines are deleted or reordered
 
-### Navigation and Routing Updates
+**`tick-campaign/index.ts`** -- Same safety approach:
+- After loading the spec (line ~138), check `voice_provider`
+- If `'retell'`: loop contacts and call Retell individually (no batch API)
+- If `'bland'` (default): existing batch API code runs untouched
 
-- **`AppSidebar.tsx`**: Add "SMS" item under DEPLOY section with `MessageSquare` icon, path `/sms`
-- **`App.tsx`**: Add protected route `/sms` pointing to `SMSPage`
+### Frontend Changes
 
-### Agent Configuration Update
+**`EditAgentPage.tsx`** -- Add "Voice Provider" section (new section inserted between Identity and Script sections):
+- Two-card selector (same styling as existing "Call Ending" toggle): "Bland AI" and "Retell AI"
+- When Retell is selected, show a text input for "Retell Agent ID"
+- Voice selection and Background Audio sections only show when Bland is selected (Retell manages voice on their platform)
+- The save handler sends the new `voice_provider` and `retell_agent_id` fields alongside existing data
 
-- **`EditAgentPage.tsx`**: Add an "SMS Channel" section with a toggle switch to enable/disable SMS for the agent. Similar styling to the existing "Background Audio" toggle section.
+**`CreateAgentPage.tsx`** -- Add provider selection in Step 3 (Review and Save):
+- Same two-card selector as EditAgentPage
+- Retell Agent ID field when Retell is chosen
+- Saved alongside existing `voice_id`, `transfer_required`, etc.
+
+**`AgentsPage.tsx`** -- Add small provider badge on each agent card:
+- Fetch `voice_provider` from `agent_specs` in the existing query
+- Show a subtle badge ("Bland" or "Retell") next to the mode badge
+- No changes to layout, card structure, or click behavior
+
+**`CallsPage.tsx`** -- Add provider indicator per call:
+- Use the new `voice_provider` column on `calls`
+- Show a small text/badge next to the call ID in the list
+- No changes to filtering, detail view, or evaluation display
+
+**`AppSidebar.tsx`** -- No changes needed. Retell is a provider option, not a new page.
+
+**`App.tsx`** -- No changes needed for Retell (SMS route addition is separate).
+
+### What Stays Completely Unchanged
+- `receive-bland-webhook/index.ts` -- not touched at all
+- `evaluate-call/index.ts` -- not touched; both providers feed into it identically
+- `start-campaign/index.ts` -- not touched
+- All existing RLS policies
+- All existing database columns and their types
+- The default behavior of every existing agent (they default to `voice_provider = 'bland'`)
 
 ### Files to Create
-1. `supabase/functions/manage-sms/index.ts`
-2. `src/pages/SMSPage.tsx`
+1. `supabase/functions/receive-retell-webhook/index.ts`
 
-### Files to Modify
-1. `src/components/AppSidebar.tsx` -- Add SMS nav item
-2. `src/App.tsx` -- Add `/sms` route + import
-3. `src/pages/EditAgentPage.tsx` -- Add SMS toggle section
-4. Database migration -- New tables + alter agent_specs
+### Files to Modify (Additive Only)
+1. `supabase/functions/run-test-run/index.ts` -- Add Retell branch after spec load
+2. `supabase/functions/tick-campaign/index.ts` -- Add Retell branch after spec load
+3. `src/pages/EditAgentPage.tsx` -- Add provider selector section
+4. `src/pages/CreateAgentPage.tsx` -- Add provider selector in Step 3
+5. `src/pages/AgentsPage.tsx` -- Add provider badge
+6. `src/pages/CallsPage.tsx` -- Add provider indicator
+7. Database migration -- New columns only (all with safe defaults)
+
+### Risk Summary
+
+| Area | Risk | Mitigation |
+|------|------|------------|
+| Existing Bland calls | None | Default `voice_provider = 'bland'` means all existing agents use unchanged code paths |
+| Webhook processing | None | New webhook is a separate function; existing `receive-bland-webhook` is untouched |
+| Evaluation pipeline | None | `evaluate-call` receives the same data shape regardless of provider |
+| Database schema | None | All changes are additive columns with nullable/default values |
+| Campaign dispatching | Low | New Retell branch only activates when explicitly configured; Bland path unchanged |
+| Frontend | None | New UI sections are additive; existing forms and displays untouched |
 
