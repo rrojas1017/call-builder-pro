@@ -1,111 +1,47 @@
 
 
-## Add Retell AI as A/B Voice Provider (Safety-First Approach)
+## Rebrand Provider Names in the UI
 
-### Guiding Principle: Zero Risk to Existing Bland AI Flows
+### What Changes
+Replace all user-facing references to the backend service names with your custom brand names:
+- **"Bland AI" / "Bland"** becomes **"Voz"**
+- **"Retell AI" / "Retell"** becomes **"Append"**
 
-Every modification uses an **additive-only** pattern. Existing Bland AI logic stays completely untouched -- Retell code runs in separate branches that only activate when `voice_provider = 'retell'` is explicitly set on an agent. Default is always `'bland'`.
+Internal database values (`voice_provider = 'bland'` / `'retell'`) stay exactly as they are -- only the display labels change. No backend or database modifications needed.
 
-### Database Changes (All Additive -- No Existing Columns Modified)
+### Files to Modify
 
-**Alter `agent_specs`**: Add two new columns with safe defaults
-- `voice_provider` (text, default `'bland'`) -- existing agents remain on Bland automatically
-- `retell_agent_id` (text, nullable)
+**1. `src/pages/EditAgentPage.tsx`**
+- Line 135: `"Bland AI"` → `"Voz"`
+- Line 136: description text → `"Primary provider with voice selection & background audio"`
+- Line 145: `"Retell AI"` → `"Append"`
+- Line 146: description text → `"Alternative provider — configure voice in the Append dashboard"`
+- Line 151: `"Retell Agent ID"` → `"Append Agent ID"`
+- Line 153: helper text → `"The agent ID from your Append dashboard."`
+- Section heading "Voice Provider" stays as-is (it's generic)
+- Comments like `{/* Voice Selection (Bland only) */}` updated to `{/* Voice Selection (Voz only) */}`
 
-**Alter `calls`**: Add two new columns
-- `retell_call_id` (text, nullable, unique) -- parallel to existing `bland_call_id`
-- `voice_provider` (text, default `'bland'`) -- tags which provider made the call
+**2. `src/pages/CreateAgentPage.tsx`**
+- Line 277: `"Bland AI"` → `"Voz"`
+- Line 278: description text updated (remove "Current provider")
+- Line 287: `"Retell AI"` → `"Append"`
+- Line 288: description text updated (remove "Retell dashboard" reference)
+- Line 293: `"Retell Agent ID"` → `"Append Agent ID"`
+- Line 295: helper text updated
+- Line 347: voice selection helper text updated (remove "Bland AI" reference)
+- Comments updated similarly
 
-**Alter `test_run_contacts`**: Add one column
-- `retell_call_id` (text, nullable)
+**3. `src/pages/AgentsPage.tsx`**
+- Line 124: Badge text `"Retell"` → `"Append"`, `"Bland"` → `"Voz"`
 
-**Alter `campaigns`**: Add one column
-- `retell_batch_id` (text, nullable)
+**4. `src/pages/CallsPage.tsx`**
+- Line 141: Badge text `"Retell"` → `"Append"`, `"Bland"` → `"Voz"`
 
-All new columns are nullable or have defaults that match existing behavior. No existing columns are renamed, removed, or retyped.
+**5. `src/pages/GymPage.tsx`** (no display name changes needed -- only uses internal `bland_call_id` variable names which are not user-facing)
 
-### Secret Required
-- `RETELL_API_KEY` -- stored securely as a backend secret
-
-### New Backend Function: `receive-retell-webhook` (New File Only)
-
-A brand new edge function (`supabase/functions/receive-retell-webhook/index.ts`) that:
-- Parses Retell's post-call webhook payload
-- Maps Retell statuses to internal statuses (completed, no_answer, failed, etc.)
-- Upserts into the `calls` table using `retell_call_id`
-- Handles test lab flow (updates `test_run_contacts`) and campaign flow (triggers `tick-campaign`)
-- Triggers `evaluate-call` for completed calls (reuses existing evaluation pipeline)
-
-This is an entirely new file -- no existing webhook code is touched.
-
-### Modified Backend Functions (Additive Branching Only)
-
-**`run-test-run/index.ts`** -- Safety approach:
-- After loading the agent spec (line ~272), read `voice_provider`
-- If `voice_provider === 'retell'`: branch into a NEW code block that calls Retell's `POST /v2/create-phone-call` API
-- If `voice_provider === 'bland'` (the default): the EXISTING Bland code runs exactly as-is, completely unchanged
-- The Bland code path is wrapped in an `else` block -- no lines are deleted or reordered
-
-**`tick-campaign/index.ts`** -- Same safety approach:
-- After loading the spec (line ~138), check `voice_provider`
-- If `'retell'`: loop contacts and call Retell individually (no batch API)
-- If `'bland'` (default): existing batch API code runs untouched
-
-### Frontend Changes
-
-**`EditAgentPage.tsx`** -- Add "Voice Provider" section (new section inserted between Identity and Script sections):
-- Two-card selector (same styling as existing "Call Ending" toggle): "Bland AI" and "Retell AI"
-- When Retell is selected, show a text input for "Retell Agent ID"
-- Voice selection and Background Audio sections only show when Bland is selected (Retell manages voice on their platform)
-- The save handler sends the new `voice_provider` and `retell_agent_id` fields alongside existing data
-
-**`CreateAgentPage.tsx`** -- Add provider selection in Step 3 (Review and Save):
-- Same two-card selector as EditAgentPage
-- Retell Agent ID field when Retell is chosen
-- Saved alongside existing `voice_id`, `transfer_required`, etc.
-
-**`AgentsPage.tsx`** -- Add small provider badge on each agent card:
-- Fetch `voice_provider` from `agent_specs` in the existing query
-- Show a subtle badge ("Bland" or "Retell") next to the mode badge
-- No changes to layout, card structure, or click behavior
-
-**`CallsPage.tsx`** -- Add provider indicator per call:
-- Use the new `voice_provider` column on `calls`
-- Show a small text/badge next to the call ID in the list
-- No changes to filtering, detail view, or evaluation display
-
-**`AppSidebar.tsx`** -- No changes needed. Retell is a provider option, not a new page.
-
-**`App.tsx`** -- No changes needed for Retell (SMS route addition is separate).
-
-### What Stays Completely Unchanged
-- `receive-bland-webhook/index.ts` -- not touched at all
-- `evaluate-call/index.ts` -- not touched; both providers feed into it identically
-- `start-campaign/index.ts` -- not touched
-- All existing RLS policies
-- All existing database columns and their types
-- The default behavior of every existing agent (they default to `voice_provider = 'bland'`)
-
-### Files to Create
-1. `supabase/functions/receive-retell-webhook/index.ts`
-
-### Files to Modify (Additive Only)
-1. `supabase/functions/run-test-run/index.ts` -- Add Retell branch after spec load
-2. `supabase/functions/tick-campaign/index.ts` -- Add Retell branch after spec load
-3. `src/pages/EditAgentPage.tsx` -- Add provider selector section
-4. `src/pages/CreateAgentPage.tsx` -- Add provider selector in Step 3
-5. `src/pages/AgentsPage.tsx` -- Add provider badge
-6. `src/pages/CallsPage.tsx` -- Add provider indicator
-7. Database migration -- New columns only (all with safe defaults)
-
-### Risk Summary
-
-| Area | Risk | Mitigation |
-|------|------|------------|
-| Existing Bland calls | None | Default `voice_provider = 'bland'` means all existing agents use unchanged code paths |
-| Webhook processing | None | New webhook is a separate function; existing `receive-bland-webhook` is untouched |
-| Evaluation pipeline | None | `evaluate-call` receives the same data shape regardless of provider |
-| Database schema | None | All changes are additive columns with nullable/default values |
-| Campaign dispatching | Low | New Retell branch only activates when explicitly configured; Bland path unchanged |
-| Frontend | None | New UI sections are additive; existing forms and displays untouched |
+### What Stays Unchanged
+- All database column values (`'bland'`, `'retell'`) -- these are internal identifiers
+- All backend edge functions -- no user-facing text there
+- All variable/state names in code (e.g., `voiceProvider`, `retellAgentId`) -- renaming these would be cosmetic churn with no user benefit
+- Hook names like `useBlandVoices` -- internal only
 
