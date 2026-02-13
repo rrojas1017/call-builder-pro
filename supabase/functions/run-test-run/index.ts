@@ -20,14 +20,44 @@ interface AgentSpec {
   mode?: string | null;
   use_case?: string | null;
   success_definition?: string | null;
+  humanization_notes?: string[];
 }
 
-function buildTaskPrompt(spec: AgentSpec): string {
+interface KnowledgeEntry {
+  category: string;
+  content: string;
+}
+
+function buildKnowledgeSection(entries: KnowledgeEntry[]): string {
+  const grouped: Record<string, string[]> = {};
+  for (const e of entries) {
+    if (!grouped[e.category]) grouped[e.category] = [];
+    grouped[e.category].push(e.content);
+  }
+
+  const sections: string[] = [];
+
+  if (grouped.product_knowledge?.length) {
+    sections.push(`PRODUCT & INDUSTRY KNOWLEDGE:\n${grouped.product_knowledge.map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
+  }
+  if (grouped.objection_handling?.length) {
+    sections.push(`OBJECTION HANDLING:\n${grouped.objection_handling.map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
+  }
+  if (grouped.industry_insight?.length) {
+    sections.push(`INDUSTRY INSIGHTS:\n${grouped.industry_insight.map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
+  }
+  if (grouped.competitor_info?.length) {
+    sections.push(`COMPETITOR AWARENESS:\n${grouped.competitor_info.map((c, i) => `${i + 1}. ${c}`).join("\n")}`);
+  }
+
+  return sections.join("\n\n");
+}
+
+function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[]): string {
   const purpose = spec.use_case || spec.success_definition || "Conduct a professional outbound call.";
   const discl = spec.disclosure_text || "";
   const tone = spec.tone_style || "Friendly, professional, empathetic";
 
-  // Build humanization notes string
   const humanNotes = Array.isArray(spec.humanization_notes) && spec.humanization_notes.length > 0
     ? spec.humanization_notes.map((n: string, i: number) => `${i + 1}. ${n}`).join("\n")
     : "No learned techniques yet -- be naturally warm and conversational.";
@@ -71,6 +101,12 @@ PURPOSE: ${purpose}
 RULES:
 - Tone: ${tone}
 - Never guess or assume answers the caller hasn't given.`;
+
+  // Inject domain knowledge from agent_knowledge table
+  const knowledgeSection = buildKnowledgeSection(knowledge);
+  if (knowledgeSection) {
+    prompt += `\n\nDOMAIN KNOWLEDGE (use this to answer questions knowledgeably):\n${knowledgeSection}`;
+  }
 
   if (discl) {
     prompt += `\n\nDISCLOSURE (read at the start of the call):\n"${discl}"`;
@@ -125,22 +161,14 @@ serve(async (req) => {
 
     // Load test run
     const { data: testRun, error: trErr } = await supabase
-      .from("test_runs")
-      .select("*")
-      .eq("id", test_run_id)
-      .single();
+      .from("test_runs").select("*").eq("id", test_run_id).single();
     if (trErr) throw trErr;
 
-    // Check how many are currently calling
+    // Check concurrency
     const { data: callingContacts } = await supabase
-      .from("test_run_contacts")
-      .select("id")
-      .eq("test_run_id", test_run_id)
-      .eq("status", "calling");
+      .from("test_run_contacts").select("id").eq("test_run_id", test_run_id).eq("status", "calling");
 
-    const currentlyActive = callingContacts?.length || 0;
-    const slotsAvailable = testRun.concurrency - currentlyActive;
-
+    const slotsAvailable = testRun.concurrency - (callingContacts?.length || 0);
     if (slotsAvailable <= 0) {
       return new Response(JSON.stringify({ initiated_count: 0, message: "All slots busy" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -149,25 +177,18 @@ serve(async (req) => {
 
     // Get queued contacts
     const { data: queuedContacts, error: qErr } = await supabase
-      .from("test_run_contacts")
-      .select("*")
-      .eq("test_run_id", test_run_id)
-      .eq("status", "queued")
-      .order("created_at", { ascending: true })
-      .limit(slotsAvailable);
+      .from("test_run_contacts").select("*")
+      .eq("test_run_id", test_run_id).eq("status", "queued")
+      .order("created_at", { ascending: true }).limit(slotsAvailable);
     if (qErr) throw qErr;
 
     if (!queuedContacts?.length) {
-      // Check if all done
       const { data: remaining } = await supabase
-        .from("test_run_contacts")
-        .select("id")
-        .eq("test_run_id", test_run_id)
-        .in("status", ["queued", "calling"]);
+        .from("test_run_contacts").select("id")
+        .eq("test_run_id", test_run_id).in("status", ["queued", "calling"]);
 
       if (!remaining?.length) {
-        await supabase
-          .from("test_runs")
+        await supabase.from("test_runs")
           .update({ status: "completed", completed_at: new Date().toISOString() })
           .eq("id", test_run_id);
       }
@@ -179,12 +200,16 @@ serve(async (req) => {
 
     // Load agent spec
     const { data: spec } = await supabase
-      .from("agent_specs")
-      .select("*")
-      .eq("project_id", testRun.project_id)
-      .single();
+      .from("agent_specs").select("*").eq("project_id", testRun.project_id).single();
 
-    const baseTask = testRun.agent_instructions_text || (spec ? buildTaskPrompt(spec) : "Conduct a professional outbound call.");
+    // Load agent knowledge
+    const { data: knowledgeRows } = await supabase
+      .from("agent_knowledge").select("category, content")
+      .eq("project_id", testRun.project_id);
+
+    const knowledge: KnowledgeEntry[] = (knowledgeRows || []) as KnowledgeEntry[];
+
+    const baseTask = testRun.agent_instructions_text || (spec ? buildTaskPrompt(spec, knowledge) : "Conduct a professional outbound call.");
     const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
 
     const callIds: string[] = [];
@@ -217,11 +242,9 @@ serve(async (req) => {
         if (spec?.speaking_speed && spec.speaking_speed !== 1.0) {
           blandPayload.voice_settings = { speed: spec.speaking_speed };
         }
-
         if (spec?.pronunciation_guide && Array.isArray(spec.pronunciation_guide) && spec.pronunciation_guide.length > 0) {
           blandPayload.pronunciation_guide = spec.pronunciation_guide;
         }
-
         if (spec?.transfer_required && spec?.transfer_phone_number) {
           const digits = spec.transfer_phone_number.replace(/\D/g, "");
           if (digits.length >= 10) {
@@ -231,10 +254,7 @@ serve(async (req) => {
 
         const blandResp = await fetch("https://api.bland.ai/v1/calls", {
           method: "POST",
-          headers: {
-            Authorization: blandApiKey,
-            "Content-Type": "application/json",
-          },
+          headers: { Authorization: blandApiKey, "Content-Type": "application/json" },
           body: JSON.stringify(blandPayload),
         });
 
@@ -243,29 +263,19 @@ serve(async (req) => {
 
         if (blandData.call_id) {
           callIds.push(blandData.call_id);
-          await supabase
-            .from("test_run_contacts")
-            .update({
-              status: "calling",
-              bland_call_id: blandData.call_id,
-              called_at: new Date().toISOString(),
-            })
-            .eq("id", contact.id);
+          await supabase.from("test_run_contacts").update({
+            status: "calling", bland_call_id: blandData.call_id, called_at: new Date().toISOString(),
+          }).eq("id", contact.id);
         } else {
-          await supabase
-            .from("test_run_contacts")
-            .update({ status: "failed", error: blandData.message || blandData.error || JSON.stringify(blandData) })
-            .eq("id", contact.id);
+          await supabase.from("test_run_contacts").update({
+            status: "failed", error: blandData.message || blandData.error || JSON.stringify(blandData),
+          }).eq("id", contact.id);
         }
       } catch (callErr: any) {
-        await supabase
-          .from("test_run_contacts")
-          .update({ status: "failed", error: callErr.message })
-          .eq("id", contact.id);
+        await supabase.from("test_run_contacts").update({ status: "failed", error: callErr.message }).eq("id", contact.id);
       }
     }
 
-    // Update test run status
     if (testRun.status === "draft") {
       await supabase.from("test_runs").update({ status: "running" }).eq("id", test_run_id);
     }
