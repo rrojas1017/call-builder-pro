@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen } from "lucide-react";
+import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen, ArrowUp, ArrowDown, Minus, History } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 
 interface Agent {
   id: string;
@@ -26,6 +27,8 @@ interface TestContact {
   outcome: string | null;
   error: string | null;
   extracted_data: any;
+  created_at?: string;
+  test_run_id?: string;
 }
 
 interface TrendPoint {
@@ -45,14 +48,14 @@ function normalizePhone(raw: string): string {
 export default function GymPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentId, setAgentId] = useState<string>(searchParams.get("agent") || "");
   const [phone, setPhone] = useState("");
   const [running, setRunning] = useState(false);
   const [contact, setContact] = useState<TestContact | null>(null);
-  const [testRunId, setTestRunId] = useState<string | null>(null);
+  const [testRunId, setTestRunId] = useState<string | null>(searchParams.get("testRunId") || null);
 
   const [applyingFixId, setApplyingFixId] = useState<string | null>(null);
   const [appliedFixes, setAppliedFixes] = useState<string[]>([]);
@@ -60,6 +63,23 @@ export default function GymPage() {
   // Trend data
   const [trendData, setTrendData] = useState<TrendPoint[]>([]);
   const [trendLoading, setTrendLoading] = useState(false);
+
+  // History
+  const [history, setHistory] = useState<TestContact[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+
+  // Persist testRunId in URL
+  const updateUrlParams = useCallback((params: Record<string, string | null>) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      for (const [k, v] of Object.entries(params)) {
+        if (v) next.set(k, v);
+        else next.delete(k);
+      }
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   // Load agents
   useEffect(() => {
@@ -73,6 +93,63 @@ export default function GymPage() {
         if (!agentId && data?.length) setAgentId(data[0].id);
       });
   }, [user]);
+
+  // Load history + last result when agent changes
+  const loadHistory = useCallback(async () => {
+    if (!agentId) return;
+    setHistoryLoading(true);
+    const { data } = await supabase
+      .from("test_run_contacts")
+      .select("*, test_runs!inner(project_id)")
+      .eq("test_runs.project_id", agentId)
+      .eq("status", "completed")
+      .not("evaluation", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    const rows = (data || []).map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone,
+      status: r.status,
+      transcript: r.transcript,
+      evaluation: r.evaluation,
+      duration_seconds: r.duration_seconds,
+      outcome: r.outcome,
+      error: r.error,
+      extracted_data: r.extracted_data,
+      created_at: r.created_at,
+      test_run_id: r.test_run_id,
+    }));
+    setHistory(rows);
+    setHistoryLoading(false);
+    return rows;
+  }, [agentId]);
+
+  useEffect(() => {
+    if (!agentId) return;
+
+    const init = async () => {
+      const rows = await loadHistory();
+      // Auto-load last result if no active test running and no contact loaded
+      if (!running && !contact && rows?.length) {
+        // If testRunId is in URL, try to find that contact
+        const urlTestRunId = searchParams.get("testRunId");
+        if (urlTestRunId) {
+          const match = rows.find((r) => r.test_run_id === urlTestRunId);
+          if (match) {
+            setContact(match);
+            setTestRunId(urlTestRunId);
+            return;
+          }
+        }
+        // Otherwise load the most recent
+        setContact(rows[0]);
+        setTestRunId(rows[0].test_run_id || null);
+      }
+    };
+    init();
+  }, [agentId]);
 
   // Load trend data when agent changes
   useEffect(() => {
@@ -115,6 +192,8 @@ export default function GymPage() {
         setContact(data as TestContact);
         if (!["queued", "calling"].includes(data.status)) {
           setRunning(false);
+          // Refresh history when test completes
+          loadHistory();
         }
       }
     };
@@ -153,6 +232,7 @@ export default function GymPage() {
     setContact(null);
     setAppliedFixes([]);
     setTestRunId(null);
+    setSelectedHistoryId(null);
 
     try {
       const normalized = normalizePhone(phone.trim());
@@ -169,6 +249,7 @@ export default function GymPage() {
 
       const newTestRunId = createData.test_run_id;
       setTestRunId(newTestRunId);
+      updateUrlParams({ testRunId: newTestRunId });
 
       const { error: runErr } = await supabase.functions.invoke("run-test-run", {
         body: { test_run_id: newTestRunId },
@@ -200,6 +281,16 @@ export default function GymPage() {
       toast({ title: "Failed to apply fix", description: err.message, variant: "destructive" });
     } finally {
       setApplyingFixId(null);
+    }
+  };
+
+  const handleSelectHistory = (item: TestContact) => {
+    setContact(item);
+    setSelectedHistoryId(item.id);
+    setTestRunId(item.test_run_id || null);
+    setAppliedFixes([]);
+    if (item.test_run_id) {
+      updateUrlParams({ testRunId: item.test_run_id });
     }
   };
 
@@ -281,137 +372,240 @@ export default function GymPage() {
 
       {/* Results */}
       {contact && (
-        <div className="surface-elevated rounded-xl p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-              <Phone className="h-4 w-4 text-primary" />
-              Result
-            </h2>
-            <StatusBadge status={contact.status} />
+        <ResultCard
+          contact={contact}
+          isDone={isDone}
+          running={running}
+          applyingFixId={applyingFixId}
+          appliedFixes={appliedFixes}
+          onApplyFix={handleApplyFix}
+        />
+      )}
+
+      {/* History */}
+      {history.length > 0 && (
+        <div className="surface-elevated rounded-xl p-6 space-y-3">
+          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+            <History className="h-4 w-4 text-primary" />
+            Call History
+          </h2>
+          <p className="text-xs text-muted-foreground">Last {history.length} evaluated calls. Click a row to view details.</p>
+          <div className="rounded-lg border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Outcome</TableHead>
+                  <TableHead className="text-xs text-center">Overall</TableHead>
+                  <TableHead className="text-xs text-center">Humanness</TableHead>
+                  <TableHead className="text-xs text-center">Naturalness</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {history.map((item, idx) => {
+                  const prev = history[idx + 1]; // next in array = previous chronologically
+                  const isSelected = selectedHistoryId === item.id;
+                  return (
+                    <TableRow
+                      key={item.id}
+                      className={`cursor-pointer ${isSelected ? "bg-primary/5" : ""}`}
+                      onClick={() => handleSelectHistory(item)}
+                    >
+                      <TableCell className="text-xs text-muted-foreground">
+                        {item.created_at
+                          ? new Date(item.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {item.outcome || item.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <ScoreWithDelta score={item.evaluation?.overall_score} prevScore={prev?.evaluation?.overall_score} />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <ScoreWithDelta score={item.evaluation?.humanness_score} prevScore={prev?.evaluation?.humanness_score} />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <ScoreWithDelta score={item.evaluation?.naturalness_score} prevScore={prev?.evaluation?.naturalness_score} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Sub-components ---
+
+function ScoreWithDelta({ score, prevScore }: { score?: number; prevScore?: number }) {
+  if (score == null) return <span className="text-xs text-muted-foreground">—</span>;
+  const color = score >= 70 ? "text-green-400" : score >= 40 ? "text-yellow-400" : "text-destructive";
+  const delta = prevScore != null ? score - prevScore : null;
+
+  return (
+    <span className={`text-xs font-semibold ${color} inline-flex items-center gap-0.5`}>
+      {score}
+      {delta != null && delta !== 0 && (
+        delta > 0
+          ? <ArrowUp className="h-3 w-3 text-green-400" />
+          : <ArrowDown className="h-3 w-3 text-destructive" />
+      )}
+    </span>
+  );
+}
+
+function ResultCard({
+  contact,
+  isDone,
+  running,
+  applyingFixId,
+  appliedFixes,
+  onApplyFix,
+}: {
+  contact: TestContact;
+  isDone: boolean | null;
+  running: boolean;
+  applyingFixId: string | null;
+  appliedFixes: string[];
+  onApplyFix: (imp: any) => void;
+}) {
+  return (
+    <div className="surface-elevated rounded-xl p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+          <Phone className="h-4 w-4 text-primary" />
+          Result
+        </h2>
+        <StatusBadge status={contact.status} />
+      </div>
+
+      {contact.error && (
+        <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
+          {contact.error}
+        </div>
+      )}
+
+      {!isDone && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Waiting for call to complete…
+        </div>
+      )}
+
+      {contact.transcript && (
+        <div className="space-y-1">
+          <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            <FileText className="h-3 w-3" /> Transcript
+          </h5>
+          <div className="rounded-lg bg-muted/30 border border-border p-3 text-xs font-mono whitespace-pre-wrap max-h-48 overflow-auto">
+            {contact.transcript}
+          </div>
+        </div>
+      )}
+
+      {contact.evaluation && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-5 gap-2">
+            <ScoreCard label="Compliance" score={contact.evaluation.compliance_score} />
+            <ScoreCard label="Objective" score={contact.evaluation.objective_score} />
+            <ScoreCard label="Overall" score={contact.evaluation.overall_score} />
+            <ScoreCard label="Humanness" score={contact.evaluation.humanness_score} />
+            <ScoreCard label="Naturalness" score={contact.evaluation.naturalness_score} />
           </div>
 
-          {contact.error && (
-            <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
-              {contact.error}
-            </div>
-          )}
-
-          {!isDone && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Waiting for call to complete…
-            </div>
-          )}
-
-          {contact.transcript && (
+          {contact.evaluation.issues_detected?.length > 0 && (
             <div className="space-y-1">
-              <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                <FileText className="h-3 w-3" /> Transcript
-              </h5>
-              <div className="rounded-lg bg-muted/30 border border-border p-3 text-xs font-mono whitespace-pre-wrap max-h-48 overflow-auto">
-                {contact.transcript}
-              </div>
+              <p className="text-xs font-medium text-muted-foreground">Issues</p>
+              <ul className="text-xs text-foreground space-y-1">
+                {contact.evaluation.issues_detected.map((issue: string, i: number) => (
+                  <li key={i} className="flex items-start gap-1">
+                    <XCircle className="h-3 w-3 mt-0.5 text-destructive shrink-0" />
+                    {issue}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
-          {contact.evaluation && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-5 gap-2">
-                <ScoreCard label="Compliance" score={contact.evaluation.compliance_score} />
-                <ScoreCard label="Objective" score={contact.evaluation.objective_score} />
-                <ScoreCard label="Overall" score={contact.evaluation.overall_score} />
-                <ScoreCard label="Humanness" score={contact.evaluation.humanness_score} />
-                <ScoreCard label="Naturalness" score={contact.evaluation.naturalness_score} />
-              </div>
-
-              {contact.evaluation.issues_detected?.length > 0 && (
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground">Issues</p>
-                  <ul className="text-xs text-foreground space-y-1">
-                    {contact.evaluation.issues_detected.map((issue: string, i: number) => (
-                      <li key={i} className="flex items-start gap-1">
-                        <XCircle className="h-3 w-3 mt-0.5 text-destructive shrink-0" />
-                        {issue}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {contact.evaluation.humanness_suggestions?.length > 0 && (
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                    <Lightbulb className="h-3 w-3" /> Humanness Suggestions
-                  </p>
-                  <ul className="text-xs text-foreground space-y-1">
-                    {contact.evaluation.humanness_suggestions.map((tip: string, i: number) => (
-                      <li key={i} className="flex items-start gap-1">
-                        <Lightbulb className="h-3 w-3 mt-0.5 text-yellow-400 shrink-0" />
-                        {tip}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {contact.evaluation.knowledge_gaps?.length > 0 && (
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                    <BookOpen className="h-3 w-3" /> Knowledge Gaps
-                  </p>
-                  <ul className="text-xs text-foreground space-y-1">
-                    {contact.evaluation.knowledge_gaps.map((gap: string, i: number) => (
-                      <li key={i} className="flex items-start gap-1">
-                        <BookOpen className="h-3 w-3 mt-0.5 text-orange-400 shrink-0" />
-                        {gap}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {contact.evaluation.recommended_improvements?.length > 0 && (
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground">Recommended Improvements</p>
-                  <ul className="text-xs text-foreground space-y-2">
-                    {contact.evaluation.recommended_improvements.map((imp: any, i: number) => (
-                      <li key={i} className="rounded-lg bg-muted/30 border border-border p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <p className="font-medium">{imp.field}</p>
-                            <p className="text-muted-foreground text-xs mt-1">{imp.reason}</p>
-                            <p className="mt-2">Suggested: <span className="text-primary">{imp.suggested_value}</span></p>
-                          </div>
-                          <Button
-                            onClick={() => handleApplyFix(imp)}
-                            disabled={applyingFixId === imp.field || appliedFixes.includes(imp.field)}
-                            size="sm"
-                            variant={appliedFixes.includes(imp.field) ? "ghost" : "default"}
-                            className="shrink-0"
-                          >
-                            {applyingFixId === imp.field && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-                            {appliedFixes.includes(imp.field) ? (
-                              <><CheckCircle className="mr-1 h-3 w-3" /> Applied</>
-                            ) : (
-                              "Apply Fix"
-                            )}
-                          </Button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-
-          {contact.extracted_data && (
+          {contact.evaluation.humanness_suggestions?.length > 0 && (
             <div className="space-y-1">
-              <h5 className="text-xs font-medium text-muted-foreground">Extracted Data</h5>
-              <pre className="rounded-lg bg-muted/30 border border-border p-3 text-xs font-mono overflow-auto">
-                {JSON.stringify(contact.extracted_data, null, 2)}
-              </pre>
+              <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                <Lightbulb className="h-3 w-3" /> Humanness Suggestions
+              </p>
+              <ul className="text-xs text-foreground space-y-1">
+                {contact.evaluation.humanness_suggestions.map((tip: string, i: number) => (
+                  <li key={i} className="flex items-start gap-1">
+                    <Lightbulb className="h-3 w-3 mt-0.5 text-yellow-400 shrink-0" />
+                    {tip}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
+
+          {contact.evaluation.knowledge_gaps?.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                <BookOpen className="h-3 w-3" /> Knowledge Gaps
+              </p>
+              <ul className="text-xs text-foreground space-y-1">
+                {contact.evaluation.knowledge_gaps.map((gap: string, i: number) => (
+                  <li key={i} className="flex items-start gap-1">
+                    <BookOpen className="h-3 w-3 mt-0.5 text-orange-400 shrink-0" />
+                    {gap}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {contact.evaluation.recommended_improvements?.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Recommended Improvements</p>
+              <ul className="text-xs text-foreground space-y-2">
+                {contact.evaluation.recommended_improvements.map((imp: any, i: number) => (
+                  <li key={i} className="rounded-lg bg-muted/30 border border-border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <p className="font-medium">{imp.field}</p>
+                        <p className="text-muted-foreground text-xs mt-1">{imp.reason}</p>
+                        <p className="mt-2">Suggested: <span className="text-primary">{imp.suggested_value}</span></p>
+                      </div>
+                      <Button
+                        onClick={() => onApplyFix(imp)}
+                        disabled={applyingFixId === imp.field || appliedFixes.includes(imp.field)}
+                        size="sm"
+                        variant={appliedFixes.includes(imp.field) ? "ghost" : "default"}
+                        className="shrink-0"
+                      >
+                        {applyingFixId === imp.field && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                        {appliedFixes.includes(imp.field) ? (
+                          <><CheckCircle className="mr-1 h-3 w-3" /> Applied</>
+                        ) : (
+                          "Apply Fix"
+                        )}
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {contact.extracted_data && (
+        <div className="space-y-1">
+          <h5 className="text-xs font-medium text-muted-foreground">Extracted Data</h5>
+          <pre className="rounded-lg bg-muted/30 border border-border p-3 text-xs font-mono overflow-auto">
+            {JSON.stringify(contact.extracted_data, null, 2)}
+          </pre>
         </div>
       )}
     </div>
