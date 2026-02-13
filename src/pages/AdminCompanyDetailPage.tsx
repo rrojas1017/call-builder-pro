@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Save, Eye, Bot, Phone, Megaphone } from "lucide-react";
+import { Loader2, ArrowLeft, Save, Eye, Bot, Phone, Megaphone, UserPlus } from "lucide-react";
 
 interface Member {
   id: string;
@@ -29,32 +30,38 @@ export default function AdminCompanyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  // Add User dialog
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newFullName, setNewFullName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState("viewer");
+  const [addingUser, setAddingUser] = useState(false);
+
+  const loadMembers = async () => {
     if (!orgId) return;
-    const load = async () => {
-      const [orgRes, profilesRes, rolesRes] = await Promise.all([
-        supabase.from("organizations").select("name, credits_balance").eq("id", orgId).single(),
-        supabase.from("profiles").select("id, full_name").eq("org_id", orgId),
-        supabase.from("user_roles").select("user_id, role"),
-      ]);
+    const [orgRes, profilesRes, rolesRes] = await Promise.all([
+      supabase.from("organizations").select("name, credits_balance").eq("id", orgId).single(),
+      supabase.from("profiles").select("id, full_name").eq("org_id", orgId),
+      supabase.from("user_roles").select("user_id, role"),
+    ]);
 
-      setOrgName(orgRes.data?.name ?? "");
-      setBalance(orgRes.data?.credits_balance ?? 0);
+    setOrgName(orgRes.data?.name ?? "");
+    setBalance(orgRes.data?.credits_balance ?? 0);
 
-      const roleMap: Record<string, string> = {};
-      (rolesRes.data ?? []).forEach((r: any) => { roleMap[r.user_id] = r.role; });
+    const roleMap: Record<string, string> = {};
+    (rolesRes.data ?? []).forEach((r: any) => { roleMap[r.user_id] = r.role; });
 
-      const profileIds = new Set((profilesRes.data ?? []).map((p) => p.id));
-      setMembers(
-        (profilesRes.data ?? []).map((p) => ({
-          ...p,
-          role: roleMap[p.id] ?? "viewer",
-        }))
-      );
-      setLoading(false);
-    };
-    load();
-  }, [orgId]);
+    setMembers(
+      (profilesRes.data ?? []).map((p) => ({
+        ...p,
+        role: roleMap[p.id] ?? "viewer",
+      }))
+    );
+    setLoading(false);
+  };
+
+  useEffect(() => { loadMembers(); }, [orgId]);
 
   const handleSaveName = async () => {
     if (!orgId) return;
@@ -91,6 +98,35 @@ export default function AdminCompanyDetailPage() {
     if (!orgId) return;
     switchOrg(orgId, orgName);
     navigate("/dashboard");
+  };
+
+  const handleAddUser = async () => {
+    if (!newEmail || !newPassword || !orgId) return;
+    setAddingUser(true);
+    try {
+      const res = await supabase.functions.invoke("create-user", {
+        body: {
+          email: newEmail,
+          password: newPassword,
+          full_name: newFullName,
+          org_id: orgId,
+          role: newRole,
+        },
+      });
+      if (res.error) throw new Error(res.error.message);
+      if (res.data?.error) throw new Error(res.data.error);
+      toast({ title: "User created successfully" });
+      setShowAddUser(false);
+      setNewEmail("");
+      setNewFullName("");
+      setNewPassword("");
+      setNewRole("viewer");
+      await loadMembers();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setAddingUser(false);
+    }
   };
 
   if (loading) {
@@ -147,7 +183,12 @@ export default function AdminCompanyDetailPage() {
 
       {/* Members */}
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-foreground">Members ({members.length})</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-foreground">Members ({members.length})</h2>
+          <Button size="sm" onClick={() => setShowAddUser(true)}>
+            <UserPlus className="h-4 w-4 mr-1" /> Add User
+          </Button>
+        </div>
         <div className="surface-elevated rounded-xl overflow-hidden">
           <Table>
             <TableHeader>
@@ -178,6 +219,50 @@ export default function AdminCompanyDetailPage() {
           </Table>
         </div>
       </div>
+
+      {/* Add User Dialog */}
+      <Dialog open={showAddUser} onOpenChange={setShowAddUser}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add User to {orgName}</DialogTitle>
+            <DialogDescription>Create a new user and assign them to this company.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="user@example.com" />
+            </div>
+            <div className="space-y-2">
+              <Label>Full Name</Label>
+              <Input value={newFullName} onChange={(e) => setNewFullName(e.target.value)} placeholder="John Doe" />
+            </div>
+            <div className="space-y-2">
+              <Label>Password</Label>
+              <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min 6 characters" />
+            </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select value={newRole} onValueChange={setNewRole}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="analyst">Analyst</SelectItem>
+                  <SelectItem value="viewer">Viewer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddUser(false)}>Cancel</Button>
+            <Button onClick={handleAddUser} disabled={addingUser || !newEmail || !newPassword}>
+              {addingUser ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Create User
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
