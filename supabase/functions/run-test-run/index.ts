@@ -258,7 +258,13 @@ serve(async (req) => {
           body: JSON.stringify(blandPayload),
         });
 
-        const blandData = await blandResp.json();
+        const blandText = await blandResp.text();
+        let blandData;
+        try {
+          blandData = JSON.parse(blandText);
+        } catch {
+          throw new Error(`Bland API returned non-JSON (HTTP ${blandResp.status}): ${blandText.substring(0, 200)}`);
+        }
         console.log("Bland API response:", blandResp.status, JSON.stringify(blandData));
 
         if (blandData.call_id) {
