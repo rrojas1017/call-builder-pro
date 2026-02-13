@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "react-router-dom";
-import { Bot, Plus, Loader2, FlaskConical, BookOpen } from "lucide-react";
+import { Bot, Plus, Loader2, FlaskConical, BookOpen, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Agent {
@@ -76,6 +76,13 @@ export default function AgentsPage() {
                 <p className="text-sm text-muted-foreground line-clamp-2">{agent.description}</p>
               )}
               <div className="pt-1 flex items-center gap-3">
+                <Link
+                  to={`/agents/${agent.id}/edit`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <Pencil className="h-3 w-3" /> Edit
+                </Link>
                 <Link
                   to={`/test?agent=${agent.id}`}
                   onClick={(e) => e.stopPropagation()}

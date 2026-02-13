@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.research-and-improve]
 verify_jwt = false
+
+[functions.list-bland-voices]
+verify_jwt = false

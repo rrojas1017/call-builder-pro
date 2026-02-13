@@ -8,6 +8,7 @@ import AuthPage from "./pages/AuthPage";
 import DashboardPage from "./pages/DashboardPage";
 import AgentsPage from "./pages/AgentsPage";
 import CreateAgentPage from "./pages/CreateAgentPage";
+import EditAgentPage from "./pages/EditAgentPage";
 import AgentKnowledgePage from "./pages/AgentKnowledgePage";
 import CampaignsPage from "./pages/CampaignsPage";
 import CallsPage from "./pages/CallsPage";
@@ -31,6 +32,7 @@ const App = () => (
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/agents/:id/knowledge" element={<AgentKnowledgePage />} />
+            <Route path="/agents/:id/edit" element={<EditAgentPage />} />
             <Route path="/create-agent" element={<CreateAgentPage />} />
             <Route path="/test" element={<GymPage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
