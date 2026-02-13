@@ -23,7 +23,7 @@ serve(async (req) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25000);
 
-    const res = await fetch(`https://us.api.bland.ai/v1/voices/${voice_id}/sample`, {
+    const res = await fetch(`https://api.bland.ai/v1/voices/${voice_id}/sample`, {
       method: "POST",
       headers: {
         authorization: BLAND_API_KEY,
