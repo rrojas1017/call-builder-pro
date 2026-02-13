@@ -143,7 +143,7 @@ serve(async (req) => {
           payload.from = spec.from_number;
         }
 
-        const blandResp = await fetch("https://api.bland.ai/v1/calls", {
+        const blandResp = await fetch("https://us.api.bland.ai/v1/calls", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
