@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Phone, Play, CheckCircle, XCircle, FileText } from "lucide-react";
+import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
 
 interface Agent {
   id: string;
@@ -25,6 +26,12 @@ interface TestContact {
   outcome: string | null;
   error: string | null;
   extracted_data: any;
+}
+
+interface TrendPoint {
+  date: string;
+  humanness: number | null;
+  naturalness: number | null;
 }
 
 function normalizePhone(raw: string): string {
@@ -47,9 +54,12 @@ export default function QuickTestPage() {
   const [contact, setContact] = useState<TestContact | null>(null);
   const [testRunId, setTestRunId] = useState<string | null>(null);
 
-  // Apply fix state
   const [applyingFixId, setApplyingFixId] = useState<string | null>(null);
   const [appliedFixes, setAppliedFixes] = useState<string[]>([]);
+
+  // Trend data
+  const [trendData, setTrendData] = useState<TrendPoint[]>([]);
+  const [trendLoading, setTrendLoading] = useState(false);
 
   // Load agents
   useEffect(() => {
@@ -63,6 +73,32 @@ export default function QuickTestPage() {
         if (!agentId && data?.length) setAgentId(data[0].id);
       });
   }, [user]);
+
+  // Load trend data when agent changes
+  useEffect(() => {
+    if (!agentId) return;
+    setTrendLoading(true);
+
+    const loadTrend = async () => {
+      const { data } = await supabase
+        .from("test_run_contacts")
+        .select("evaluation, created_at, test_run_id, test_runs!inner(project_id)")
+        .eq("test_runs.project_id", agentId)
+        .eq("status", "completed")
+        .not("evaluation", "is", null)
+        .order("created_at", { ascending: true })
+        .limit(20);
+
+      const points: TrendPoint[] = (data || []).map((row: any) => ({
+        date: new Date(row.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        humanness: row.evaluation?.humanness_score ?? null,
+        naturalness: row.evaluation?.naturalness_score ?? null,
+      }));
+      setTrendData(points);
+      setTrendLoading(false);
+    };
+    loadTrend();
+  }, [agentId, contact]); // re-fetch after a new test completes
 
   // Realtime subscription for test contact updates
   useEffect(() => {
@@ -121,7 +157,6 @@ export default function QuickTestPage() {
     try {
       const normalized = normalizePhone(phone.trim());
 
-      // 1. Create test run with 1 contact
       const { data: createData, error: createErr } = await supabase.functions.invoke("create-test-run", {
         body: {
           project_id: agentId,
@@ -136,7 +171,6 @@ export default function QuickTestPage() {
       const newTestRunId = createData.test_run_id;
       setTestRunId(newTestRunId);
 
-      // 2. Fire the call
       const { error: runErr } = await supabase.functions.invoke("run-test-run", {
         body: { test_run_id: newTestRunId },
       });
@@ -171,6 +205,8 @@ export default function QuickTestPage() {
   };
 
   const isDone = contact && !["queued", "calling"].includes(contact.status);
+
+  const hasTrendData = trendData.some((p) => p.humanness != null);
 
   return (
     <div className="p-8 max-w-2xl mx-auto space-y-8">
@@ -215,6 +251,35 @@ export default function QuickTestPage() {
         </Button>
       </div>
 
+      {/* Humanness Trend Chart */}
+      {hasTrendData && (
+        <div className="surface-elevated rounded-xl p-6 space-y-3">
+          <h2 className="text-lg font-semibold text-foreground">Humanness Score Trend</h2>
+          <p className="text-xs text-muted-foreground">Last 20 evaluated calls. Dashed line = auto-improvement threshold (80).</p>
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--background))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                />
+                <ReferenceLine y={80} stroke="hsl(var(--destructive))" strokeDasharray="6 3" label={{ value: "80", position: "right", fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                <Line type="monotone" dataKey="humanness" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3 }} name="Humanness" connectNulls />
+                <Line type="monotone" dataKey="naturalness" stroke="hsl(var(--accent-foreground))" strokeWidth={1.5} strokeDasharray="4 2" dot={{ r: 2 }} name="Naturalness" connectNulls />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
       {/* Results */}
       {contact && (
         <div className="surface-elevated rounded-xl p-6 space-y-4">
@@ -251,10 +316,12 @@ export default function QuickTestPage() {
 
           {contact.evaluation && (
             <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-5 gap-2">
                 <ScoreCard label="Compliance" score={contact.evaluation.compliance_score} />
                 <ScoreCard label="Objective" score={contact.evaluation.objective_score} />
                 <ScoreCard label="Overall" score={contact.evaluation.overall_score} />
+                <ScoreCard label="Humanness" score={contact.evaluation.humanness_score} />
+                <ScoreCard label="Naturalness" score={contact.evaluation.naturalness_score} />
               </div>
 
               {contact.evaluation.issues_detected?.length > 0 && (
@@ -265,6 +332,38 @@ export default function QuickTestPage() {
                       <li key={i} className="flex items-start gap-1">
                         <XCircle className="h-3 w-3 mt-0.5 text-destructive shrink-0" />
                         {issue}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {contact.evaluation.humanness_suggestions?.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <Lightbulb className="h-3 w-3" /> Humanness Suggestions
+                  </p>
+                  <ul className="text-xs text-foreground space-y-1">
+                    {contact.evaluation.humanness_suggestions.map((tip: string, i: number) => (
+                      <li key={i} className="flex items-start gap-1">
+                        <Lightbulb className="h-3 w-3 mt-0.5 text-yellow-400 shrink-0" />
+                        {tip}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {contact.evaluation.knowledge_gaps?.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <BookOpen className="h-3 w-3" /> Knowledge Gaps
+                  </p>
+                  <ul className="text-xs text-foreground space-y-1">
+                    {contact.evaluation.knowledge_gaps.map((gap: string, i: number) => (
+                      <li key={i} className="flex items-start gap-1">
+                        <BookOpen className="h-3 w-3 mt-0.5 text-orange-400 shrink-0" />
+                        {gap}
                       </li>
                     ))}
                   </ul>
