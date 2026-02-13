@@ -82,7 +82,7 @@ function buildCompactStyle(notes: string[]): string {
   return condensed.join(". ") + ".";
 }
 
-function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[]): string {
+function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], knowledgeBriefing?: string): string {
   const purpose = spec.use_case || spec.success_definition || "Conduct a professional outbound call.";
   const discl = spec.disclosure_text || "";
   const tone = spec.tone_style || "Friendly, professional, empathetic";
@@ -131,10 +131,14 @@ RULES:
 - Use caller's name occasionally. Acknowledge each answer before the next question.
 - Never guess or assume answers.`;
 
-  // Domain knowledge (compact)
-  const knowledgeSection = buildCompactKnowledge(knowledge);
-  if (knowledgeSection) {
-    prompt += `\n\nDOMAIN KNOWLEDGE:\n${knowledgeSection}`;
+  // Knowledge: prefer AI briefing, fallback to compact raw knowledge
+  if (knowledgeBriefing) {
+    prompt += `\n\nKNOWLEDGE BRIEFING:\n${knowledgeBriefing}`;
+  } else {
+    const knowledgeSection = buildCompactKnowledge(knowledge);
+    if (knowledgeSection) {
+      prompt += `\n\nDOMAIN KNOWLEDGE:\n${knowledgeSection}`;
+    }
   }
 
   if (discl) {
@@ -243,14 +247,21 @@ serve(async (req) => {
     const { data: spec } = await supabase
       .from("agent_specs").select("*").eq("project_id", testRun.project_id).single();
 
-    // Load agent knowledge (capped to 10)
-    const { data: knowledgeRows } = await supabase
-      .from("agent_knowledge").select("category, content")
-      .eq("project_id", testRun.project_id)
-      .order("created_at", { ascending: false })
-      .limit(10);
-
-    const knowledge: KnowledgeEntry[] = (knowledgeRows || []) as KnowledgeEntry[];
+    // Summarize agent knowledge via AI (replaces raw knowledge fetch)
+    let knowledgeBriefing = "";
+    try {
+      const { data: summaryData, error: summaryErr } = await supabase.functions.invoke("summarize-agent-knowledge", {
+        body: { project_id: testRun.project_id },
+      });
+      if (summaryErr) {
+        console.error("Knowledge summarization error:", summaryErr);
+      } else if (summaryData?.briefing) {
+        knowledgeBriefing = summaryData.briefing;
+        console.log(`Knowledge briefing: ${summaryData.entries_count} entries → ${knowledgeBriefing.length} chars`);
+      }
+    } catch (sumErr: any) {
+      console.error("Failed to invoke summarize-agent-knowledge:", sumErr.message);
+    }
 
     // Load global human behaviors (limit 10)
     const { data: globalBehaviors } = await supabase
@@ -269,7 +280,7 @@ serve(async (req) => {
     }
 
     const voiceProvider = spec?.voice_provider || "bland";
-    let baseTask = testRun.agent_instructions_text || (spec ? buildTaskPrompt(spec, knowledge) : "Conduct a professional outbound call.");
+    let baseTask = testRun.agent_instructions_text || (spec ? buildTaskPrompt(spec, [], knowledgeBriefing) : "Conduct a professional outbound call.");
 
     // Smart guard: progressively trim if over limit
     const MAX_TASK_LENGTH = 28000;
