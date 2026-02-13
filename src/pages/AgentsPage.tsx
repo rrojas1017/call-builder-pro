@@ -121,7 +121,7 @@ export default function AgentsPage() {
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-foreground truncate">{agent.name}</h3>
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{config.label}</Badge>
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">{agent.voice_provider === "retell" ? "Retell" : "Bland"}</Badge>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">{agent.voice_provider === "retell" ? "Append" : "Voz"}</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">{new Date(agent.created_at).toLocaleDateString()}</p>
                     </div>

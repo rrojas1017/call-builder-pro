@@ -274,8 +274,8 @@ export default function CreateAgentPage() {
                   voiceProvider === "bland" ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
                 )}
               >
-                <p className="text-sm font-medium text-foreground">Bland AI</p>
-                <p className="text-xs text-muted-foreground">Current provider with voice selection & background audio</p>
+                <p className="text-sm font-medium text-foreground">Voz</p>
+                <p className="text-xs text-muted-foreground">Primary provider with voice selection & background audio</p>
               </button>
               <button
                 onClick={() => setVoiceProvider("retell")}
@@ -284,15 +284,15 @@ export default function CreateAgentPage() {
                   voiceProvider === "retell" ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
                 )}
               >
-                <p className="text-sm font-medium text-foreground">Retell AI</p>
-                <p className="text-xs text-muted-foreground">Alternative provider — configure voice in Retell dashboard</p>
+                <p className="text-sm font-medium text-foreground">Append</p>
+                <p className="text-xs text-muted-foreground">Alternative provider — configure voice in the Append dashboard</p>
               </button>
             </div>
             {voiceProvider === "retell" && (
               <div className="space-y-2">
-                <Label>Retell Agent ID</Label>
+                <Label>Append Agent ID</Label>
                 <Input value={retellAgentId} onChange={(e) => setRetellAgentId(e.target.value)} placeholder="e.g. agent_abc123" />
-                <p className="text-xs text-muted-foreground">The agent ID from your Retell AI dashboard.</p>
+                <p className="text-xs text-muted-foreground">The agent ID from your Append dashboard.</p>
               </div>
             )}
           </div>
@@ -338,13 +338,13 @@ export default function CreateAgentPage() {
             )}
           </div>
 
-          {/* Voice Selection (Bland only) */}
+          {/* Voice Selection (Voz only) */}
           {voiceProvider === "bland" && (
             <div className="surface-elevated rounded-xl p-6 space-y-4">
               <h3 className="font-semibold text-foreground flex items-center gap-2">
                 <Mic className="h-4 w-4 text-primary" /> Voice Selection
               </h3>
-              <p className="text-xs text-muted-foreground">Choose a voice from your Bland AI account.</p>
+              <p className="text-xs text-muted-foreground">Choose a voice for your agent.</p>
               <VoiceSelector
                 voices={blandVoices}
                 loading={voicesLoading}
