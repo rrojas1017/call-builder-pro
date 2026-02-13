@@ -28,6 +28,9 @@ interface TestResultsModalProps {
   onClose: () => void;
 }
 
+const normalizeField = (field: string) =>
+  field.replace(/\s*\(.*\)\s*$/, "").replace(/\//g, ".").trim();
+
 export default function TestResultsModal({ testRunId, projectId, open, onClose }: TestResultsModalProps) {
   const { toast } = useToast();
   const [contacts, setContacts] = useState<TestContact[]>([]);
@@ -36,6 +39,24 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
   const [applyingFixId, setApplyingFixId] = useState<string | null>(null);
   const [appliedFixes, setAppliedFixes] = useState<string[]>([]);
   const [applyingAll, setApplyingAll] = useState(false);
+
+  // Fetch already-applied improvements from DB
+  useEffect(() => {
+    if (!open || !projectId) return;
+    const fetchApplied = async () => {
+      const { data } = await supabase
+        .from("improvements")
+        .select("patch")
+        .eq("project_id", projectId);
+      if (data) {
+        const fields = data.flatMap((row: any) =>
+          row.patch ? Object.keys(row.patch).filter((k) => k !== "version") : []
+        );
+        setAppliedFixes(fields);
+      }
+    };
+    fetchApplied();
+  }, [open, projectId]);
 
   const handleApplyFix = async (improvement: any) => {
     try {
@@ -51,7 +72,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
         },
       });
       if (error) throw error;
-      setAppliedFixes((prev) => [...prev, improvement.field]);
+      setAppliedFixes((prev) => [...prev, normalizeField(improvement.field)]);
       toast({
         title: "Fix applied!",
         description: `Agent spec updated to version ${data.to_version}.`,
@@ -68,7 +89,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
   };
 
   const handleApplyAllFixes = async (improvements: any[]) => {
-    const unapplied = improvements.filter((imp: any) => !appliedFixes.includes(imp.field));
+    const unapplied = improvements.filter((imp: any) => !appliedFixes.includes(normalizeField(imp.field)));
     if (!unapplied.length) return;
     setApplyingAll(true);
     for (const imp of unapplied) {
@@ -305,7 +326,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                         {selected.evaluation.recommended_improvements.length > 1 && (
                           <Button
                             onClick={() => handleApplyAllFixes(selected.evaluation.recommended_improvements)}
-                            disabled={applyingAll || selected.evaluation.recommended_improvements.every((imp: any) => appliedFixes.includes(imp.field))}
+                            disabled={applyingAll || selected.evaluation.recommended_improvements.every((imp: any) => appliedFixes.includes(normalizeField(imp.field)))}
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs"
@@ -329,13 +350,13 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                               </div>
                               <Button
                                 onClick={() => handleApplyFix(imp)}
-                                disabled={applyingFixId === imp.field || appliedFixes.includes(imp.field)}
+                                disabled={applyingFixId === imp.field || appliedFixes.includes(normalizeField(imp.field))}
                                 size="sm"
-                                variant={appliedFixes.includes(imp.field) ? "ghost" : "default"}
+                                variant={appliedFixes.includes(normalizeField(imp.field)) ? "ghost" : "default"}
                                 className="shrink-0"
                               >
                                 {applyingFixId === imp.field && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-                                {appliedFixes.includes(imp.field) ? (
+                                {appliedFixes.includes(normalizeField(imp.field)) ? (
                                   <><CheckCircle className="mr-1 h-3 w-3" /> Applied</>
                                 ) : (
                                   "Apply Fix"
