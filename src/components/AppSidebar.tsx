@@ -11,7 +11,7 @@ const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
   { label: "Agents", icon: Bot, path: "/agents" },
   { label: "Create Agent", icon: PlusCircle, path: "/create-agent" },
-  { label: "Test", icon: FlaskConical, path: "/test" },
+  { label: "Gym", icon: FlaskConical, path: "/test" },
   { label: "Campaigns", icon: Megaphone, path: "/campaigns" },
   { label: "Calls", icon: Phone, path: "/calls" },
   { label: "Knowledge Base", icon: BookOpen, path: "/knowledge" },

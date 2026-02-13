@@ -42,7 +42,7 @@ function normalizePhone(raw: string): string {
   return `+${digits}`;
 }
 
-export default function QuickTestPage() {
+export default function GymPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
@@ -160,10 +160,9 @@ export default function QuickTestPage() {
       const { data: createData, error: createErr } = await supabase.functions.invoke("create-test-run", {
         body: {
           project_id: agentId,
-          name: "Quick Test",
-          max_calls: 1,
+          name: "Gym Test",
           concurrency: 1,
-          contacts: [{ name: "Quick Test", phone: normalized }],
+          contacts: [{ name: "Gym Test", phone: normalized }],
         },
       });
       if (createErr) throw createErr;
@@ -211,8 +210,8 @@ export default function QuickTestPage() {
   return (
     <div className="p-8 max-w-2xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Quick Test</h1>
-        <p className="text-muted-foreground mt-1">Pick an agent, enter a phone number, hit test.</p>
+        <h1 className="text-2xl font-bold text-foreground">Gym</h1>
+        <p className="text-muted-foreground mt-1">Train and test your agents one-on-one to measure humanness and refine performance.</p>
       </div>
 
       {/* Form */}
@@ -254,7 +253,7 @@ export default function QuickTestPage() {
       {/* Humanness Trend Chart */}
       {hasTrendData && (
         <div className="surface-elevated rounded-xl p-6 space-y-3">
-          <h2 className="text-lg font-semibold text-foreground">Humanness Score Trend</h2>
+          <h2 className="text-lg font-semibold text-foreground">Agent Humanness Progress</h2>
           <p className="text-xs text-muted-foreground">Last 20 evaluated calls. Dashed line = auto-improvement threshold (80).</p>
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
