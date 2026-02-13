@@ -7,17 +7,37 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
-const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
-  { label: "Agents", icon: Bot, path: "/agents" },
-  { label: "Create Agent", icon: PlusCircle, path: "/create-agent" },
-  { label: "Gym", icon: Dumbbell, path: "/test" },
-  { label: "Lists", icon: FileSpreadsheet, path: "/lists" },
-  { label: "Campaigns", icon: Megaphone, path: "/campaigns" },
-  { label: "Inbound", icon: PhoneIncoming, path: "/inbound" },
-  { label: "Calls", icon: Phone, path: "/calls" },
-  { label: "Knowledge Base", icon: BookOpen, path: "/knowledge" },
-  { label: "Settings", icon: Settings, path: "/settings" },
+const navSections = [
+  {
+    label: "BUILD",
+    items: [
+      { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
+      { label: "Agents", icon: Bot, path: "/agents" },
+      { label: "Create Agent", icon: PlusCircle, path: "/create-agent" },
+      { label: "Knowledge Base", icon: BookOpen, path: "/knowledge" },
+    ],
+  },
+  {
+    label: "DEPLOY",
+    items: [
+      { label: "Campaigns", icon: Megaphone, path: "/campaigns" },
+      { label: "Lists", icon: FileSpreadsheet, path: "/lists" },
+      { label: "Phone Numbers", icon: PhoneIncoming, path: "/inbound" },
+    ],
+  },
+  {
+    label: "MONITOR",
+    items: [
+      { label: "Calls", icon: Phone, path: "/calls" },
+      { label: "Gym", icon: Dumbbell, path: "/test" },
+    ],
+  },
+  {
+    label: "SYSTEM",
+    items: [
+      { label: "Settings", icon: Settings, path: "/settings" },
+    ],
+  },
 ];
 
 export default function AppSidebar() {
@@ -38,26 +58,35 @@ export default function AppSidebar() {
         <span className="text-lg font-bold text-foreground tracking-tight">VoiceForge</span>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
-          const active = location.pathname === item.path || 
-            (item.path !== "/dashboard" && location.pathname.startsWith(item.path));
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
-                active
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
-              )}
-            >
-              <item.icon className={cn("h-4 w-4", active && "text-primary")} />
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 px-3 py-4 overflow-y-auto">
+        {navSections.map((section, idx) => (
+          <div key={section.label} className={cn(idx > 0 && "mt-6")}>
+            <h4 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {section.label}
+            </h4>
+            <div className="space-y-1">
+              {section.items.map((item) => {
+                const active = location.pathname === item.path ||
+                  (item.path !== "/dashboard" && location.pathname.startsWith(item.path));
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                      active
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+                    )}
+                  >
+                    <item.icon className={cn("h-4 w-4", active && "text-primary")} />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       <div className="border-t border-sidebar-border p-3">
