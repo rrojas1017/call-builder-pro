@@ -289,14 +289,16 @@ serve(async (req) => {
       .from("agent_knowledge").select("category, content")
       .eq("project_id", testRun.project_id);
 
-    const knowledge: KnowledgeEntry[] = (knowledgeRows || []) as KnowledgeEntry[];
+    // Cap knowledge to prevent oversized prompts
+    const knowledge: KnowledgeEntry[] = (knowledgeRows || []).slice(0, 20) as KnowledgeEntry[];
 
     // Load global human behaviors
     const { data: globalBehaviors } = await supabase
       .from("global_human_behaviors").select("content")
       .order("created_at", { ascending: true });
 
-    const globalTechniques = (globalBehaviors || []).map((g: any) => g.content as string);
+    // Limit global behaviors to most recent 15
+    const globalTechniques = (globalBehaviors || []).slice(-15).map((g: any) => g.content as string);
 
     // Merge global behaviors into spec's humanization_notes (deduped)
     if (spec && globalTechniques.length > 0) {
@@ -307,7 +309,13 @@ serve(async (req) => {
     }
 
     const voiceProvider = spec?.voice_provider || "bland";
-    const baseTask = testRun.agent_instructions_text || (spec ? buildTaskPrompt(spec, knowledge) : "Conduct a professional outbound call.");
+    let baseTask = testRun.agent_instructions_text || (spec ? buildTaskPrompt(spec, knowledge) : "Conduct a professional outbound call.");
+
+    // Ensure prompt stays under Bland's 30k char limit
+    const MAX_TASK_LENGTH = 29000;
+    if (baseTask.length > MAX_TASK_LENGTH) {
+      baseTask = baseTask.substring(0, MAX_TASK_LENGTH) + "\n\n[Prompt truncated for length]";
+    }
 
     const callIds: string[] = [];
 
