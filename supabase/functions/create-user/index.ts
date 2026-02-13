@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    // Verify caller is super_admin
+    // Verify caller is authenticated
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Missing authorization" }), {
@@ -38,15 +38,26 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-    const { data: roleRow } = await adminClient
+    // Check if caller is super_admin or admin
+    const { data: superAdminRow } = await adminClient
       .from("user_roles")
       .select("role")
       .eq("user_id", caller.id)
       .eq("role", "super_admin")
       .maybeSingle();
 
-    if (!roleRow) {
-      return new Response(JSON.stringify({ error: "Forbidden: super_admin only" }), {
+    const { data: adminRow } = await adminClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", caller.id)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    const isSuperAdmin = !!superAdminRow;
+    const isAdmin = !!adminRow;
+
+    if (!isSuperAdmin && !isAdmin) {
+      return new Response(JSON.stringify({ error: "Forbidden: admin or super_admin only" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -59,6 +70,22 @@ Deno.serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // If caller is admin (not super_admin), restrict to their own org
+    if (!isSuperAdmin) {
+      const { data: callerProfile } = await adminClient
+        .from("profiles")
+        .select("org_id")
+        .eq("id", caller.id)
+        .single();
+
+      if (!callerProfile || callerProfile.org_id !== org_id) {
+        return new Response(JSON.stringify({ error: "Admins can only create users in their own organization" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // Create the auth user with metadata so the trigger assigns org + role
