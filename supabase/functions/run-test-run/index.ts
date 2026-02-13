@@ -293,79 +293,132 @@ serve(async (req) => {
       spec.humanization_notes = [...currentNotes, ...newGlobal];
     }
 
+    const voiceProvider = spec?.voice_provider || "bland";
     const baseTask = testRun.agent_instructions_text || (spec ? buildTaskPrompt(spec, knowledge) : "Conduct a professional outbound call.");
-    const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
 
     const callIds: string[] = [];
 
-    for (const contact of queuedContacts) {
-      try {
-        const contactTask = replaceTemplateVars(baseTask, contact);
-        const contactFirstSentence = spec?.opening_line ? replaceTemplateVars(spec.opening_line, contact) : undefined;
+    if (voiceProvider === "retell") {
+      // ===== RETELL AI BRANCH =====
+      const retellApiKey = Deno.env.get("RETELL_API_KEY");
+      if (!retellApiKey) throw new Error("RETELL_API_KEY not configured");
+      const retellAgentId = spec?.retell_agent_id;
+      if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
+      const retellWebhookUrl = `${supabaseUrl}/functions/v1/receive-retell-webhook`;
 
-        const blandPayload: any = {
-          phone_number: contact.phone,
-          task: contactTask,
-          first_sentence: contactFirstSentence,
-          voice: spec?.voice_id || "maya",
-          model: "base",
-          record: true,
-          webhook: webhookUrl,
-          temperature: spec?.temperature ?? 0.7,
-          interruption_threshold: spec?.interruption_threshold ?? 100,
-          noise_cancellation: true,
-          metadata: {
-            test_run_id,
-            test_run_contact_id: contact.id,
-            org_id: testRun.org_id,
-            project_id: testRun.project_id,
-            spec_version: testRun.spec_version,
-          },
-        };
-
-        if (spec?.speaking_speed && spec.speaking_speed !== 1.0) {
-          blandPayload.voice_settings = { speed: spec.speaking_speed };
-        }
-        if (spec?.pronunciation_guide && Array.isArray(spec.pronunciation_guide) && spec.pronunciation_guide.length > 0) {
-          blandPayload.pronunciation_guide = spec.pronunciation_guide;
-        }
-        if (spec?.transfer_required && spec?.transfer_phone_number) {
-          const digits = spec.transfer_phone_number.replace(/\D/g, "");
-          if (digits.length >= 10) {
-            blandPayload.transfer_phone_number = digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
-          }
-        }
-        if (spec?.background_track && spec.background_track !== "none") {
-          blandPayload.background_track = spec.background_track;
-        }
-
-        const blandResp = await fetch("https://us.api.bland.ai/v1/calls", {
-          method: "POST",
-          headers: { Authorization: blandApiKey, "Content-Type": "application/json" },
-          body: JSON.stringify(blandPayload),
-        });
-
-        const blandText = await blandResp.text();
-        let blandData;
+      for (const contact of queuedContacts) {
         try {
-          blandData = JSON.parse(blandText);
-        } catch {
-          throw new Error(`Bland API returned non-JSON (HTTP ${blandResp.status}): ${blandText.substring(0, 200)}`);
-        }
-        console.log("Bland API response:", blandResp.status, JSON.stringify(blandData));
+          const retellPayload: any = {
+            agent_id: retellAgentId,
+            phone_number: contact.phone,
+            metadata: {
+              test_run_id,
+              test_run_contact_id: contact.id,
+              org_id: testRun.org_id,
+              project_id: testRun.project_id,
+              spec_version: testRun.spec_version,
+            },
+            webhook_url: retellWebhookUrl,
+          };
 
-        if (blandData.call_id) {
-          callIds.push(blandData.call_id);
-          await supabase.from("test_run_contacts").update({
-            status: "calling", bland_call_id: blandData.call_id, called_at: new Date().toISOString(),
-          }).eq("id", contact.id);
-        } else {
-          await supabase.from("test_run_contacts").update({
-            status: "failed", error: blandData.message || blandData.error || JSON.stringify(blandData),
-          }).eq("id", contact.id);
+          if (spec?.from_number) retellPayload.from_number = spec.from_number;
+
+          const retellResp = await fetch("https://api.retellai.com/v2/create-phone-call", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${retellApiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify(retellPayload),
+          });
+
+          const retellData = await retellResp.json();
+          console.log("Retell API response:", retellResp.status, JSON.stringify(retellData));
+
+          if (retellData.call_id) {
+            callIds.push(retellData.call_id);
+            await supabase.from("test_run_contacts").update({
+              status: "calling", retell_call_id: retellData.call_id, called_at: new Date().toISOString(),
+            } as any).eq("id", contact.id);
+          } else {
+            await supabase.from("test_run_contacts").update({
+              status: "failed", error: retellData.message || retellData.error || JSON.stringify(retellData),
+            }).eq("id", contact.id);
+          }
+        } catch (callErr: any) {
+          await supabase.from("test_run_contacts").update({ status: "failed", error: callErr.message }).eq("id", contact.id);
         }
-      } catch (callErr: any) {
-        await supabase.from("test_run_contacts").update({ status: "failed", error: callErr.message }).eq("id", contact.id);
+      }
+    } else {
+      // ===== EXISTING BLAND AI BRANCH (UNCHANGED) =====
+      const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
+
+      for (const contact of queuedContacts) {
+        try {
+          const contactTask = replaceTemplateVars(baseTask, contact);
+          const contactFirstSentence = spec?.opening_line ? replaceTemplateVars(spec.opening_line, contact) : undefined;
+
+          const blandPayload: any = {
+            phone_number: contact.phone,
+            task: contactTask,
+            first_sentence: contactFirstSentence,
+            voice: spec?.voice_id || "maya",
+            model: "base",
+            record: true,
+            webhook: webhookUrl,
+            temperature: spec?.temperature ?? 0.7,
+            interruption_threshold: spec?.interruption_threshold ?? 100,
+            noise_cancellation: true,
+            metadata: {
+              test_run_id,
+              test_run_contact_id: contact.id,
+              org_id: testRun.org_id,
+              project_id: testRun.project_id,
+              spec_version: testRun.spec_version,
+            },
+          };
+
+          if (spec?.speaking_speed && spec.speaking_speed !== 1.0) {
+            blandPayload.voice_settings = { speed: spec.speaking_speed };
+          }
+          if (spec?.pronunciation_guide && Array.isArray(spec.pronunciation_guide) && spec.pronunciation_guide.length > 0) {
+            blandPayload.pronunciation_guide = spec.pronunciation_guide;
+          }
+          if (spec?.transfer_required && spec?.transfer_phone_number) {
+            const digits = spec.transfer_phone_number.replace(/\D/g, "");
+            if (digits.length >= 10) {
+              blandPayload.transfer_phone_number = digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
+            }
+          }
+          if (spec?.background_track && spec.background_track !== "none") {
+            blandPayload.background_track = spec.background_track;
+          }
+
+          const blandResp = await fetch("https://us.api.bland.ai/v1/calls", {
+            method: "POST",
+            headers: { Authorization: blandApiKey, "Content-Type": "application/json" },
+            body: JSON.stringify(blandPayload),
+          });
+
+          const blandText = await blandResp.text();
+          let blandData;
+          try {
+            blandData = JSON.parse(blandText);
+          } catch {
+            throw new Error(`Bland API returned non-JSON (HTTP ${blandResp.status}): ${blandText.substring(0, 200)}`);
+          }
+          console.log("Bland API response:", blandResp.status, JSON.stringify(blandData));
+
+          if (blandData.call_id) {
+            callIds.push(blandData.call_id);
+            await supabase.from("test_run_contacts").update({
+              status: "calling", bland_call_id: blandData.call_id, called_at: new Date().toISOString(),
+            }).eq("id", contact.id);
+          } else {
+            await supabase.from("test_run_contacts").update({
+              status: "failed", error: blandData.message || blandData.error || JSON.stringify(blandData),
+            }).eq("id", contact.id);
+          }
+        } catch (callErr: any) {
+          await supabase.from("test_run_contacts").update({ status: "failed", error: callErr.message }).eq("id", contact.id);
+        }
       }
     }
 
