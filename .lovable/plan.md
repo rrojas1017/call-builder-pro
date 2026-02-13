@@ -1,67 +1,85 @@
 
 
-## Live Call Monitor: Real-Time Transcript + Audio Listen
+## AI-Powered Smart List Upload
 
-### Overview
-Add a live monitoring panel to the Gym page that activates when a call is in progress, showing a real-time transcript word-by-word and optionally allowing you to listen to the live audio.
+### Problem
+Currently, uploading a CSV requires the user to manually select the phone column, name column, and review/confirm the data. This is unnecessary friction -- AI can handle all of this automatically, similar to how the agent creation wizard works.
 
-### How It Works
+### New Flow
 
-Bland AI provides two APIs for active calls:
-- **Event Stream** (`GET /v1/event_stream/{call_id}`) -- Server-Sent Events delivering transcript lines as the conversation happens
-- **Listen** (`POST /v1/calls/{call_id}/listen`) -- returns a WebSocket URL for streaming live audio
+Upload a file and the system does everything:
 
-Both require the `BLAND_API_KEY`, so they must be proxied through a backend function.
+1. **User drops a CSV** (no change here)
+2. **AI analyzes the file** -- a new edge function sends a sample of the CSV to AI, which returns:
+   - A smart list name based on the file content (e.g., "Texas Health Leads - Feb 2026")
+   - The phone column (auto-detected)
+   - The name column (auto-detected)
+   - A field mapping: which columns map to known contact fields (state, zip, email, age, etc.)
+   - Data quality notes (e.g., "12 rows missing phone numbers -- these will be skipped")
+   - Cleaned/normalized phone numbers (strip formatting, add +1 if needed)
+3. **Show a brief confirmation card** -- not the current manual form, but a summary of what AI decided, with a single "Import" button. The user can see what AI detected but doesn't have to change anything.
 
 ### Changes
 
-**1. New Edge Function: `supabase/functions/live-call-stream/index.ts`**
+**1. Update Edge Function: `supabase/functions/parse-dial-list/index.ts`**
 
-A backend function that accepts a `call_id` and an `action` parameter (`transcript` or `listen`):
+After the existing CSV parsing logic, add an AI analysis step:
+- Send the first 10 rows + all detected headers to Gemini via the shared `ai-client.ts`
+- AI prompt asks it to return structured JSON with:
+  - `suggested_name`: A descriptive list name based on content patterns
+  - `phone_column`: Which header is the phone number
+  - `name_column`: Which header is the contact name  
+  - `field_map`: Maps each header to a semantic role (phone, name, email, state, zip, age, company, notes, etc.) or "other"
+  - `quality_notes`: Array of observations (missing data, formatting issues)
+  - `skip_count`: How many rows should be skipped (no phone number)
+- Fall back to the existing heuristic detection if AI fails
+- Return the AI analysis alongside the existing parsed data
 
-- `action: "transcript"` -- Calls Bland's Event Stream API, fetches all events, and returns the transcript events as JSON. The frontend will poll this every 2-3 seconds to get new transcript lines.
-- `action: "listen"` -- Calls Bland's Listen API (`POST /v1/calls/{call_id}/listen`) and returns the WebSocket URL (`wss://...`) to the frontend, which connects directly for live audio playback.
+**2. Update `src/pages/ListsPage.tsx`**
 
-**2. New Component: `src/components/LiveCallMonitor.tsx`**
+Replace the manual preview/confirm step with a streamlined AI-powered flow:
 
-A panel that appears in the Gym page while a call is active (`running === true` and `contact?.bland_call_id` exists):
+- **New step: "analyzing"** -- shows an animated card saying "AI is analyzing your file..." with a progress feel
+- **New step: "confirm"** -- replaces the old "preview" step with a clean summary card:
+  - AI-suggested list name (editable, but pre-filled)
+  - Auto-detected column mapping shown as badges (e.g., "Phone: mobile_number", "Name: full_name", "State: state")
+  - Quality summary (e.g., "247 valid contacts, 3 skipped -- missing phone")
+  - A collapsible "Preview data" section (collapsed by default) showing the first 5 rows
+  - Single "Import 247 Contacts" button
+- Remove the phone column and name column dropdowns entirely
+- Phone number normalization: strip non-digits, ensure proper format before saving
+- Skip rows where the AI-detected phone column is empty
 
-- **Transcript feed**: Polls the `live-call-stream` function every 2-3 seconds, displaying each transcript event as a chat bubble (distinguishing agent vs. caller by the `category` field).
-- **Listen button**: Fetches the WebSocket URL from the edge function, then connects via `new WebSocket(url)` to receive raw audio chunks and plays them through the Web Audio API.
-- Auto-scrolls to the latest message.
-- Disappears/transitions to the final results when the call completes.
+**3. Data Cleaning on Save**
 
-**3. Update `src/pages/GymPage.tsx`**
+In the `handleSave` function:
+- Filter out rows where the phone column value is empty or not a valid phone number
+- Normalize phone numbers (strip formatting, add country code if needed)
+- Store the AI-generated `field_map` in the `dial_lists` record for downstream use by campaigns
 
-- Import and render `<LiveCallMonitor>` between the "Calling..." status and the results card, passing `blandCallId` and `isActive` props.
-- The component only renders when `running && contact?.bland_call_id`.
-
-**4. Update `supabase/config.toml`**
-
-- Add `[functions.live-call-stream]` with `verify_jwt = false` to match existing function config.
-
-### UI Layout
+### UI Layout (Confirm Step)
 
 ```text
 +------------------------------------------+
-|  Gym - Run Test Call                      |
-|  [Agent dropdown] [Phone] [Run Test]      |
-+------------------------------------------+
-|  LIVE MONITOR (appears during call)       |
-|  +--------------------------------------+ |
-|  | Agent: "Hi, this is Maya from..."     | |
-|  | Caller: "Yeah, hi..."                 | |
-|  | Agent: "Great, I wanted to..."        | |
-|  |  ... (auto-scrolling)                 | |
-|  +--------------------------------------+ |
-|  [ Listen Live ]  (headphone icon)        |
-+------------------------------------------+
-|  Results (appears after call ends)        |
+| Ready to Import                          |
+|                                          |
+| List Name: [Texas Health Leads - Feb '26]|
+|                                          |
+| Detected Fields:                         |
+| [Phone: mobile] [Name: full_name]        |
+| [State: state] [Zip: zip_code]           |
+| [Email: email] [Other: notes]            |
+|                                          |
+| 247 valid contacts | 3 skipped (no phone)|
+|                                          |
+| > Preview data (collapsed)               |
+|                                          |
+| [Import 247 Contacts]    [Cancel]        |
 +------------------------------------------+
 ```
 
 ### What stays the same
-- All existing test run flow, polling, realtime subscriptions unchanged
-- Results card, history, trend chart, improvement buttons unaffected
-- The live monitor is purely additive and only visible during active calls
-
+- Existing list display cards unchanged
+- Database schema unchanged (dial_lists + dial_list_rows)
+- File input accepts .csv only
+- Batch insert logic for rows
