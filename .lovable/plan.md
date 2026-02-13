@@ -1,80 +1,87 @@
 
-## Add Smooth Scroll-Triggered Number Counting Animations to Metrics Section
+
+## Connect SMS via ClickSend
 
 ### Overview
-The metrics section currently displays static values (e.g., "10,000+", "95%") with simple fade-in animations. We'll enhance it with smooth number counting animations that trigger when the section scrolls into view, creating an engaging visual effect.
+Integrate ClickSend as the SMS provider so AI agents can use SMS as a journey/campaign strategy. This adds the ability to send SMS messages, track conversations, and enable SMS as a channel on a per-agent basis.
 
-### Design Approach
+### Prerequisites
+You'll need a ClickSend account with API credentials:
+1. Sign up at [clicksend.com](https://www.clicksend.com)
+2. Go to the dashboard and click "API Credentials" in the top right
+3. You'll need your **API Username** and **API Key**
 
-**Key Features:**
-- Numbers will animate from 0 to their final values when the metrics section comes into view
-- Smooth easing function for natural motion (using `ease-out` cubic bezier)
-- Staggered animations so each metric animates in sequence
-- Works with both numeric and non-numeric values (e.g., "10,000+", "<1s", "95%")
+We'll securely store both as backend secrets.
 
-### Technical Implementation
+### What We'll Build
 
-**1. Create a New Custom Hook (`src/hooks/useCountUp.ts`)**
-- Build a `useCountUp` hook that:
-  - Takes a target value string (e.g., "10,000+", "95%")
-  - Extracts the numeric part (e.g., 10000, 95, 1)
-  - Uses `useEffect` with `useRef` to animate from 0 to the target
-  - Integrates with framer-motion's `useMotionValue` for smooth animation
-  - Handles edge cases (values with symbols like "+", "%", "<", etc.)
-  - Returns the animated display value
-- Duration: ~1.5 seconds per count (adjustable)
-- Easing: cubic-bezier(0.25, 0.46, 0.45, 0.94) (matching existing fadeUp)
+1. **Two new secrets** -- `CLICKSEND_USERNAME` and `CLICKSEND_API_KEY`
+2. **Two new database tables** -- `sms_conversations` and `sms_messages`
+3. **New column on `agent_specs`** -- `sms_enabled` boolean
+4. **New backend function** -- `manage-sms` for sending/receiving SMS via ClickSend
+5. **New SMS page** -- View conversations and send messages
+6. **Navigation + routing updates** -- SMS entry in sidebar, new route
 
-**2. Update Metrics Section (`src/pages/LandingPage.tsx`)**
-- Import the new `useCountUp` hook
-- Wrap each metric number in a component that uses the hook
-- Keep the existing fadeUp animation for the container
-- Add a small additional delay per metric so they count sequentially
-- Structure:
-  ```
-  <motion.div ... variants={fadeUp}>
-    <MetricNumber value="10,000+" />  {/* counts from 0 to 10000 with + suffix */}
-    <div>{label}</div>
-  </motion.div>
-  ```
+### Database Changes
 
-**3. Implementation Details**
+**New table: `sms_conversations`**
+- `id` (uuid, PK, default gen_random_uuid())
+- `org_id` (uuid, FK to organizations, not null)
+- `project_id` (uuid, FK to agent_projects, nullable) -- which agent handles this
+- `from_number` (text) -- the number messages are sent from
+- `to_number` (text) -- the recipient's number
+- `status` (text, default 'active')
+- `created_at`, `updated_at` (timestamptz)
+- RLS: scoped to user's org via `get_user_org_id()`
 
-**MetricNumber Component** (inline or separate):
-- Accepts `value` prop (string like "10,000+", "95%", etc.)
-- Uses regex to separate number from non-numeric suffix/prefix (e.g., "10,000" from "+", "95" from "%")
-- Uses `useCountUp` to get animated value
-- Applies custom formatting to match original (e.g., add commas back to "10,000")
-- Renders as `<motion.div>` with text animation
+**New table: `sms_messages`**
+- `id` (uuid, PK, default gen_random_uuid())
+- `conversation_id` (uuid, FK to sms_conversations)
+- `direction` (text) -- 'outbound' or 'inbound'
+- `body` (text)
+- `clicksend_message_id` (text, nullable)
+- `status` (text, default 'queued') -- queued, sent, delivered, failed
+- `created_at` (timestamptz)
+- RLS: scoped via join to sms_conversations.org_id
 
-**useCountUp Hook Logic**:
-- Extract numeric base: "10,000+" → 10000, "95%" → 95, "<1s" → 1
-- Use `useMotionValue` from framer-motion for smooth animation
-- Create animate effect that counts from 0 to target over 1.5s
-- Format the output to match the original (e.g., add thousands separators, preserve suffix)
-- Return display value that updates in real-time
+**Alter `agent_specs`**: Add `sms_enabled` (boolean, default false)
 
-### Animation Sequence
-1. Metrics section scrolls into view
-2. All metrics fade up (existing `fadeUp` animation)
-3. Numbers begin counting simultaneously
-4. Each metric has a small stagger delay (e.g., 100ms between each) for visual interest
-5. Numbers reach their final values and hold
+### New Backend Function: `manage-sms`
 
-### What Stays the Same
-- All existing metrics data and labels
-- Overall metrics section layout and styling
-- Color scheme and typography
-- Mobile responsive design
-- Border and spacing
+Actions:
+- **`send`** -- Send an SMS via ClickSend `POST /v3/sms/send` (Basic Auth), log the message in `sms_messages`, auto-create conversation if needed
+- **`list_conversations`** -- Fetch conversations for the user's org
+- **`get_messages`** -- Fetch messages for a given conversation
 
-### Files to Create/Modify
-1. **Create**: `src/hooks/useCountUp.ts` - Custom hook for number counting logic
-2. **Modify**: `src/pages/LandingPage.tsx` - Update metrics rendering to use the hook and add MetricNumber component
+ClickSend API details:
+- Base URL: `https://rest.clicksend.com`
+- Auth: Basic HTTP (`username:api_key` base64 encoded)
+- Send endpoint: `POST /v3/sms/send` with body `{ messages: [{ to, body, source, from }] }`
 
-### Benefits
-- More engaging, dynamic landing page
-- Draws attention to impressive metrics
-- Professional, modern feel (similar to Retell AI)
-- Smooth performance using framer-motion's optimized animation API
-- No additional heavy dependencies needed
+### New Page: `SMSPage.tsx`
+
+- Left panel: list of conversations (grouped by contact number)
+- Right panel: message thread for selected conversation
+- Compose area at the bottom to send a new SMS
+- Button to start a new conversation (enter phone number + message)
+- Shows message status (sent, delivered, failed)
+
+### Navigation and Routing Updates
+
+- **`AppSidebar.tsx`**: Add "SMS" item under DEPLOY section with `MessageSquare` icon, path `/sms`
+- **`App.tsx`**: Add protected route `/sms` pointing to `SMSPage`
+
+### Agent Configuration Update
+
+- **`EditAgentPage.tsx`**: Add an "SMS Channel" section with a toggle switch to enable/disable SMS for the agent. Similar styling to the existing "Background Audio" toggle section.
+
+### Files to Create
+1. `supabase/functions/manage-sms/index.ts`
+2. `src/pages/SMSPage.tsx`
+
+### Files to Modify
+1. `src/components/AppSidebar.tsx` -- Add SMS nav item
+2. `src/App.tsx` -- Add `/sms` route + import
+3. `src/pages/EditAgentPage.tsx` -- Add SMS toggle section
+4. Database migration -- New tables + alter agent_specs
+
