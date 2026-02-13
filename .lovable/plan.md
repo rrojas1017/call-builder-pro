@@ -1,85 +1,72 @@
 
 
-# Make the Agent Sound Human -- Self-Improving Conversational Intelligence
+# Auto-Research to Accelerate Agent Improvement
 
 ## Overview
-Bake human-likeness into the core of every call by upgrading three layers: the prompt that drives each call, the evaluation that scores it, and an automatic feedback loop that improves the agent after every conversation.
+When the evaluator identifies weak areas (low humanness score, poor objection handling, industry-specific gaps), the system will automatically research the web for best practices and inject those learnings into the agent's knowledge -- making it smarter after every call, not just from its own mistakes but from the collective wisdom of the internet.
+
+## How It Works
+
+After each call evaluation, if the humanness score is below 80 or the evaluator flags specific weak areas, a new "research-and-improve" edge function kicks in:
+
+1. Evaluator finishes scoring a call and identifies gaps (e.g., "agent didn't handle price objection well", "agent needs better small talk for insurance callers")
+2. The system generates targeted search queries from those gaps + the agent's use case
+3. Firecrawl searches the web for relevant best practices (sales scripts, objection handling guides, industry conversation techniques)
+4. An AI pass distills the raw research into concise, actionable conversation techniques
+5. The distilled techniques get merged into the agent's `humanization_notes` alongside the evaluator's own suggestions
 
 ## Changes
 
-### 1. Add a "humanization_notes" field to agent_specs (DB migration)
-A new JSONB column `humanization_notes` on `agent_specs` stores learned conversational techniques -- small talk openers, humor styles, transition phrases, empathy patterns -- that evolve over time as the evaluator suggests improvements.
+### 1. Connect Firecrawl to the project
+The Firecrawl connector is available in the workspace but not linked to this project. We'll link it so edge functions can use `FIRECRAWL_API_KEY` for web search.
 
-### 2. Rewrite the task prompt to prioritize human-likeness (`run-test-run/index.ts`)
-The current prompt says "keep the conversation concise and professional." That produces a robotic interrogation. The new prompt will inject a dedicated HUMAN CONVERSATION STYLE block:
+### 2. Create new edge function: `research-and-improve/index.ts`
+This function does the heavy lifting:
 
-```
-HUMAN CONVERSATION STYLE (THIS IS YOUR #1 PRIORITY):
-- You are a REAL PERSON having a natural phone conversation, not a robot reading a script.
-- Use the caller's name naturally (not every sentence).
-- React genuinely to what they say: laugh lightly at something funny, show empathy for difficulties, express enthusiasm for good news.
-- Use casual transitions: "Oh that's great!", "Gotcha", "Makes sense", "Ha, yeah I hear that a lot"
-- Add brief, relevant small talk between questions: "Nice, [state] is beautiful this time of year" or "Oh wow, that's a big family -- I bet holidays are fun"
-- Vary your sentence length and rhythm. Mix short reactions ("Got it!") with longer explanations.
-- Never ask questions back-to-back like a survey. Acknowledge each answer before moving on.
-- If you need to transition topics, use natural bridges: "So switching gears a little..." or "That actually reminds me, I also wanted to ask..."
-- Use light humor when appropriate -- nothing forced, just natural warmth.
-- Sound like someone they'd enjoy talking to at a coffee shop.
+**Input**: `{ project_id, evaluation, spec }` (called from evaluate-call after scoring)
 
-LEARNED CONVERSATION TECHNIQUES:
-{humanization_notes -- inserted dynamically from the spec}
-```
+**Steps**:
+- Takes the `humanness_suggestions`, `issues_detected`, and `use_case` from the evaluation
+- Generates 2-3 targeted search queries (e.g., "best phone sales conversation techniques for travel agencies", "how to handle objections naturally on cold calls")
+- Calls Firecrawl search API to find relevant articles/guides
+- Sends the search results + the specific gaps to AI (Lovable AI) with a prompt like: "Distill these articles into 3-5 specific, actionable conversation techniques this agent should use. Be concrete -- give example phrases, not abstract advice."
+- Returns the distilled techniques as an array of strings
 
-This block will appear BEFORE the business rules, making it the agent's primary directive.
+**Output**: `{ research_notes: string[], sources: string[] }`
 
-### 3. Add "humanness_score" to the evaluator (`evaluate-call/index.ts`)
-Expand the evaluation prompt with a dedicated humanness rubric:
+### 3. Update `evaluate-call/index.ts` to trigger research
+After the existing humanness auto-apply logic, add a call to `research-and-improve` when:
+- `humanness_score < 80`, OR
+- There are 2+ issues detected, OR  
+- The evaluator flagged specific knowledge gaps
 
-- **Humanness Score (0-100)**: Separate from naturalness (which measures voice/delivery quality), this scores conversational behavior:
-  - Did the agent acknowledge what the caller said before asking the next question?
-  - Did it use the caller's name naturally (not robotically)?
-  - Were there moments of genuine warmth, humor, or empathy?
-  - Did it vary sentence structure or repeat the same patterns?
-  - Did transitions between topics feel natural or abrupt?
-  - Was there any small talk or rapport-building?
-  
-- **humanness_suggestions**: Array of specific conversational techniques the evaluator noticed would help, formatted as actionable notes (e.g., "When the caller mentioned having 4 kids, the agent missed an opportunity to react warmly before asking about income").
+The research results get merged into `humanization_notes` alongside the evaluator's own suggestions (same dedup + cap-at-20 logic).
 
-Add `humanness_score` and `humanness_suggestions` to the tool call schema.
+### 4. Add `research_sources` JSONB column to `agent_specs`
+Track which URLs/articles the system used to generate improvements, so users can see where the knowledge came from. Default `[]`.
 
-### 4. Auto-apply humanness learnings after each evaluation (`evaluate-call/index.ts`)
-After scoring, if `humanness_suggestions` exist, automatically append them to the spec's `humanization_notes` JSONB field. This creates a growing "memory" of conversation techniques the agent should use. The flow:
+### 5. Update the UI (`TestResultsModal.tsx`)
+Add a "Research Sources" section below the learned techniques that shows links to articles/resources the system found and used to improve the agent.
 
-1. Call completes and gets evaluated
-2. Evaluator scores humanness and generates suggestions
-3. Edge function reads current `humanization_notes` from the spec
-4. Appends new suggestions (deduplicating similar ones, keeping last 20 max)
-5. Updates the spec -- next call automatically uses the improved notes
+## Files to Create/Modify
 
-This means the agent literally learns from every call without any manual intervention.
+- **Firecrawl connector**: Link to project (connect tool)
+- **Database migration**: Add `research_sources JSONB DEFAULT '[]'` to `agent_specs`
+- **`supabase/functions/research-and-improve/index.ts`**: New edge function -- web search + AI distillation
+- **`supabase/config.toml`**: Add `research-and-improve` function config
+- **`supabase/functions/evaluate-call/index.ts`**: Call research-and-improve after evaluation when gaps are found
+- **`src/components/TestResultsModal.tsx`**: Show research sources in results
 
-### 5. Update the evaluation results UI (`TestResultsModal.tsx`)
-Add a "Humanness" score badge alongside the existing compliance/objective/naturalness scores, plus a section showing the learned conversation techniques.
-
-## Files to Modify
-
-- **Database migration**: Add `humanization_notes JSONB DEFAULT '[]'` to `agent_specs`
-- **`supabase/functions/run-test-run/index.ts`**: Insert HUMAN CONVERSATION STYLE block and `humanization_notes` into `buildTaskPrompt()`
-- **`supabase/functions/evaluate-call/index.ts`**: Add humanness scoring rubric, `humanness_score` + `humanness_suggestions` to tool schema, auto-append suggestions to spec's `humanization_notes`
-- **`src/components/TestResultsModal.tsx`**: Display humanness score and learned techniques
-
-## How the Self-Improvement Loop Works
+## The Enhanced Self-Improvement Loop
 
 ```
-Call 1 --> Evaluation: "Agent asked 3 questions back-to-back without acknowledging answers"
-         --> humanization_notes: ["Acknowledge each answer with a brief reaction before asking the next question"]
-
-Call 2 --> Agent reads note, now acknowledges answers
-         --> Evaluation: "Good acknowledgment, but missed chance to react to caller mentioning vacation plans"
-         --> humanization_notes grows: [..., "When caller mentions personal plans, briefly relate or show interest"]
-
-Call 3 --> Agent uses both notes, sounds noticeably more human
-         --> Evaluation finds new improvement areas, cycle continues
+Call completes
+  --> Evaluate: humanness_score = 55, suggestions = ["handle objections better", "more small talk"]
+  --> Score < 80, trigger research
+  --> Search: "best objection handling phone sales travel" 
+  --> Found 3 articles with techniques
+  --> AI distills: ["When prospect says 'I need to think about it', respond with 'Totally fair -- what part are you weighing?'", ...]
+  --> Merge into humanization_notes + save sources
+  --> Next call uses both evaluator feedback AND researched best practices
 ```
 
-Each call makes the next one better, automatically.
