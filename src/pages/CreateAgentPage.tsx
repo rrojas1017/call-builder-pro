@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, Shield, Target, Users, Mic, Save } from "lucide-react";
+import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, Shield, Target, Users, Mic, Save, Volume2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useBlandVoices } from "@/hooks/useBlandVoices";
 import { VoiceSelector } from "@/components/VoiceSelector";
@@ -43,6 +44,7 @@ export default function CreateAgentPage() {
   const [saving, setSaving] = useState(false);
   const [transferEnabled, setTransferEnabled] = useState(false);
   const [transferPhone, setTransferPhone] = useState("");
+  const [backgroundTrack, setBackgroundTrack] = useState<string | null>(null);
 
   // Step 1: Create project + generate spec
   const handleGenerateSpec = async () => {
@@ -126,7 +128,8 @@ export default function CreateAgentPage() {
         voice_id: voiceId || undefined,
         transfer_required: transferEnabled,
         transfer_phone_number: formattedPhone,
-      }).eq("project_id", projectId);
+        background_track: backgroundTrack,
+      } as any).eq("project_id", projectId);
       toast({ title: "Agent saved!", description: "Run test calls to fine-tune voice and delivery." });
       navigate("/agents");
     } catch (err: any) {
@@ -317,6 +320,41 @@ export default function CreateAgentPage() {
                   onChange={(e) => setCustomVoiceId(e.target.value)}
                   placeholder="e.g. abc123-voice-clone-id"
                 />
+              </div>
+            )}
+          </div>
+
+          {/* Background Audio */}
+          <div className="surface-elevated rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-foreground flex items-center gap-2">
+                <Volume2 className="h-4 w-4 text-primary" /> Background Audio
+              </h3>
+              <Switch
+                checked={!!backgroundTrack}
+                onCheckedChange={(checked) => setBackgroundTrack(checked ? "office" : null)}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Add ambient background noise to make your agent sound like it's calling from a real environment.</p>
+            {backgroundTrack && (
+              <div className="grid gap-2 sm:grid-cols-3">
+                {([
+                  { value: "office", label: "Office", desc: "Keyboard clicks, phone rings, ambient chatter" },
+                  { value: "cafe", label: "Cafe", desc: "Coffee shop ambiance, background murmur" },
+                  { value: "restaurant", label: "Restaurant", desc: "Dining sounds, background conversation" },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setBackgroundTrack(opt.value)}
+                    className={cn(
+                      "rounded-lg border p-3 text-left transition-colors",
+                      backgroundTrack === opt.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                    )}
+                  >
+                    <p className="text-sm font-medium text-foreground">{opt.label}</p>
+                    <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                  </button>
+                ))}
               </div>
             )}
           </div>
