@@ -335,6 +335,9 @@ serve(async (req) => {
             blandPayload.transfer_phone_number = digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
           }
         }
+        if (spec?.background_track && spec.background_track !== "none") {
+          blandPayload.background_track = spec.background_track;
+        }
 
         const blandResp = await fetch("https://us.api.bland.ai/v1/calls", {
           method: "POST",

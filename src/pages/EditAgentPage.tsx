@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Save, ArrowLeft, Phone, Mic } from "lucide-react";
+import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { VoiceSelector } from "@/components/VoiceSelector";
 
@@ -26,13 +27,14 @@ export default function EditAgentPage() {
   const [selectedVoice, setSelectedVoice] = useState("");
   const [transferEnabled, setTransferEnabled] = useState(false);
   const [transferPhone, setTransferPhone] = useState("");
+  const [backgroundTrack, setBackgroundTrack] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
     const load = async () => {
       const [{ data: project }, { data: spec }] = await Promise.all([
         supabase.from("agent_projects").select("name, description").eq("id", id).single(),
-        supabase.from("agent_specs").select("voice_id, opening_line, tone_style, transfer_required, transfer_phone_number").eq("project_id", id).single(),
+        supabase.from("agent_specs").select("voice_id, opening_line, tone_style, transfer_required, transfer_phone_number, background_track").eq("project_id", id).single(),
       ]);
       if (project) {
         setName(project.name);
@@ -44,6 +46,7 @@ export default function EditAgentPage() {
         setToneStyle(spec.tone_style || "");
         setTransferEnabled(!!spec.transfer_required);
         setTransferPhone(spec.transfer_phone_number || "");
+        setBackgroundTrack((spec as any).background_track || null);
       }
       setLoading(false);
     };
@@ -72,7 +75,8 @@ export default function EditAgentPage() {
           tone_style: toneStyle || null,
           transfer_required: transferEnabled,
           transfer_phone_number: formattedPhone,
-        }).eq("project_id", id),
+          background_track: backgroundTrack,
+        } as any).eq("project_id", id),
       ]);
 
       toast({ title: "Agent updated!" });
@@ -168,6 +172,41 @@ export default function EditAgentPage() {
           <div className="space-y-2">
             <Label>Transfer Phone Number</Label>
             <Input value={transferPhone} onChange={(e) => setTransferPhone(e.target.value)} placeholder="e.g. (555) 123-4567" type="tel" />
+          </div>
+        )}
+      </div>
+
+      {/* Background Audio */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-foreground flex items-center gap-2">
+            <Volume2 className="h-4 w-4 text-primary" /> Background Audio
+          </h3>
+          <Switch
+            checked={!!backgroundTrack}
+            onCheckedChange={(checked) => setBackgroundTrack(checked ? "office" : null)}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">Add ambient background noise to make your agent sound like it's calling from a real environment.</p>
+        {backgroundTrack && (
+          <div className="grid gap-2 sm:grid-cols-3">
+            {([
+              { value: "office", label: "Office", desc: "Keyboard clicks, phone rings, ambient chatter" },
+              { value: "cafe", label: "Cafe", desc: "Coffee shop ambiance, background murmur" },
+              { value: "restaurant", label: "Restaurant", desc: "Dining sounds, background conversation" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setBackgroundTrack(opt.value)}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition-colors",
+                  backgroundTrack === opt.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                )}
+              >
+                <p className="text-sm font-medium text-foreground">{opt.label}</p>
+                <p className="text-xs text-muted-foreground">{opt.desc}</p>
+              </button>
+            ))}
           </div>
         )}
       </div>

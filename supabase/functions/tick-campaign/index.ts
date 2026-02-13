@@ -209,6 +209,7 @@ serve(async (req) => {
     if (spec.voice_id) globalSettings.voice_id = spec.voice_id;
     if (spec.transfer_phone_number) globalSettings.transfer_phone_number = spec.transfer_phone_number;
     if (spec.from_number) globalSettings.from = spec.from_number;
+    if (spec.background_track && spec.background_track !== "none") globalSettings.background_track = spec.background_track;
 
     // Send batch request to Bland AI
     const blandResp = await fetch("https://api.bland.ai/v2/batches/create", {

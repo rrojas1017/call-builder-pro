@@ -95,6 +95,7 @@ export type Database = {
       }
       agent_specs: {
         Row: {
+          background_track: string | null
           business_hours: Json | null
           business_rules: Json | null
           consent_required: boolean
@@ -127,6 +128,7 @@ export type Database = {
           voice_id: string | null
         }
         Insert: {
+          background_track?: string | null
           business_hours?: Json | null
           business_rules?: Json | null
           consent_required?: boolean
@@ -159,6 +161,7 @@ export type Database = {
           voice_id?: string | null
         }
         Update: {
+          background_track?: string | null
           business_hours?: Json | null
           business_rules?: Json | null
           consent_required?: boolean
