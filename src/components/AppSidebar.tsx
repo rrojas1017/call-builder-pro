@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { 
-  LayoutDashboard, Bot, PlusCircle, Megaphone, Phone, 
+  LayoutDashboard, Bot, PlusCircle, Megaphone, Phone, PhoneIncoming,
   BookOpen, Settings, LogOut, Zap, Dumbbell, FileSpreadsheet
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +14,7 @@ const navItems = [
   { label: "Gym", icon: Dumbbell, path: "/test" },
   { label: "Lists", icon: FileSpreadsheet, path: "/lists" },
   { label: "Campaigns", icon: Megaphone, path: "/campaigns" },
+  { label: "Inbound", icon: PhoneIncoming, path: "/inbound" },
   { label: "Calls", icon: Phone, path: "/calls" },
   { label: "Knowledge Base", icon: BookOpen, path: "/knowledge" },
   { label: "Settings", icon: Settings, path: "/settings" },

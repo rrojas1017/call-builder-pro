@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.stop-call]
 verify_jwt = false
+
+[functions.manage-inbound-numbers]
+verify_jwt = false

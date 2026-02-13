@@ -2,10 +2,11 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import USMapChart from "@/components/USMapChart";
 import { useAuth } from "@/hooks/useAuth";
-import { Loader2, Phone, ChevronRight, Zap, AlertTriangle, CheckCircle2, TrendingUp } from "lucide-react";
+import { Loader2, Phone, ChevronRight, Zap, AlertTriangle, CheckCircle2, TrendingUp, PhoneIncoming, PhoneOutgoing } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Call {
   id: string;
@@ -29,6 +30,7 @@ export default function CallsPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Call | null>(null);
   const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
+  const [dirFilter, setDirFilter] = useState<"all" | "inbound" | "outbound">("all");
 
   useEffect(() => {
     if (!user) return;
@@ -75,6 +77,11 @@ export default function CallsPage() {
     return counts;
   }, [calls]);
 
+  const filteredCalls = useMemo(() => {
+    if (dirFilter === "all") return calls;
+    return calls.filter((c) => c.direction === dirFilter);
+  }, [calls, dirFilter]);
+
   if (loading) {
     return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -100,16 +107,23 @@ export default function CallsPage() {
       <div className={cn("border-r border-border overflow-y-auto", selected ? "w-96" : "w-full")}>
         <div className="p-6 border-b border-border">
           <h1 className="text-2xl font-bold text-foreground">Calls</h1>
-          <p className="text-muted-foreground mt-1">{calls.length} calls</p>
+          <p className="text-muted-foreground mt-1">{filteredCalls.length} calls</p>
+          <Tabs value={dirFilter} onValueChange={(v) => setDirFilter(v as any)} className="mt-3">
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="outbound" className="gap-1"><PhoneOutgoing className="h-3 w-3" />Outbound</TabsTrigger>
+              <TabsTrigger value="inbound" className="gap-1"><PhoneIncoming className="h-3 w-3" />Inbound</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
-        {calls.length === 0 ? (
+        {filteredCalls.length === 0 ? (
           <div className="p-12 text-center">
             <Phone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No calls yet. Start a campaign to make calls.</p>
+            <p className="text-muted-foreground">No {dirFilter !== "all" ? dirFilter : ""} calls yet.</p>
           </div>
         ) : (
           <div className="divide-y divide-border">
-            {calls.map((call) => (
+            {filteredCalls.map((call) => (
               <button
                 key={call.id}
                 onClick={() => setSelected(call)}
@@ -119,7 +133,10 @@ export default function CallsPage() {
                 )}
               >
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">{call.bland_call_id?.slice(0, 12) || call.id.slice(0, 8)}...</p>
+                  <div className="flex items-center gap-2">
+                    {call.direction === "inbound" ? <PhoneIncoming className="h-3 w-3 text-primary" /> : <PhoneOutgoing className="h-3 w-3 text-muted-foreground" />}
+                    <p className="text-sm font-medium text-foreground">{call.bland_call_id?.slice(0, 12) || call.id.slice(0, 8)}...</p>
+                  </div>
                   <div className="flex items-center gap-2 text-xs">
                     <span className={outcomeColor[call.outcome || ""] || "text-muted-foreground"}>
                       {call.outcome || "pending"}

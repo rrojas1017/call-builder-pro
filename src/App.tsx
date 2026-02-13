@@ -17,6 +17,7 @@ import CallsPage from "./pages/CallsPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import SettingsPage from "./pages/SettingsPage";
 import GymPage from "./pages/GymPage";
+import InboundNumbersPage from "./pages/InboundNumbersPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="/lists" element={<ListsPage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/campaigns/:id" element={<CampaignDetailPage />} />
+            <Route path="/inbound" element={<InboundNumbersPage />} />
             <Route path="/calls" element={<CallsPage />} />
             <Route path="/knowledge" element={<KnowledgeBasePage />} />
             <Route path="/settings" element={<SettingsPage />} />

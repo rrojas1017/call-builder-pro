@@ -130,6 +130,62 @@ serve(async (req) => {
       });
     }
 
+    // ===== INBOUND CALL FLOW =====
+    const toNumber = body.to || body.to_number || null;
+    if (!metadata.campaign_id && !metadata.contact_id && toNumber) {
+      // Check if this is an inbound call to one of our numbers
+      const { data: inboundNum } = await supabase
+        .from("inbound_numbers")
+        .select("*")
+        .eq("phone_number", toNumber)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (inboundNum) {
+        console.log("Inbound call flow for number:", toNumber);
+
+        const inboundCallData: any = {
+          org_id: inboundNum.org_id,
+          project_id: inboundNum.project_id || metadata.project_id,
+          direction: "inbound",
+          inbound_number_id: inboundNum.id,
+          bland_call_id: blandCallId,
+          started_at: body.created_at || new Date().toISOString(),
+          ended_at: body.end_at || new Date().toISOString(),
+          duration_seconds: typeof duration === "number" ? Math.round(duration) : null,
+          outcome,
+          transcript,
+          summary: typeof summary === "object" ? summary : { raw: summary },
+          extracted_data: extractedData,
+          recording_url: recordingUrl,
+          version: 1,
+        };
+
+        const { data: upsertedInbound, error: inboundErr } = await supabase
+          .from("calls")
+          .upsert(inboundCallData, { onConflict: "bland_call_id" })
+          .select("id")
+          .single();
+        if (inboundErr) console.error("Error upserting inbound call:", inboundErr);
+
+        // Trigger evaluate-call for completed inbound calls
+        if (upsertedInbound?.id && transcript && contactStatus === "completed") {
+          fetch(`${supabaseUrl}/functions/v1/evaluate-call`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify({ call_id: upsertedInbound.id }),
+          }).catch((e) => console.error("Error triggering evaluate-call for inbound:", e));
+        }
+
+        return new Response(JSON.stringify({ success: true, flow: "inbound" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // ===== STANDARD CAMPAIGN FLOW =====
     const callData: any = {
       org_id: metadata.org_id,
