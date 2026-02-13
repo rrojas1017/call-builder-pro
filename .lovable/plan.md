@@ -1,47 +1,165 @@
 
 
-## Rebrand Provider Names in the UI
+## Multi-Tenant Platform: Team Management, Role Assignment, and Stripe Top-Up
 
-### What Changes
-Replace all user-facing references to the backend service names with your custom brand names:
-- **"Bland AI" / "Bland"** becomes **"Voz"**
-- **"Retell AI" / "Retell"** becomes **"Append"**
+### Overview
 
-Internal database values (`voice_provider = 'bland'` / `'retell'`) stay exactly as they are -- only the display labels change. No backend or database modifications needed.
+This plan adds three capabilities to the platform without touching any existing functionality:
+1. **Team Management** -- Admins can invite users to their organization, assign roles, and remove members
+2. **Organization Credits Balance** -- Track a credit balance per organization that gets deducted when calls are made
+3. **Stripe Top-Up** -- Companies can purchase credits via Stripe Checkout
 
-### Files to Modify
+All changes are additive. Existing RLS policies, edge functions, and UI pages remain untouched.
 
-**1. `src/pages/EditAgentPage.tsx`**
-- Line 135: `"Bland AI"` → `"Voz"`
-- Line 136: description text → `"Primary provider with voice selection & background audio"`
-- Line 145: `"Retell AI"` → `"Append"`
-- Line 146: description text → `"Alternative provider — configure voice in the Append dashboard"`
-- Line 151: `"Retell Agent ID"` → `"Append Agent ID"`
-- Line 153: helper text → `"The agent ID from your Append dashboard."`
-- Section heading "Voice Provider" stays as-is (it's generic)
-- Comments like `{/* Voice Selection (Bland only) */}` updated to `{/* Voice Selection (Voz only) */}`
+---
 
-**2. `src/pages/CreateAgentPage.tsx`**
-- Line 277: `"Bland AI"` → `"Voz"`
-- Line 278: description text updated (remove "Current provider")
-- Line 287: `"Retell AI"` → `"Append"`
-- Line 288: description text updated (remove "Retell dashboard" reference)
-- Line 293: `"Retell Agent ID"` → `"Append Agent ID"`
-- Line 295: helper text updated
-- Line 347: voice selection helper text updated (remove "Bland AI" reference)
-- Comments updated similarly
+### Part 1: Database Changes (Additive Only)
 
-**3. `src/pages/AgentsPage.tsx`**
-- Line 124: Badge text `"Retell"` → `"Append"`, `"Bland"` → `"Voz"`
+**Add columns to `organizations`:**
+- `credits_balance` (numeric, default 0) -- current credit balance in USD
+- `stripe_customer_id` (text, nullable) -- links org to Stripe customer
 
-**4. `src/pages/CallsPage.tsx`**
-- Line 141: Badge text `"Retell"` → `"Append"`, `"Bland"` → `"Voz"`
+**Create new table `org_invitations`:**
+- `id` (uuid, PK)
+- `org_id` (uuid, FK to organizations)
+- `email` (text, not null) -- invited user's email
+- `role` (app_role, default 'viewer')
+- `status` (text, default 'pending') -- pending, accepted, expired
+- `invited_by` (uuid, FK to auth.users)
+- `created_at` (timestamptz, default now())
+- `expires_at` (timestamptz, default now() + 7 days)
 
-**5. `src/pages/GymPage.tsx`** (no display name changes needed -- only uses internal `bland_call_id` variable names which are not user-facing)
+RLS on `org_invitations`:
+- SELECT: org members can view their org's invitations
+- INSERT/UPDATE/DELETE: admins and super_admins of the org only
 
-### What Stays Unchanged
-- All database column values (`'bland'`, `'retell'`) -- these are internal identifiers
-- All backend edge functions -- no user-facing text there
-- All variable/state names in code (e.g., `voiceProvider`, `retellAgentId`) -- renaming these would be cosmetic churn with no user benefit
-- Hook names like `useBlandVoices` -- internal only
+**Create new table `credit_transactions`:**
+- `id` (uuid, PK)
+- `org_id` (uuid, FK to organizations)
+- `amount` (numeric, not null) -- positive for top-ups, negative for usage
+- `type` (text) -- 'topup', 'call_charge', 'refund'
+- `description` (text, nullable)
+- `stripe_session_id` (text, nullable)
+- `created_at` (timestamptz, default now())
+
+RLS on `credit_transactions`:
+- SELECT: org members can view their org's transactions
+- INSERT/UPDATE/DELETE: none from client (service role only via edge functions)
+
+**New RLS policy on `profiles`:**
+- Admins can view all profiles within their org (needed for team member list)
+
+**New RLS policies on `user_roles`:**
+- Admins can view roles for users in their org
+- Admins can insert/update/delete roles for users in their org (via security definer function to prevent privilege escalation)
+
+**New RLS policy on `organizations`:**
+- Admins can update their own org (for name changes)
+
+**Security definer function `manage_team_member_role`:**
+- Takes target_user_id, new_role, action (assign/remove)
+- Validates caller is admin/super_admin of the same org
+- Prevents removing your own admin role
+- Prevents assigning super_admin (reserved for platform owner)
+
+**Security definer function `accept_invitation`:**
+- Called by the invited user after sign-up
+- Moves their profile to the inviting org
+- Sets their role per the invitation
+- Marks invitation as accepted
+
+---
+
+### Part 2: Stripe Integration for Top-Up
+
+**Enable Stripe** using the Stripe tool (collects secret key).
+
+**New edge function `create-topup-session`:**
+- Receives `amount` (USD) from the frontend
+- Looks up or creates a Stripe customer for the org (using `stripe_customer_id`)
+- Creates a Stripe Checkout Session in "payment" mode with the specified amount
+- Returns the checkout URL
+- Stores `stripe_customer_id` on the organization if newly created
+
+**New edge function `stripe-webhook`:**
+- Listens for `checkout.session.completed` events
+- Verifies the Stripe signature
+- Credits the organization's balance: increments `credits_balance` and inserts a `credit_transactions` record
+- Configured with `verify_jwt = false` (public webhook endpoint)
+
+**Modified edge functions (additive balance check):**
+- `run-test-run` and `tick-campaign`: Before initiating calls, check `credits_balance > 0` on the org. If insufficient, return an error instead of placing calls. This is a simple `if` check added before the existing call logic -- no existing code is modified.
+
+---
+
+### Part 3: Frontend Changes
+
+**New page: `TeamPage.tsx` (route: `/team`)**
+- Lists all members of the current organization with their roles
+- "Invite Member" button opens a dialog: email + role selector (admin, analyst, viewer)
+- Role change dropdown per member (admins only)
+- Remove member button (admins only)
+- Shows pending invitations with ability to cancel
+
+**New page: `BillingPage.tsx` (route: `/billing`)**
+- Shows current credit balance prominently
+- "Add Credits" button with preset amounts ($25, $50, $100, $250) or custom amount
+- Clicking redirects to Stripe Checkout
+- Transaction history table showing all top-ups and charges
+- Auto-refreshes balance after returning from Stripe
+
+**Modified: `SettingsPage.tsx`**
+- Add tabs or sections: "Profile", with links to "Team" and "Billing" pages
+- Keep existing profile editing exactly as-is
+
+**Modified: `AppSidebar.tsx`**
+- Add "Team" under the SYSTEM section (icon: Users)
+- Add "Billing" under the SYSTEM section (icon: CreditCard)
+
+**Modified: `AuthPage.tsx`**
+- After successful sign-up, check for pending invitations matching the user's email
+- If found, call `accept_invitation` to join the existing org instead of creating a new one
+
+---
+
+### Part 4: Invitation Flow
+
+When an admin invites someone:
+1. A row is inserted into `org_invitations`
+2. If the invited email already has an account, they see a notification on next login
+3. If they don't have an account, they sign up normally, and the `accept_invitation` function checks for pending invitations and assigns them to the correct org with the correct role
+
+---
+
+### Files to Create
+1. `src/pages/TeamPage.tsx` -- Team management UI
+2. `src/pages/BillingPage.tsx` -- Credits balance and top-up UI
+3. `supabase/functions/create-topup-session/index.ts` -- Stripe Checkout session creator
+4. `supabase/functions/stripe-webhook/index.ts` -- Stripe webhook handler
+
+### Files to Modify (Additive Only)
+1. `src/App.tsx` -- Add routes for `/team` and `/billing`
+2. `src/components/AppSidebar.tsx` -- Add Team and Billing nav items
+3. `src/pages/AuthPage.tsx` -- Check for pending invitations after sign-up/login
+4. `supabase/functions/run-test-run/index.ts` -- Add balance check before calls
+5. `supabase/functions/tick-campaign/index.ts` -- Add balance check before calls
+6. `supabase/config.toml` -- Add new function configs
+7. Database migration -- New tables, columns, functions, and RLS policies
+
+### What Stays Completely Unchanged
+- All existing edge functions (receive-bland-webhook, receive-retell-webhook, evaluate-call, etc.)
+- All existing RLS policies on existing tables
+- All existing UI pages and components
+- The `handle_new_user` trigger (still creates org + profile + admin role for new sign-ups without invitations)
+- All existing database columns and their types
+
+### Risk Summary
+
+| Area | Risk | Mitigation |
+|------|------|------------|
+| Existing auth flow | None | Invitation check is additive; default path unchanged |
+| Existing RLS | None | No policies are modified, only new ones added |
+| Call dispatching | Low | Balance check is a simple guard before existing logic |
+| Existing pages | None | No existing pages are modified beyond adding nav links |
+| Role escalation | None | `manage_team_member_role` is security definer with server-side validation |
 
