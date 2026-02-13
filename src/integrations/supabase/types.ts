@@ -428,6 +428,7 @@ export type Database = {
           id: string
           source_agent_id: string | null
           source_type: string
+          source_url: string | null
         }
         Insert: {
           content: string
@@ -435,6 +436,7 @@ export type Database = {
           id?: string
           source_agent_id?: string | null
           source_type?: string
+          source_url?: string | null
         }
         Update: {
           content?: string
@@ -442,6 +444,7 @@ export type Database = {
           id?: string
           source_agent_id?: string | null
           source_type?: string
+          source_url?: string | null
         }
         Relationships: [
           {
