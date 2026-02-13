@@ -1,34 +1,85 @@
 
 
-# Add Transfer Configuration to Agent Creation
+# Make the Agent Sound Human -- Self-Improving Conversational Intelligence
 
-## What This Does
-Adds a simple "Call Ending" section to the Review & Save step where you can choose what happens when the agent finishes qualifying someone:
-- **Hang up** (default) -- the agent wraps up and ends the call
-- **Transfer to a live person** -- the agent transfers the caller to a phone number you provide
+## Overview
+Bake human-likeness into the core of every call by upgrading three layers: the prompt that drives each call, the evaluation that scores it, and an automatic feedback loop that improves the agent after every conversation.
 
 ## Changes
 
-### 1. Add transfer config UI to Step 3 (Review & Save)
-Add a new section between the summary cards and voice selection with two options:
+### 1. Add a "humanization_notes" field to agent_specs (DB migration)
+A new JSONB column `humanization_notes` on `agent_specs` stores learned conversational techniques -- small talk openers, humor styles, transition phrases, empathy patterns -- that evolve over time as the evaluator suggests improvements.
 
-- A toggle or radio choice: "End call normally" vs "Transfer to live agent"
-- When transfer is selected, show a phone number input field
-- Pre-populate from `spec.transfer_phone_number` if it already has a valid number
+### 2. Rewrite the task prompt to prioritize human-likeness (`run-test-run/index.ts`)
+The current prompt says "keep the conversation concise and professional." That produces a robotic interrogation. The new prompt will inject a dedicated HUMAN CONVERSATION STYLE block:
 
-### 2. Save transfer settings on "Save Agent"
-Update the `handleSaveAgent` function to include `transfer_required` and `transfer_phone_number` in the spec update. Validate the phone number has at least 10 digits before saving.
+```
+HUMAN CONVERSATION STYLE (THIS IS YOUR #1 PRIORITY):
+- You are a REAL PERSON having a natural phone conversation, not a robot reading a script.
+- Use the caller's name naturally (not every sentence).
+- React genuinely to what they say: laugh lightly at something funny, show empathy for difficulties, express enthusiasm for good news.
+- Use casual transitions: "Oh that's great!", "Gotcha", "Makes sense", "Ha, yeah I hear that a lot"
+- Add brief, relevant small talk between questions: "Nice, [state] is beautiful this time of year" or "Oh wow, that's a big family -- I bet holidays are fun"
+- Vary your sentence length and rhythm. Mix short reactions ("Got it!") with longer explanations.
+- Never ask questions back-to-back like a survey. Acknowledge each answer before moving on.
+- If you need to transition topics, use natural bridges: "So switching gears a little..." or "That actually reminds me, I also wanted to ask..."
+- Use light humor when appropriate -- nothing forced, just natural warmth.
+- Sound like someone they'd enjoy talking to at a coffee shop.
 
-### 3. Update the Transfer Logic summary card
-The existing "Transfer logic" summary card will update dynamically based on the toggle state instead of only reading from the spec.
+LEARNED CONVERSATION TECHNIQUES:
+{humanization_notes -- inserted dynamically from the spec}
+```
 
-## Technical Details
+This block will appear BEFORE the business rules, making it the agent's primary directive.
 
-### File: `src/pages/CreateAgentPage.tsx`
-- Add state: `transferEnabled` (boolean), `transferPhone` (string)
-- Initialize from `spec.transfer_required` and `spec.transfer_phone_number` when spec loads
-- Add UI section with radio/switch + phone input between summary cards and voice selection
-- Update `handleSaveAgent` to include `transfer_required: transferEnabled` and `transfer_phone_number` (formatted with +1 prefix) in the spec update call
-- Update the Transfer Logic summary card to reflect the current toggle/phone state
+### 3. Add "humanness_score" to the evaluator (`evaluate-call/index.ts`)
+Expand the evaluation prompt with a dedicated humanness rubric:
 
-No database or edge function changes needed -- the columns and Bland API integration already exist.
+- **Humanness Score (0-100)**: Separate from naturalness (which measures voice/delivery quality), this scores conversational behavior:
+  - Did the agent acknowledge what the caller said before asking the next question?
+  - Did it use the caller's name naturally (not robotically)?
+  - Were there moments of genuine warmth, humor, or empathy?
+  - Did it vary sentence structure or repeat the same patterns?
+  - Did transitions between topics feel natural or abrupt?
+  - Was there any small talk or rapport-building?
+  
+- **humanness_suggestions**: Array of specific conversational techniques the evaluator noticed would help, formatted as actionable notes (e.g., "When the caller mentioned having 4 kids, the agent missed an opportunity to react warmly before asking about income").
+
+Add `humanness_score` and `humanness_suggestions` to the tool call schema.
+
+### 4. Auto-apply humanness learnings after each evaluation (`evaluate-call/index.ts`)
+After scoring, if `humanness_suggestions` exist, automatically append them to the spec's `humanization_notes` JSONB field. This creates a growing "memory" of conversation techniques the agent should use. The flow:
+
+1. Call completes and gets evaluated
+2. Evaluator scores humanness and generates suggestions
+3. Edge function reads current `humanization_notes` from the spec
+4. Appends new suggestions (deduplicating similar ones, keeping last 20 max)
+5. Updates the spec -- next call automatically uses the improved notes
+
+This means the agent literally learns from every call without any manual intervention.
+
+### 5. Update the evaluation results UI (`TestResultsModal.tsx`)
+Add a "Humanness" score badge alongside the existing compliance/objective/naturalness scores, plus a section showing the learned conversation techniques.
+
+## Files to Modify
+
+- **Database migration**: Add `humanization_notes JSONB DEFAULT '[]'` to `agent_specs`
+- **`supabase/functions/run-test-run/index.ts`**: Insert HUMAN CONVERSATION STYLE block and `humanization_notes` into `buildTaskPrompt()`
+- **`supabase/functions/evaluate-call/index.ts`**: Add humanness scoring rubric, `humanness_score` + `humanness_suggestions` to tool schema, auto-append suggestions to spec's `humanization_notes`
+- **`src/components/TestResultsModal.tsx`**: Display humanness score and learned techniques
+
+## How the Self-Improvement Loop Works
+
+```
+Call 1 --> Evaluation: "Agent asked 3 questions back-to-back without acknowledging answers"
+         --> humanization_notes: ["Acknowledge each answer with a brief reaction before asking the next question"]
+
+Call 2 --> Agent reads note, now acknowledges answers
+         --> Evaluation: "Good acknowledgment, but missed chance to react to caller mentioning vacation plans"
+         --> humanization_notes grows: [..., "When caller mentions personal plans, briefly relate or show interest"]
+
+Call 3 --> Agent uses both notes, sounds noticeably more human
+         --> Evaluation finds new improvement areas, cycle continues
+```
+
+Each call makes the next one better, automatically.
