@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen, ArrowUp, ArrowDown, Minus, History } from "lucide-react";
+import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen, ArrowUp, ArrowDown, Minus, History, StopCircle } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 
@@ -29,6 +29,7 @@ interface TestContact {
   extracted_data: any;
   created_at?: string;
   test_run_id?: string;
+  bland_call_id?: string | null;
 }
 
 interface TrendPoint {
@@ -54,6 +55,7 @@ export default function GymPage() {
   const [agentId, setAgentId] = useState<string>(searchParams.get("agent") || "");
   const [phone, setPhone] = useState("");
   const [running, setRunning] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [contact, setContact] = useState<TestContact | null>(null);
   const [testRunId, setTestRunId] = useState<string | null>(searchParams.get("testRunId") || null);
 
@@ -336,6 +338,32 @@ export default function GymPage() {
             <><Play className="mr-2 h-4 w-4" /> Run Test Call</>
           )}
         </Button>
+
+        {running && contact?.bland_call_id && (
+          <Button
+            variant="destructive"
+            className="w-full"
+            disabled={stopping}
+            onClick={async () => {
+              setStopping(true);
+              try {
+                const { error } = await supabase.functions.invoke("stop-call", {
+                  body: { call_id: contact.bland_call_id, contact_id: contact.id },
+                });
+                if (error) throw error;
+                setRunning(false);
+                toast({ title: "Call stopped", description: "The call has been ended." });
+              } catch (err: any) {
+                toast({ title: "Failed to stop", description: err.message, variant: "destructive" });
+              } finally {
+                setStopping(false);
+              }
+            }}
+          >
+            {stopping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <StopCircle className="mr-2 h-4 w-4" />}
+            Stop Call
+          </Button>
+        )}
       </div>
 
       {/* Humanness Trend Chart */}
