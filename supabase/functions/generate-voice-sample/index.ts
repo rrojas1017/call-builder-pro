@@ -20,14 +20,20 @@ serve(async (req) => {
 
     const sampleText = text || "Hello, this is a voice sample. How does this sound to you?";
 
-    const res = await fetch(`https://api.bland.ai/v1/voices/${voice_id}/sample`, {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+
+    const res = await fetch(`https://us.api.bland.ai/v1/voices/${voice_id}/sample`, {
       method: "POST",
       headers: {
         authorization: BLAND_API_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ text: sampleText }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     if (!res.ok) {
       const errText = await res.text();
