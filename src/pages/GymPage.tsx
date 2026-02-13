@@ -48,6 +48,9 @@ async function extractEdgeFunctionError(err: any): Promise<string> {
   return err?.message || "Unknown error";
 }
 
+const normalizeField = (field: string) =>
+  field.replace(/\s*\(.*\)\s*$/, "").replace(/\//g, ".").trim();
+
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
   if (digits.length === 10) return `+1${digits}`;
@@ -80,6 +83,28 @@ export default function GymPage() {
   const [history, setHistory] = useState<TestContact[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+
+  // Fetch applied improvements from DB
+  const selectedProjectId = agentId;
+  useEffect(() => {
+    if (!selectedProjectId || !contact?.evaluation?.recommended_improvements?.length) {
+      return;
+    }
+    const fetchApplied = async () => {
+      const { data } = await supabase
+        .from("improvements")
+        .select("patch")
+        .eq("project_id", selectedProjectId);
+      const fields: string[] = [];
+      (data || []).forEach((row: any) => {
+        if (row.patch && typeof row.patch === "object") {
+          Object.keys(row.patch).filter(k => k !== "version").forEach(k => fields.push(k));
+        }
+      });
+      setAppliedFixes(fields);
+    };
+    fetchApplied();
+  }, [selectedProjectId, contact]);
 
   // Reset all state when agent changes
   useEffect(() => {
@@ -305,7 +330,7 @@ export default function GymPage() {
         },
       });
       if (error) throw error;
-      setAppliedFixes((prev) => [...prev, improvement.field]);
+      setAppliedFixes((prev) => [...prev, normalizeField(improvement.field)]);
       toast({ title: "Fix applied!", description: `Agent spec updated to version ${data.to_version}.` });
     } catch (err: any) {
       toast({ title: "Failed to apply fix", description: err.message, variant: "destructive" });
@@ -635,13 +660,13 @@ function ResultCard({
                       </div>
                       <Button
                         onClick={() => onApplyFix(imp)}
-                        disabled={applyingFixId === imp.field || appliedFixes.includes(imp.field)}
+                        disabled={applyingFixId === imp.field || appliedFixes.includes(normalizeField(imp.field))}
                         size="sm"
-                        variant={appliedFixes.includes(imp.field) ? "ghost" : "default"}
+                        variant={appliedFixes.includes(normalizeField(imp.field)) ? "ghost" : "default"}
                         className="shrink-0"
                       >
                         {applyingFixId === imp.field && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-                        {appliedFixes.includes(imp.field) ? (
+                        {appliedFixes.includes(normalizeField(imp.field)) ? (
                           <><CheckCircle className="mr-1 h-3 w-3" /> Applied</>
                         ) : (
                           "Apply Fix"
