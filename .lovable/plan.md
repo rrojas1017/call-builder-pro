@@ -1,30 +1,30 @@
 
 
-## Fix: Hide Already-Applied Improvements in Test Results Modal
+## Fix: Hide Already-Applied Improvements in GymPage (Test Lab)
 
 ### Problem
-The `TestResultsModal.tsx` component (shown on the `/test` page) tracks applied fixes only in local component state (`appliedFixes`). When the modal is reopened or a past test run is viewed, the state resets to empty, so all improvements appear clickable even if they were already applied.
-
-### Solution
-Add the same database-backed check used in `CallsPage.tsx`: when the modal opens, fetch all previously applied improvements from the `improvements` table and pre-populate the `appliedFixes` list.
+The GymPage (`/test` route) has the same "Apply Fix" buttons for recommended improvements, but it was never updated to fetch previously applied fixes from the database. Every time a test result is viewed, `appliedFixes` resets to an empty array, so all improvements appear clickable -- even ones that were already applied.
 
 ### Changes
 
-**`src/components/TestResultsModal.tsx`**
+**`src/pages/GymPage.tsx`**
 
-1. Add a `useEffect` that runs when `open` changes and `projectId` is available:
-   - Query `supabase.from("improvements").select("patch").eq("project_id", projectId)`
-   - Extract all patch keys (excluding `version`) into a flat list
-   - Set `appliedFixes` to this list so the UI immediately reflects what has already been applied
+1. Add a `normalizeField` helper (same as in CallsPage and TestResultsModal):
+   ```
+   const normalizeField = (field: string) =>
+     field.replace(/\s*\(.*\)\s*$/, "").replace(/\//g, ".").trim();
+   ```
 
-2. The existing rendering logic already checks `appliedFixes.includes(imp.field)` -- but the field names from the evaluation may contain parenthetical descriptions (e.g. `"humanization_notes (implied rewrite of prompt)"`), while the patch keys are normalized (e.g. `"humanization_notes"`). Add a `normalizeField` helper (same as in `CallsPage.tsx`) and use normalized comparison:
-   - Normalize `imp.field` before checking against the applied set
-   - Also normalize when adding to `appliedFixes` after a successful apply
+2. Add a `useEffect` to fetch applied improvements whenever a contact with evaluation data is displayed. It will:
+   - Query `supabase.from("improvements").select("patch").eq("project_id", selectedProjectId)`
+   - Extract patch keys (excluding `version`) and normalize them
+   - Set `appliedFixes` to this list
 
-3. The "Apply All Fixes" button's disabled check will also use normalized comparison so it correctly detects when all fixes are already applied.
+3. Update the `handleApplyFix` function to normalize the field name before adding to `appliedFixes`.
+
+4. Update the `ResultCard` component's comparison logic to use `normalizeField(imp.field)` when checking against `appliedFixes` (lines 638, 640, 644).
 
 ### What stays the same
 - The "Apply Fix" button still works for unapplied improvements
-- Successfully applying a fix still adds it to the local state for immediate UI feedback
-- No database schema changes needed
+- No database changes needed
 
