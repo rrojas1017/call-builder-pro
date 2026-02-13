@@ -1,141 +1,96 @@
 
 
-## Super Admin Console and Company Onboarding
+## Super Admin User & Company Creation
 
-### Overview
+### What this adds
 
-This plan adds two major capabilities:
+Super admins will be able to create new users and companies directly from the Admin console, without the new user needing to sign up themselves. Two new capabilities:
 
-1. **Super Admin Console** -- A company/org switcher and management panel so super admins (like rrojas@vixicom.com) can browse all organizations, view their data, and manage their users for support purposes.
-2. **Company Onboarding for Admins** -- When a new admin signs up, they must set their company name before accessing the platform. The organization name field on Settings becomes editable for admins.
+1. **Create a new company** -- from the Companies page, a "New Company" button opens a dialog to enter a company name. This creates an empty organization ready to have users assigned.
 
-### How It Works
+2. **Create a user for a company** -- from the Company Detail page, an "Add User" button opens a dialog to enter email, full name, password, and role. The user is created server-side and immediately assigned to that company with the chosen role.
 
-**Super Admin Experience:**
-- A new "Companies" page at `/admin/companies` lists all organizations with member counts, credit balances, and agent counts.
-- Clicking a company lets the super admin "impersonate" that org -- the sidebar shows which company they're viewing, and all data pages (Dashboard, Agents, Campaigns, Calls, etc.) show that org's data instead.
-- A persistent banner/chip in the sidebar shows the currently-viewed org with a button to return to their own org.
-- From the company detail view, the super admin can see/edit members, change roles, and view billing history.
+### How it works
 
-**Regular Admin Experience:**
-- After sign-up, if the organization name still ends with `'s Org` (the auto-generated default), they are redirected to a one-time onboarding step to set their company name.
-- Settings page lets admins edit the organization name.
-- Billing page remains as-is -- admins add credits via Stripe.
+```text
+Super Admin clicks "Add User"
+        |
+        v
+Frontend sends request to backend function
+        |
+        v
+Backend function (service role):
+  1. Creates auth user (email + password + full_name)
+  2. Inserts profile with the target org_id
+  3. Inserts user_role with the chosen role
+  4. Returns success
+        |
+        v
+Frontend refreshes the member list
+```
 
-### Part 1: Database Changes
+### Part 1: Update the signup trigger
 
-**New RLS policies on `organizations`:**
-- Super admins can SELECT all organizations (needed for the admin console).
+The existing `handle_new_user()` trigger always creates a new organization for every signup. It needs to be updated so that if a user is created with `org_id` in their metadata (as done by the super admin flow), the trigger assigns them to that existing org instead of creating a new one.
 
-**New RLS policies on `profiles`:**
-- Super admins can SELECT all profiles (needed to list members across orgs).
+**Database migration:**
+- Drop and recreate `handle_new_user()` to check for `raw_user_meta_data->>'org_id'`
+- If present, use that org_id for the profile instead of creating a new organization
+- If a role is provided in metadata (`raw_user_meta_data->>'role'`), use that instead of defaulting to `admin`
 
-**New RLS policies on `user_roles`:**
-- Super admins can SELECT all user roles.
+### Part 2: Backend function for user creation
 
-**New security definer function `switch_org_context`:**
-- Takes an org_id parameter.
-- Validates caller has `super_admin` role.
-- Returns the org details (no actual state change on the server -- the context switch is client-side only, using the org_id to filter queries).
+**New file: `supabase/functions/create-user/index.ts`**
 
-**No new tables needed** -- this uses existing `organizations`, `profiles`, and `user_roles` tables.
+- Accepts: `{ email, password, full_name, org_id, role }`
+- Validates the caller is a super_admin (checks JWT against `user_roles`)
+- Uses Supabase Admin API (`auth.admin.createUser`) with `email_confirm: true` so no verification email is needed
+- Passes `org_id` and `role` in user metadata so the trigger handles profile/role creation
+- Returns the created user's id
 
-### Part 2: Super Admin Context Provider
+### Part 3: Create Company from Admin Console
 
-**New file: `src/hooks/useOrgContext.tsx`**
-- A React context that stores the "active org_id" for the current session.
-- For regular users, this is always their own org_id from their profile.
-- For super admins, this can be switched to any org_id.
-- Provides `activeOrgId`, `isImpersonating`, `switchOrg(orgId)`, and `resetOrg()`.
-- All data-fetching pages will read `activeOrgId` from this context instead of fetching it from the profile every time.
+**New file: `supabase/functions/create-company/index.ts`**
 
-**Modified: `src/components/ProtectedLayout.tsx`**
-- Wrap the layout with the OrgContext provider.
-- After loading the user's profile and role, set the default org_id.
+- Accepts: `{ name }`
+- Validates caller is super_admin
+- Inserts into `organizations` table using service role
+- Returns the new org id
 
-### Part 3: Super Admin Pages
+**Why a backend function?** The `organizations` table has no INSERT RLS policy for any role (not even super_admin). Using a backend function with the service role key bypasses this cleanly without loosening RLS.
 
-**New page: `src/pages/AdminCompaniesPage.tsx` (route: `/admin/companies`)**
-- Lists all organizations with columns: Name, Members count, Agents count, Credit Balance, Created date.
-- Search/filter by company name.
-- Click a row to switch context to that org (sets `activeOrgId`), then redirects to `/dashboard`.
-- "Edit" button opens a dialog to rename the org or manage its members.
+### Part 4: Frontend changes
 
-**New page: `src/pages/AdminCompanyDetailPage.tsx` (route: `/admin/companies/:orgId`)**
-- Shows the selected org's details: name, balance, Stripe customer ID.
-- Members table with role management (same UI as TeamPage but for any org).
-- Quick links to view that org's agents, campaigns, calls (switches context and navigates).
+**Modified: `src/pages/AdminCompaniesPage.tsx`**
+- Add a "New Company" button next to the page title
+- Opens a dialog with a company name input
+- On submit, calls the `create-company` backend function
+- Refreshes the list on success
 
-### Part 4: Sidebar Changes
+**Modified: `src/pages/AdminCompanyDetailPage.tsx`**
+- Add an "Add User" button in the Members section header
+- Opens a dialog with fields: Email, Full Name, Password, Role (select)
+- On submit, calls the `create-user` backend function with the current `orgId`
+- Refreshes the member list on success
 
-**Modified: `src/components/AppSidebar.tsx`**
-- Add an "ADMIN" nav section (only visible to super_admins) with a "Companies" link.
-- When impersonating another org, show a colored banner at the top of the sidebar: "Viewing: [Org Name]" with an "Exit" button to return to own org.
-- The sidebar needs to know the user's role. Add a `useUserRole` hook or extend `useAuth`.
+### Part 5: No RLS changes needed
 
-### Part 5: Update Data Pages to Use OrgContext
-
-**Modified pages** (minimal changes -- replace the pattern of fetching `profile.org_id` with reading from `useOrgContext`):
-- `DashboardPage.tsx` -- use `activeOrgId` instead of `profile.org_id`
-- `AgentsPage.tsx` -- already filtered by RLS, but super admin RLS needs to see all
-- `CallsPage.tsx`, `CampaignsPage.tsx`, `ListsPage.tsx`, etc.
-
-For super admins viewing another org, the approach is:
-- The context provides the `activeOrgId`.
-- Pages that explicitly filter by `org_id` (like Dashboard, Calls) use `activeOrgId`.
-- Pages that rely on RLS joins through `agent_projects.org_id` need super admin SELECT policies added.
-
-**New RLS policies for super admin cross-org access:**
-- `agent_projects`: super admins can SELECT all.
-- `agent_specs`: already uses join to `agent_projects`, so covered.
-- `calls`: super admins can SELECT all.
-- `campaigns`: super admins can SELECT all (via agent_projects join).
-- `contacts`: super admins can SELECT all (via campaigns join).
-- `dial_lists`: super admins can SELECT all.
-- `credit_transactions`: super admins can SELECT all.
-
-### Part 6: Company Onboarding
-
-**New component: `src/components/CompanyOnboardingModal.tsx`**
-- A modal/dialog that appears when `org.name` matches the auto-generated pattern (`*'s Org`).
-- Fields: Company Name (required).
-- On submit, updates `organizations.name` via Supabase.
-- Only shown once -- after setting the name, it never appears again.
-
-**Modified: `src/components/ProtectedLayout.tsx`**
-- After loading the user's org, check if the org name matches the default pattern.
-- If so, show the onboarding modal before rendering the main content.
-
-### Part 7: Settings Page Enhancement
-
-**Modified: `src/pages/SettingsPage.tsx`**
-- Make the Organization name field editable for admins/super_admins.
-- Add a Save button that updates `organizations.name`.
+- The backend functions use the service role key, so they bypass RLS entirely
+- The existing super_admin SELECT policies already allow viewing all orgs, profiles, and roles
+- No new client-side RLS policies are required
 
 ---
 
-### Technical Summary
+### Technical details
 
-Files to create:
-1. `src/hooks/useOrgContext.tsx` -- Org context provider with impersonation support
-2. `src/hooks/useUserRole.ts` -- Hook to fetch current user's role
-3. `src/pages/AdminCompaniesPage.tsx` -- All-companies list for super admins
-4. `src/pages/AdminCompanyDetailPage.tsx` -- Company detail/management for super admins
-5. `src/components/CompanyOnboardingModal.tsx` -- First-time company name setup
+**Files to create:**
+1. `supabase/functions/create-user/index.ts` -- backend function for user creation
+2. `supabase/functions/create-company/index.ts` -- backend function for company creation
 
-Files to modify:
-1. `src/components/ProtectedLayout.tsx` -- Add OrgContext provider and onboarding check
-2. `src/components/AppSidebar.tsx` -- Add ADMIN section and impersonation banner
-3. `src/App.tsx` -- Add admin routes
-4. `src/pages/DashboardPage.tsx` -- Use activeOrgId from context
-5. `src/pages/SettingsPage.tsx` -- Editable org name for admins
-6. `src/pages/BillingPage.tsx` -- Use activeOrgId from context
-7. `src/pages/TeamPage.tsx` -- Use activeOrgId from context
-8. Database migration -- Super admin RLS policies
+**Files to modify:**
+1. Database migration -- update `handle_new_user()` trigger to support pre-assigned org_id
+2. `src/pages/AdminCompaniesPage.tsx` -- add "New Company" dialog
+3. `src/pages/AdminCompanyDetailPage.tsx` -- add "Add User" dialog
 
-### What stays unchanged:
-- All existing RLS policies for regular users
-- All edge functions
-- Auth flow and invitation system
-- All existing table schemas
-
+**No changes to:**
+- Auth flow, existing RLS policies, existing edge functions, sidebar, or routing
