@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.manage-inbound-numbers]
 verify_jwt = false
+
+[functions.receive-retell-webhook]
+verify_jwt = false

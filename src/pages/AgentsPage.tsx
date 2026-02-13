@@ -15,6 +15,7 @@ interface Agent {
   description: string | null;
   created_at: string;
   mode: "outbound" | "inbound" | "hybrid";
+  voice_provider: "bland" | "retell";
 }
 
 const modeConfig = {
@@ -36,7 +37,7 @@ export default function AgentsPage() {
     const load = async () => {
       const { data } = await supabase
         .from("agent_projects")
-        .select("id, name, description, created_at, agent_specs(mode)")
+        .select("id, name, description, created_at, agent_specs(mode, voice_provider)")
         .order("created_at", { ascending: false });
 
       const mapped: Agent[] = (data || []).map((p: any) => ({
@@ -45,6 +46,7 @@ export default function AgentsPage() {
         description: p.description,
         created_at: p.created_at,
         mode: p.agent_specs?.mode || "outbound",
+        voice_provider: p.agent_specs?.voice_provider || "bland",
       }));
       setAgents(mapped);
       setLoading(false);
@@ -119,6 +121,7 @@ export default function AgentsPage() {
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-foreground truncate">{agent.name}</h3>
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{config.label}</Badge>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">{agent.voice_provider === "retell" ? "Retell" : "Bland"}</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">{new Date(agent.created_at).toLocaleDateString()}</p>
                     </div>

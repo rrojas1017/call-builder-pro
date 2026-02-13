@@ -11,6 +11,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 interface Call {
   id: string;
   bland_call_id: string | null;
+  retell_call_id: string | null;
+  voice_provider: string;
   direction: string;
   outcome: string | null;
   duration_seconds: number | null;
@@ -135,7 +137,8 @@ export default function CallsPage() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     {call.direction === "inbound" ? <PhoneIncoming className="h-3 w-3 text-primary" /> : <PhoneOutgoing className="h-3 w-3 text-muted-foreground" />}
-                    <p className="text-sm font-medium text-foreground">{call.bland_call_id?.slice(0, 12) || call.id.slice(0, 8)}...</p>
+                    <p className="text-sm font-medium text-foreground">{call.bland_call_id?.slice(0, 12) || call.retell_call_id?.slice(0, 12) || call.id.slice(0, 8)}...</p>
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">{call.voice_provider === "retell" ? "Retell" : "Bland"}</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
                     <span className={outcomeColor[call.outcome || ""] || "text-muted-foreground"}>

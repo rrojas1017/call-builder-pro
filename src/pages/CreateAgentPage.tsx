@@ -45,6 +45,8 @@ export default function CreateAgentPage() {
   const [transferEnabled, setTransferEnabled] = useState(false);
   const [transferPhone, setTransferPhone] = useState("");
   const [backgroundTrack, setBackgroundTrack] = useState<string | null>(null);
+  const [voiceProvider, setVoiceProvider] = useState<"bland" | "retell">("bland");
+  const [retellAgentId, setRetellAgentId] = useState("");
 
   // Step 1: Create project + generate spec
   const handleGenerateSpec = async () => {
@@ -129,6 +131,8 @@ export default function CreateAgentPage() {
         transfer_required: transferEnabled,
         transfer_phone_number: formattedPhone,
         background_track: backgroundTrack,
+        voice_provider: voiceProvider,
+        retell_agent_id: voiceProvider === "retell" ? retellAgentId || null : null,
       } as any).eq("project_id", projectId);
       toast({ title: "Agent saved!", description: "Run test calls to fine-tune voice and delivery." });
       navigate("/agents");
@@ -258,6 +262,41 @@ export default function CreateAgentPage() {
             </div>
           )}
 
+          {/* Voice Provider */}
+          <div className="surface-elevated rounded-xl p-6 space-y-4">
+            <h3 className="font-semibold text-foreground">Voice Provider</h3>
+            <p className="text-xs text-muted-foreground">Choose which AI voice provider powers this agent's calls.</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                onClick={() => setVoiceProvider("bland")}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition-colors",
+                  voiceProvider === "bland" ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                )}
+              >
+                <p className="text-sm font-medium text-foreground">Bland AI</p>
+                <p className="text-xs text-muted-foreground">Current provider with voice selection & background audio</p>
+              </button>
+              <button
+                onClick={() => setVoiceProvider("retell")}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition-colors",
+                  voiceProvider === "retell" ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                )}
+              >
+                <p className="text-sm font-medium text-foreground">Retell AI</p>
+                <p className="text-xs text-muted-foreground">Alternative provider — configure voice in Retell dashboard</p>
+              </button>
+            </div>
+            {voiceProvider === "retell" && (
+              <div className="space-y-2">
+                <Label>Retell Agent ID</Label>
+                <Input value={retellAgentId} onChange={(e) => setRetellAgentId(e.target.value)} placeholder="e.g. agent_abc123" />
+                <p className="text-xs text-muted-foreground">The agent ID from your Retell AI dashboard.</p>
+              </div>
+            )}
+          </div>
+
           {/* Call Ending / Transfer */}
           <div className="surface-elevated rounded-xl p-6 space-y-4">
             <h3 className="font-semibold text-foreground flex items-center gap-2">
@@ -299,65 +338,69 @@ export default function CreateAgentPage() {
             )}
           </div>
 
-          {/* Voice Selection */}
-          <div className="surface-elevated rounded-xl p-6 space-y-4">
-            <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <Mic className="h-4 w-4 text-primary" /> Voice Selection
-            </h3>
-            <p className="text-xs text-muted-foreground">Choose a voice from your Bland AI account.</p>
-            <VoiceSelector
-              voices={blandVoices}
-              loading={voicesLoading}
-              selectedVoice={selectedVoice}
-              onSelect={setSelectedVoice}
-              sampleText={spec?.opening_line || undefined}
-            />
-            {selectedVoice === "custom" && (
-              <div className="space-y-2">
-                <Label>Custom Voice Clone ID</Label>
-                <Input
-                  value={customVoiceId}
-                  onChange={(e) => setCustomVoiceId(e.target.value)}
-                  placeholder="e.g. abc123-voice-clone-id"
+          {/* Voice Selection (Bland only) */}
+          {voiceProvider === "bland" && (
+            <div className="surface-elevated rounded-xl p-6 space-y-4">
+              <h3 className="font-semibold text-foreground flex items-center gap-2">
+                <Mic className="h-4 w-4 text-primary" /> Voice Selection
+              </h3>
+              <p className="text-xs text-muted-foreground">Choose a voice from your Bland AI account.</p>
+              <VoiceSelector
+                voices={blandVoices}
+                loading={voicesLoading}
+                selectedVoice={selectedVoice}
+                onSelect={setSelectedVoice}
+                sampleText={spec?.opening_line || undefined}
+              />
+              {selectedVoice === "custom" && (
+                <div className="space-y-2">
+                  <Label>Custom Voice Clone ID</Label>
+                  <Input
+                    value={customVoiceId}
+                    onChange={(e) => setCustomVoiceId(e.target.value)}
+                    placeholder="e.g. abc123-voice-clone-id"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Background Audio (Bland only) */}
+          {voiceProvider === "bland" && (
+            <div className="surface-elevated rounded-xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-foreground flex items-center gap-2">
+                  <Volume2 className="h-4 w-4 text-primary" /> Background Audio
+                </h3>
+                <Switch
+                  checked={!!backgroundTrack}
+                  onCheckedChange={(checked) => setBackgroundTrack(checked ? "office" : null)}
                 />
               </div>
-            )}
-          </div>
-
-          {/* Background Audio */}
-          <div className="surface-elevated rounded-xl p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-foreground flex items-center gap-2">
-                <Volume2 className="h-4 w-4 text-primary" /> Background Audio
-              </h3>
-              <Switch
-                checked={!!backgroundTrack}
-                onCheckedChange={(checked) => setBackgroundTrack(checked ? "office" : null)}
-              />
+              <p className="text-xs text-muted-foreground">Add ambient background noise to make your agent sound like it's calling from a real environment.</p>
+              {backgroundTrack && (
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {([
+                    { value: "office", label: "Office", desc: "Keyboard clicks, phone rings, ambient chatter" },
+                    { value: "cafe", label: "Cafe", desc: "Coffee shop ambiance, background murmur" },
+                    { value: "restaurant", label: "Restaurant", desc: "Dining sounds, background conversation" },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setBackgroundTrack(opt.value)}
+                      className={cn(
+                        "rounded-lg border p-3 text-left transition-colors",
+                        backgroundTrack === opt.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                      )}
+                    >
+                      <p className="text-sm font-medium text-foreground">{opt.label}</p>
+                      <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">Add ambient background noise to make your agent sound like it's calling from a real environment.</p>
-            {backgroundTrack && (
-              <div className="grid gap-2 sm:grid-cols-3">
-                {([
-                  { value: "office", label: "Office", desc: "Keyboard clicks, phone rings, ambient chatter" },
-                  { value: "cafe", label: "Cafe", desc: "Coffee shop ambiance, background murmur" },
-                  { value: "restaurant", label: "Restaurant", desc: "Dining sounds, background conversation" },
-                ] as const).map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setBackgroundTrack(opt.value)}
-                    className={cn(
-                      "rounded-lg border p-3 text-left transition-colors",
-                      backgroundTrack === opt.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
-                    )}
-                  >
-                    <p className="text-sm font-medium text-foreground">{opt.label}</p>
-                    <p className="text-xs text-muted-foreground">{opt.desc}</p>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
 
           {showRawSpec && (
             <div className="surface-elevated rounded-xl p-4">

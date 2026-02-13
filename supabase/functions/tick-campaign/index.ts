@@ -180,80 +180,145 @@ serve(async (req) => {
 
     const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
 
-    // Build call_objects array
-    const callObjects = contacts.map((contact: any) => ({
-      phone_number: contact.phone,
-      first_sentence: replaceTemplateVars(
-        spec.opening_line || "Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at.",
-        contact
-      ),
-      metadata: {
-        org_id: campaign.agent_projects.org_id,
-        project_id: campaign.project_id,
-        campaign_id: campaign_id,
-        contact_id: contact.id,
-        version: spec.version,
-      },
-    }));
+    const voiceProvider = spec.voice_provider || "bland";
 
-    // Build global settings
-    const globalSettings: any = {
-      task,
-      record: true,
-      webhook: webhookUrl,
-      summary_prompt: "Return JSON with: consent (bool), caller_name, state, age (int), household_size (int), income_est_annual (int), coverage_type, qualified (bool), disqual_reason, transfer_attempted (bool), transfer_completed (bool)",
-      model: "base",
-      language: spec.language || "en",
-    };
+    if (voiceProvider === "retell") {
+      // ===== RETELL AI BRANCH =====
+      const RETELL_API_KEY = Deno.env.get("RETELL_API_KEY");
+      if (!RETELL_API_KEY) throw new Error("RETELL_API_KEY not configured");
+      const retellAgentId = spec.retell_agent_id;
+      if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
+      const retellWebhookUrl = `${supabaseUrl}/functions/v1/receive-retell-webhook`;
 
-    if (spec.voice_id) globalSettings.voice_id = spec.voice_id;
-    if (spec.transfer_phone_number) globalSettings.transfer_phone_number = spec.transfer_phone_number;
-    if (spec.from_number) globalSettings.from = spec.from_number;
-    if (spec.background_track && spec.background_track !== "none") globalSettings.background_track = spec.background_track;
+      const callIds: string[] = [];
+      for (const contact of contacts) {
+        try {
+          const retellPayload: any = {
+            agent_id: retellAgentId,
+            phone_number: contact.phone,
+            metadata: {
+              org_id: campaign.agent_projects.org_id,
+              project_id: campaign.project_id,
+              campaign_id: campaign_id,
+              contact_id: contact.id,
+              version: spec.version,
+            },
+            webhook_url: retellWebhookUrl,
+          };
 
-    // Send batch request to Bland AI
-    const blandResp = await fetch("https://api.bland.ai/v2/batches/create", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": BLAND_API_KEY,
-      },
-      body: JSON.stringify({
-        global: globalSettings,
-        call_objects: callObjects,
-      }),
-    });
+          if (spec.from_number) retellPayload.from_number = spec.from_number;
 
-    const blandData = await blandResp.json();
-    if (!blandResp.ok) {
-      throw new Error(`Bland Batch API error [${blandResp.status}]: ${JSON.stringify(blandData)}`);
+          const retellResp = await fetch("https://api.retellai.com/v2/create-phone-call", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${RETELL_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify(retellPayload),
+          });
+
+          const retellData = await retellResp.json();
+          console.log("Retell API response:", retellResp.status, JSON.stringify(retellData));
+
+          if (retellData.call_id) {
+            callIds.push(retellData.call_id);
+            await supabase.from("contacts").update({
+              status: "calling", attempts: 1, called_at: new Date().toISOString(),
+            }).eq("id", contact.id);
+          } else {
+            await supabase.from("contacts").update({
+              status: "failed", last_error: retellData.message || JSON.stringify(retellData),
+            }).eq("id", contact.id);
+          }
+        } catch (callErr: any) {
+          console.error("Retell call error:", callErr);
+          await supabase.from("contacts").update({
+            status: "failed", last_error: callErr.message,
+          }).eq("id", contact.id);
+        }
+      }
+
+      return new Response(JSON.stringify({
+        provider: "retell",
+        calls_initiated: callIds.length,
+        contacts_dispatched: contacts.length,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } else {
+      // ===== EXISTING BLAND AI BRANCH (UNCHANGED) =====
+      // Build call_objects array
+      const callObjects = contacts.map((contact: any) => ({
+        phone_number: contact.phone,
+        first_sentence: replaceTemplateVars(
+          spec.opening_line || "Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at.",
+          contact
+        ),
+        metadata: {
+          org_id: campaign.agent_projects.org_id,
+          project_id: campaign.project_id,
+          campaign_id: campaign_id,
+          contact_id: contact.id,
+          version: spec.version,
+        },
+      }));
+
+      // Build global settings
+      const globalSettings: any = {
+        task,
+        record: true,
+        webhook: webhookUrl,
+        summary_prompt: "Return JSON with: consent (bool), caller_name, state, age (int), household_size (int), income_est_annual (int), coverage_type, qualified (bool), disqual_reason, transfer_attempted (bool), transfer_completed (bool)",
+        model: "base",
+        language: spec.language || "en",
+      };
+
+      if (spec.voice_id) globalSettings.voice_id = spec.voice_id;
+      if (spec.transfer_phone_number) globalSettings.transfer_phone_number = spec.transfer_phone_number;
+      if (spec.from_number) globalSettings.from = spec.from_number;
+      if (spec.background_track && spec.background_track !== "none") globalSettings.background_track = spec.background_track;
+
+      // Send batch request to Bland AI
+      const blandResp = await fetch("https://api.bland.ai/v2/batches/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": BLAND_API_KEY,
+        },
+        body: JSON.stringify({
+          global: globalSettings,
+          call_objects: callObjects,
+        }),
+      });
+
+      const blandData = await blandResp.json();
+      if (!blandResp.ok) {
+        throw new Error(`Bland Batch API error [${blandResp.status}]: ${JSON.stringify(blandData)}`);
+      }
+
+      const batchId = blandData.batch_id || blandData.id;
+
+      // Store batch_id on campaign
+      await supabase
+        .from("campaigns")
+        .update({ bland_batch_id: batchId })
+        .eq("id", campaign_id);
+
+      // Bulk update all dispatched contacts to "calling"
+      const contactIds = contacts.map((c: any) => c.id);
+      await supabase
+        .from("contacts")
+        .update({
+          status: "calling",
+          attempts: 1,
+          called_at: new Date().toISOString(),
+        })
+        .in("id", contactIds);
+
+      return new Response(JSON.stringify({
+        batch_id: batchId,
+        contacts_dispatched: contacts.length,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
-
-    const batchId = blandData.batch_id || blandData.id;
-
-    // Store batch_id on campaign
-    await supabase
-      .from("campaigns")
-      .update({ bland_batch_id: batchId })
-      .eq("id", campaign_id);
-
-    // Bulk update all dispatched contacts to "calling"
-    const contactIds = contacts.map((c: any) => c.id);
-    await supabase
-      .from("contacts")
-      .update({
-        status: "calling",
-        attempts: 1,
-        called_at: new Date().toISOString(),
-      })
-      .in("id", contactIds);
-
-    return new Response(JSON.stringify({
-      batch_id: batchId,
-      contacts_dispatched: contacts.length,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
   } catch (err) {
     console.error("tick-campaign error:", err);
     return new Response(JSON.stringify({ error: err.message }), {

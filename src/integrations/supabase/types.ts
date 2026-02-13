@@ -115,6 +115,7 @@ export type Database = {
           pronunciation_guide: Json | null
           qualification_rules: Json | null
           research_sources: Json | null
+          retell_agent_id: string | null
           retry_policy: Json | null
           sms_enabled: boolean
           speaking_speed: number | null
@@ -127,6 +128,7 @@ export type Database = {
           use_case: string
           version: number
           voice_id: string | null
+          voice_provider: string
         }
         Insert: {
           background_track?: string | null
@@ -149,6 +151,7 @@ export type Database = {
           pronunciation_guide?: Json | null
           qualification_rules?: Json | null
           research_sources?: Json | null
+          retell_agent_id?: string | null
           retry_policy?: Json | null
           sms_enabled?: boolean
           speaking_speed?: number | null
@@ -161,6 +164,7 @@ export type Database = {
           use_case?: string
           version?: number
           voice_id?: string | null
+          voice_provider?: string
         }
         Update: {
           background_track?: string | null
@@ -183,6 +187,7 @@ export type Database = {
           pronunciation_guide?: Json | null
           qualification_rules?: Json | null
           research_sources?: Json | null
+          retell_agent_id?: string | null
           retry_policy?: Json | null
           sms_enabled?: boolean
           speaking_speed?: number | null
@@ -195,6 +200,7 @@ export type Database = {
           use_case?: string
           version?: number
           voice_id?: string | null
+          voice_provider?: string
         }
         Relationships: [
           {
@@ -224,10 +230,12 @@ export type Database = {
           outcome: string | null
           project_id: string
           recording_url: string | null
+          retell_call_id: string | null
           started_at: string | null
           summary: Json | null
           transcript: string | null
           version: number
+          voice_provider: string
         }
         Insert: {
           bland_call_id?: string | null
@@ -246,10 +254,12 @@ export type Database = {
           outcome?: string | null
           project_id: string
           recording_url?: string | null
+          retell_call_id?: string | null
           started_at?: string | null
           summary?: Json | null
           transcript?: string | null
           version?: number
+          voice_provider?: string
         }
         Update: {
           bland_call_id?: string | null
@@ -268,10 +278,12 @@ export type Database = {
           outcome?: string | null
           project_id?: string
           recording_url?: string | null
+          retell_call_id?: string | null
           started_at?: string | null
           summary?: Json | null
           transcript?: string | null
           version?: number
+          voice_provider?: string
         }
         Relationships: [
           {
@@ -356,6 +368,7 @@ export type Database = {
           max_concurrent_calls: number
           name: string
           project_id: string
+          retell_batch_id: string | null
           status: string
         }
         Insert: {
@@ -366,6 +379,7 @@ export type Database = {
           max_concurrent_calls?: number
           name: string
           project_id: string
+          retell_batch_id?: string | null
           status?: string
         }
         Update: {
@@ -376,6 +390,7 @@ export type Database = {
           max_concurrent_calls?: number
           name?: string
           project_id?: string
+          retell_batch_id?: string | null
           status?: string
         }
         Relationships: [
@@ -843,6 +858,7 @@ export type Database = {
           outcome: string | null
           phone: string
           recording_url: string | null
+          retell_call_id: string | null
           status: string
           test_run_id: string
           transcript: string | null
@@ -860,6 +876,7 @@ export type Database = {
           outcome?: string | null
           phone: string
           recording_url?: string | null
+          retell_call_id?: string | null
           status?: string
           test_run_id: string
           transcript?: string | null
@@ -877,6 +894,7 @@ export type Database = {
           outcome?: string | null
           phone?: string
           recording_url?: string | null
+          retell_call_id?: string | null
           status?: string
           test_run_id?: string
           transcript?: string | null
