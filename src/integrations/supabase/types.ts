@@ -334,6 +334,7 @@ export type Database = {
       campaigns: {
         Row: {
           agent_project_id: string | null
+          bland_batch_id: string | null
           created_at: string
           id: string
           max_concurrent_calls: number
@@ -343,6 +344,7 @@ export type Database = {
         }
         Insert: {
           agent_project_id?: string | null
+          bland_batch_id?: string | null
           created_at?: string
           id?: string
           max_concurrent_calls?: number
@@ -352,6 +354,7 @@ export type Database = {
         }
         Update: {
           agent_project_id?: string | null
+          bland_batch_id?: string | null
           created_at?: string
           id?: string
           max_concurrent_calls?: number

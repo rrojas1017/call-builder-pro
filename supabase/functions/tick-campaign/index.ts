@@ -141,37 +141,22 @@ serve(async (req) => {
       .single();
     if (specErr) throw specErr;
 
-    // Count currently calling
-    const { count: callingCount } = await supabase
-      .from("contacts")
-      .select("id", { count: "exact", head: true })
-      .eq("campaign_id", campaign_id)
-      .eq("status", "calling");
-
-    const available = campaign.max_concurrent_calls - (callingCount || 0);
-    if (available <= 0) {
-      return new Response(JSON.stringify({ message: "Max concurrent calls reached" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Get next queued contacts
+    // Get ALL queued contacts
     const { data: contacts } = await supabase
       .from("contacts")
       .select("*")
       .eq("campaign_id", campaign_id)
       .eq("status", "queued")
-      .order("created_at", { ascending: true })
-      .limit(available);
+      .order("created_at", { ascending: true });
 
     if (!contacts || contacts.length === 0) {
-      // No more contacts, check if all done
+      // Check if all done
       const { count: remaining } = await supabase
         .from("contacts")
         .select("id", { count: "exact", head: true })
         .eq("campaign_id", campaign_id)
         .in("status", ["queued", "calling"]);
-      
+
       if ((remaining || 0) === 0) {
         await supabase.from("campaigns").update({ status: "completed" }).eq("id", campaign_id);
       }
@@ -180,86 +165,92 @@ serve(async (req) => {
       });
     }
 
-    // Load global human behaviors for prompt injection
+    // Load global human behaviors
     const { data: globalBehaviors } = await supabase
       .from("global_human_behaviors").select("content")
       .order("created_at", { ascending: true });
 
     const globalTechniques = (globalBehaviors || []).map((g: any) => g.content as string);
 
-    const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
-
-    // Inject global behaviors into the task prompt
+    // Build task prompt with global behaviors
     let task = buildTaskPrompt(spec);
     if (globalTechniques.length > 0) {
-      const behaviorSection = `\n\nLEARNED CONVERSATION TECHNIQUES (apply these naturally):\n${globalTechniques.map((t: string, i: number) => `${i + 1}. ${t}`).join("\n")}`;
-      task += behaviorSection;
-    }
-    const results = [];
-
-    for (const contact of contacts) {
-      try {
-        const payload: any = {
-          phone_number: contact.phone,
-          task,
-          first_sentence: replaceTemplateVars(
-            spec.opening_line || "Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at.",
-            contact
-          ),
-          record: true,
-          webhook: webhookUrl,
-          metadata: {
-            org_id: campaign.agent_projects.org_id,
-            project_id: campaign.project_id,
-            campaign_id: campaign_id,
-            contact_id: contact.id,
-            version: spec.version,
-          },
-          summary_prompt: "Return JSON with: consent (bool), caller_name, state, age (int), household_size (int), income_est_annual (int), coverage_type, qualified (bool), disqual_reason, transfer_attempted (bool), transfer_completed (bool)",
-        };
-
-        if (spec.transfer_phone_number) {
-          payload.transfer_phone_number = spec.transfer_phone_number;
-        }
-        if (spec.from_number) {
-          payload.from = spec.from_number;
-        }
-
-        const blandResp = await fetch("https://us.api.bland.ai/v1/calls", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": BLAND_API_KEY,
-          },
-          body: JSON.stringify(payload),
-        });
-
-        const blandData = await blandResp.json();
-        if (!blandResp.ok) {
-          throw new Error(`Bland API error [${blandResp.status}]: ${JSON.stringify(blandData)}`);
-        }
-
-        // Update contact
-        await supabase.from("contacts").update({
-          status: "calling",
-          attempts: contact.attempts + 1,
-          bland_call_id: blandData.call_id,
-          called_at: new Date().toISOString(),
-        }).eq("id", contact.id);
-
-        results.push({ contact_id: contact.id, bland_call_id: blandData.call_id, success: true });
-      } catch (err) {
-        console.error(`Error calling ${contact.phone}:`, err);
-        await supabase.from("contacts").update({
-          status: "failed",
-          attempts: contact.attempts + 1,
-          last_error: err.message,
-        }).eq("id", contact.id);
-        results.push({ contact_id: contact.id, success: false, error: err.message });
-      }
+      task += `\n\nLEARNED CONVERSATION TECHNIQUES (apply these naturally):\n${globalTechniques.map((t: string, i: number) => `${i + 1}. ${t}`).join("\n")}`;
     }
 
-    return new Response(JSON.stringify({ results }), {
+    const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
+
+    // Build call_objects array
+    const callObjects = contacts.map((contact: any) => ({
+      phone_number: contact.phone,
+      first_sentence: replaceTemplateVars(
+        spec.opening_line || "Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at.",
+        contact
+      ),
+      metadata: {
+        org_id: campaign.agent_projects.org_id,
+        project_id: campaign.project_id,
+        campaign_id: campaign_id,
+        contact_id: contact.id,
+        version: spec.version,
+      },
+    }));
+
+    // Build global settings
+    const globalSettings: any = {
+      task,
+      record: true,
+      webhook: webhookUrl,
+      summary_prompt: "Return JSON with: consent (bool), caller_name, state, age (int), household_size (int), income_est_annual (int), coverage_type, qualified (bool), disqual_reason, transfer_attempted (bool), transfer_completed (bool)",
+      model: "base",
+      language: spec.language || "en",
+    };
+
+    if (spec.voice_id) globalSettings.voice_id = spec.voice_id;
+    if (spec.transfer_phone_number) globalSettings.transfer_phone_number = spec.transfer_phone_number;
+    if (spec.from_number) globalSettings.from = spec.from_number;
+
+    // Send batch request to Bland AI
+    const blandResp = await fetch("https://api.bland.ai/v2/batches/create", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": BLAND_API_KEY,
+      },
+      body: JSON.stringify({
+        global: globalSettings,
+        call_objects: callObjects,
+      }),
+    });
+
+    const blandData = await blandResp.json();
+    if (!blandResp.ok) {
+      throw new Error(`Bland Batch API error [${blandResp.status}]: ${JSON.stringify(blandData)}`);
+    }
+
+    const batchId = blandData.batch_id || blandData.id;
+
+    // Store batch_id on campaign
+    await supabase
+      .from("campaigns")
+      .update({ bland_batch_id: batchId })
+      .eq("id", campaign_id);
+
+    // Bulk update all dispatched contacts to "calling"
+    const contactIds = contacts.map((c: any) => c.id);
+    await supabase
+      .from("contacts")
+      .update({
+        status: "calling",
+        attempts: 1,
+        called_at: new Date().toISOString(),
+      })
+      .in("id", contactIds);
+
+    return new Response(JSON.stringify({
+      batch_id: batchId,
+      contacts_dispatched: contacts.length,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
