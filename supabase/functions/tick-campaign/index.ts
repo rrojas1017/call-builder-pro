@@ -190,7 +190,7 @@ serve(async (req) => {
           phone_number: contact.phone,
           task,
           first_sentence: replaceTemplateVars(
-            spec.opening_line || "Hey {{first_name}}, this is just a quick follow-up on the health coverage info you were looking into. Got a sec?",
+            spec.opening_line || "Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at.",
             contact
           ),
           record: true,
