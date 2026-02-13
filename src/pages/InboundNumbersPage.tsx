@@ -3,6 +3,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+const POPULAR_AREA_CODES = [
+  { code: "213", city: "Los Angeles, CA" },
+  { code: "312", city: "Chicago, IL" },
+  { code: "415", city: "San Francisco, CA" },
+  { code: "469", city: "Dallas-Fort Worth, TX" },
+  { code: "516", city: "Long Island, NY" },
+  { code: "604", city: "Vancouver, BC" },
+  { code: "647", city: "Toronto, ON" },
+  { code: "702", city: "Las Vegas, NV" },
+  { code: "786", city: "Miami, FL" },
+  { code: "905", city: "Greater Toronto, ON" },
+] as const;
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription,
@@ -169,12 +182,18 @@ export default function InboundNumbersPage() {
                 <DialogDescription>Enter an area code to purchase a new phone number. Cost: $15/month.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                <Input
-                  placeholder="Area code (e.g. 415)"
-                  value={areaCode}
-                  onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))}
-                  maxLength={3}
-                />
+                <Select value={areaCode} onValueChange={setAreaCode}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select an area code..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {POPULAR_AREA_CODES.map((ac) => (
+                      <SelectItem key={ac.code} value={ac.code}>
+                        {ac.code} — {ac.city}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <p className="text-xs text-muted-foreground">Monthly cost: $15.00 billed through Bland AI</p>
               </div>
               <DialogFooter>
