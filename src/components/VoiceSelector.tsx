@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Search, Mic, Loader2 } from "lucide-react";
+import { Search, Mic, Loader2, Globe } from "lucide-react";
 import { VoicePlayButton } from "@/components/VoicePlayButton";
 import type { BlandVoice } from "@/hooks/useBlandVoices";
 
@@ -16,14 +17,29 @@ interface VoiceSelectorProps {
 
 export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sampleText }: VoiceSelectorProps) {
   const [search, setSearch] = useState("");
+  const [languageFilter, setLanguageFilter] = useState("all");
+
+  const availableLanguages = useMemo(() => {
+    const langs = new Set<string>();
+    voices.forEach((v) => {
+      if (v.language) langs.add(v.language);
+    });
+    return Array.from(langs).sort();
+  }, [voices]);
 
   const filtered = useMemo(() => {
+    let result = voices;
+    if (languageFilter !== "all") {
+      result = result.filter((v) => v.language?.toLowerCase() === languageFilter.toLowerCase());
+    }
     const q = search.toLowerCase();
-    if (!q) return voices;
-    return voices.filter(
-      (v) => v.name.toLowerCase().includes(q) || (v.description?.toLowerCase().includes(q))
-    );
-  }, [voices, search]);
+    if (q) {
+      result = result.filter(
+        (v) => v.name.toLowerCase().includes(q) || (v.description?.toLowerCase().includes(q))
+      );
+    }
+    return result;
+  }, [voices, search, languageFilter]);
 
   const customVoices = filtered.filter((v) => v.is_custom);
   const presetVoices = filtered.filter((v) => !v.is_custom);
@@ -38,15 +54,33 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
 
   return (
     <div className="space-y-3">
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search voices..."
-          className="pl-9"
-        />
+      {/* Language filter + Search */}
+      <div className="flex gap-2">
+        {availableLanguages.length > 1 && (
+          <Select value={languageFilter} onValueChange={setLanguageFilter}>
+            <SelectTrigger className="w-[160px]">
+              <Globe className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+              <SelectValue placeholder="Language" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Languages</SelectItem>
+              {availableLanguages.map((lang) => (
+                <SelectItem key={lang} value={lang}>
+                  {lang.charAt(0).toUpperCase() + lang.slice(1)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search voices..."
+            className="pl-9"
+          />
+        </div>
       </div>
 
       {/* Count */}

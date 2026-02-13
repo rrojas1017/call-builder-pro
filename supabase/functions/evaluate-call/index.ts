@@ -34,6 +34,12 @@ serve(async (req) => {
 
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
+    const agentLang = (spec.language || "en").toLowerCase();
+    const isNonEnglish = agentLang !== "en" && agentLang !== "english";
+    const langInstruction = isNonEnglish
+      ? `\n\nIMPORTANT: The agent operates in "${spec.language}". Write ALL evaluation text -- issues_detected, humanness_suggestions, knowledge_gaps, delivery_issues, missed_fields, incorrect_logic, and recommended_improvements (field, reason, suggested_value) -- in ${spec.language}. Only field names that map to spec keys (e.g. "opening_line") stay in English.`
+      : "";
+
     const systemPrompt = `You are a Call Performance Auditor.
 Evaluate the following call transcript against the Agent Specification provided.
 
@@ -85,7 +91,7 @@ VOICE TUNING RECOMMENDATIONS:
 - If repeated words detected → suggest lowering "temperature"
 - If rushed pacing → suggest lowering "speaking_speed"
 - If AI interrupts too quickly → suggest raising "interruption_threshold"
-- If words mispronounced → suggest "pronunciation_guide" entries`;
+- If words mispronounced → suggest "pronunciation_guide" entries${langInstruction}`;
 
     const userPrompt = `AGENT SPECIFICATION:\n${JSON.stringify(spec, null, 2)}\n\nCALL TRANSCRIPT:\n${call.transcript}`;
 
