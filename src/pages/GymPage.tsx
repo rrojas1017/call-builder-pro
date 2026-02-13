@@ -143,9 +143,6 @@ export default function GymPage() {
             return;
           }
         }
-        // Otherwise load the most recent
-        setContact(rows[0]);
-        setTestRunId(rows[0].test_run_id || null);
       }
     };
     init();
