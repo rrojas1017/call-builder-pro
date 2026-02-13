@@ -1,34 +1,30 @@
 
 
-## Hide "Apply Improvement" Button for Already-Applied Fixes
+## Fix: Hide Already-Applied Improvements in Test Results Modal
 
 ### Problem
-When viewing past calls, the "Apply Improvement" buttons still appear even if the fix was already applied. This is confusing and risks applying the same change twice.
+The `TestResultsModal.tsx` component (shown on the `/test` page) tracks applied fixes only in local component state (`appliedFixes`). When the modal is reopened or a past test run is viewed, the state resets to empty, so all improvements appear clickable even if they were already applied.
 
 ### Solution
-When a call is selected, fetch the `improvements` table for that call's `project_id` and cross-reference each recommended improvement with already-applied records. If a match is found, show an "Applied" badge instead of the button.
+Add the same database-backed check used in `CallsPage.tsx`: when the modal opens, fetch all previously applied improvements from the `improvements` table and pre-populate the `appliedFixes` list.
 
 ### Changes
 
-**`src/pages/CallsPage.tsx`**
+**`src/components/TestResultsModal.tsx`**
 
-1. Add a new state: `appliedImprovements` to hold fetched improvement records for the selected call's project.
-2. Add a state: `appliedSet` (a `Set<string>`) built from the fetched improvements, keyed by a normalized field name from the `patch` keys.
-3. When `selected` changes (and has evaluation data), query:
-   ```
-   supabase.from("improvements").select("patch, change_summary").eq("project_id", selected.project_id)
-   ```
-4. Build a set of applied field names from each improvement's `patch` keys (excluding `version`).
-5. In the recommended improvements render loop, check if `imp.field` (normalized -- strip parenthetical suffixes, replace `/` with `.`) exists in the applied set.
-6. If matched: replace the "Apply Improvement" button with a green "Applied" badge (using `CheckCircle2` icon, already imported).
-7. If not matched: show the button as before.
-8. Also add the improvement to the applied set locally after a successful apply, so it immediately shows as "Applied" without re-fetching.
+1. Add a `useEffect` that runs when `open` changes and `projectId` is available:
+   - Query `supabase.from("improvements").select("patch").eq("project_id", projectId)`
+   - Extract all patch keys (excluding `version`) into a flat list
+   - Set `appliedFixes` to this list so the UI immediately reflects what has already been applied
 
-### Visual Change
-- **Before**: Every recommended improvement shows an "Apply Improvement" button
-- **After**: Already-applied improvements show a green "Applied" label; unapplied ones still show the button
+2. The existing rendering logic already checks `appliedFixes.includes(imp.field)` -- but the field names from the evaluation may contain parenthetical descriptions (e.g. `"humanization_notes (implied rewrite of prompt)"`), while the patch keys are normalized (e.g. `"humanization_notes"`). Add a `normalizeField` helper (same as in `CallsPage.tsx`) and use normalized comparison:
+   - Normalize `imp.field` before checking against the applied set
+   - Also normalize when adding to `appliedFixes` after a successful apply
 
-### Technical Notes
-- Field matching uses the same normalization as `apply-improvement` edge function: strip `(...)` suffixes, replace `/` with `.`
-- The `improvements` table `patch` column contains the fields that were changed, so we match on patch keys
-- No database changes needed
+3. The "Apply All Fixes" button's disabled check will also use normalized comparison so it correctly detects when all fixes are already applied.
+
+### What stays the same
+- The "Apply Fix" button still works for unapplied improvements
+- Successfully applying a fix still adds it to the local state for immediate UI feedback
+- No database schema changes needed
+
