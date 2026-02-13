@@ -65,6 +65,7 @@ export type Database = {
           disqualification_rules: Json | null
           escalation_rules: Json | null
           from_number: string | null
+          humanization_notes: Json | null
           id: string
           interruption_threshold: number | null
           language: string
@@ -95,6 +96,7 @@ export type Database = {
           disqualification_rules?: Json | null
           escalation_rules?: Json | null
           from_number?: string | null
+          humanization_notes?: Json | null
           id?: string
           interruption_threshold?: number | null
           language?: string
@@ -125,6 +127,7 @@ export type Database = {
           disqualification_rules?: Json | null
           escalation_rules?: Json | null
           from_number?: string | null
+          humanization_notes?: Json | null
           id?: string
           interruption_threshold?: number | null
           language?: string

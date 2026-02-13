@@ -1,0 +1,1 @@
+ALTER TABLE public.agent_specs ADD COLUMN humanization_notes JSONB DEFAULT '[]'::jsonb;
