@@ -116,6 +116,22 @@ RULES:
     prompt += `\n\nINFORMATION TO COLLECT (in this order):\n${fields.map((f, i) => `${i + 1}. ${f}`).join("\n")}`;
   }
 
+  prompt += `\n\nFEDERAL POVERTY LEVEL THRESHOLDS (2025):
+Qualification Range: 100-400% of Federal Poverty Level
+
+Household Size | 100% FPL  | 400% FPL
+1              | $14,580   | $58,320
+2              | $19,720   | $78,880
+3              | $24,860   | $99,440
+4              | $30,000   | $120,000
+5              | $35,140   | $140,560
+6              | $40,280   | $161,120
+7              | $45,420   | $181,680
+8+             | $50,560+  | $202,240+
+(Add $5,140 per additional person beyond 8 for 100% FPL; multiply by 4 for 400% FPL)
+
+Use this table to determine qualification: If the caller's annual household income falls between the 100% and 400% FPL amounts for their household size, they may qualify for ACA marketplace assistance.`;
+
   if (qualRules) {
     prompt += `\n\nQUALIFICATION CRITERIA:\n${qualRules}`;
   }

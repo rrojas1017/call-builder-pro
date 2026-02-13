@@ -1,3 +1,5 @@
+import { buildFplTableSection } from "./fplThresholds";
+
 interface AgentSpec {
   disclosure_text?: string | null;
   consent_required?: boolean;
@@ -29,10 +31,12 @@ RULES:
 SCREENING QUESTIONS (collect in this order):
 ${fields.map((f, i) => `${i + 1}. ${formatField(f)}`).join("\n")}
 
+${buildFplTableSection()}
+
 QUALIFICATION LOGIC:
 - If the caller has employer-sponsored insurance (ESI) or Medicare → DISQUALIFY. Say: "Based on your current coverage, you may not be eligible for ACA marketplace plans at this time. Thank you for your time."
 - If the caller has Medicaid → Tag as Medicaid. Say: "It sounds like you may already have coverage through Medicaid. We'll note that for our records. Thank you."
-- If the caller is uninsured or has private coverage AND income is within 100-400% of Federal Poverty Level → QUALIFIED for transfer.
+- If the caller is uninsured or has private coverage AND income is within 100-400% of Federal Poverty Level (use the table above) → QUALIFIED for transfer.
 - If qualified, say: "Great news! Based on what you've told me, you may qualify for assistance. Let me connect you with a licensed agent who can help."
 ${transferNum ? `- Transfer to: ${transferNum}` : "- No transfer number configured."}
 

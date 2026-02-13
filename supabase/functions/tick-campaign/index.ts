@@ -31,10 +31,24 @@ RULES:
 QUESTIONS:
 ${(fields as string[]).map((f: string, i: number) => `${i + 1}. ${fieldLabels[f] || f}`).join("\n")}
 
+FEDERAL POVERTY LEVEL THRESHOLDS (2025):
+Qualification Range: 100-400% of Federal Poverty Level
+
+Household Size | 100% FPL  | 400% FPL
+1              | $14,580   | $58,320
+2              | $19,720   | $78,880
+3              | $24,860   | $99,440
+4              | $30,000   | $120,000
+5              | $35,140   | $140,560
+6              | $40,280   | $161,120
+7              | $45,420   | $181,680
+8+             | $50,560+  | $202,240+
+(Add $5,140 per additional person beyond 8 for 100% FPL; multiply by 4 for 400% FPL)
+
 QUALIFICATION:
 - ESI or Medicare → disqualify
 - Medicaid → tag, no transfer
-- Uninsured/private + income 100-400% FPL → qualified, transfer
+- Uninsured/private + income within 100-400% FPL (use table above) → qualified, transfer
 ${transferNum ? `- Transfer to: ${transferNum}` : ""}
 
 After call, provide JSON: consent, state, age, household_size, income_est_annual, coverage_type, qualified, disqual_reason, transfer_attempted, transfer_completed`;
