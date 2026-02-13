@@ -1,6 +1,5 @@
 import { useState, useRef } from "react";
 import { Play, Square, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 interface VoicePlayButtonProps {
@@ -43,14 +42,25 @@ export function VoicePlayButton({ voiceId, sampleText }: VoicePlayButtonProps) {
 
     setState("loading");
     try {
-      const { data, error } = await supabase.functions.invoke("generate-voice-sample", {
-        body: { voice_id: voiceId, text: sampleText },
-      });
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-voice-sample`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ voice_id: voiceId, text: sampleText }),
+        }
+      );
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(errText);
+      }
 
-      // data comes back as a Blob when responseType isn't JSON
-      const blob = data instanceof Blob ? data : new Blob([data], { type: "audio/mpeg" });
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
