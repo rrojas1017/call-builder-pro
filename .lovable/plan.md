@@ -1,73 +1,63 @@
 
 
-## Update Agent Prompts with Current Special Enrollment Period (SEP) Rules
+## Fix Agent Introduction, Add Zip Code Validation, and Smooth Transfer Message
 
-### Problem
-The agent's ACA qualification logic is missing Special Enrollment Period (SEP) guidance entirely, and the user's test revealed the agent incorrectly suggested that low income alone (under 150% FPL) qualifies someone for a SEP. **This is outdated.** As of August 25, 2025, the low-income SEP was eliminated nationwide by both an HHS rule change and the "One Big Beautiful Bill Act" (OBBBA, enacted July 4, 2025). Income alone no longer triggers year-round enrollment eligibility.
+### Problem 1: Agent Sounds Like an Automated System
+The opening line and prompt framing sound robotic. The `tick-campaign` edge function hardcodes a stiff first sentence: "this is a quick call about health coverage options you requested information about." The prompt also labels the agent as an "ACA pre-qualification screening agent" which leaks into how it talks.
 
-### What Changed (Research Findings)
-- The low-income SEP (available to people with income at or below 150% FPL) **was permanently eliminated** as of August 25, 2025.
-- Enrollment outside of Open Enrollment now **requires a Qualifying Life Event (QLE)**.
-- The 13 current qualifying life events include: loss of coverage, marriage, birth/adoption, permanent move, gaining citizenship, employer plan becoming unaffordable, and others.
-- Open Enrollment for 2026 plans ran November 1 - December 15, 2025 (varies by state).
-- Some states (DC, OR, MN, NY, MA, CT) have their own year-round programs for very low-income residents, but these are state-specific and separate from the federal marketplace SEP.
+### Problem 2: No Zip Code Collection or Validation
+The agent currently only asks for state. Adding a zip code question allows more precise location data and can be cross-validated (5-digit US zip format). This also gets passed along with the transfer for the licensed agent.
 
-### Implementation
+### Problem 3: Transfer Message Breaks Up
+The qualified transfer line -- "Great news! Based on what you've told me, you may qualify for assistance. Let me connect you with a licensed agent who can help." -- is too long and wordy, causing audio breakup when spoken. Needs to be split into shorter, natural sentences.
 
-**1. Update `src/lib/fplThresholds.ts`**
-   - Add a new exported function `buildSepSection()` that returns a prompt section with current SEP rules
-   - Include the 13 qualifying life events (summarized concisely for the agent)
-   - Explicitly state that low-income alone does NOT qualify for a SEP
-   - Condition this section on the same `shouldIncludeFplTable()` health keyword check
+---
 
-**2. Update `src/lib/buildTaskPrompt.ts`**
-   - Import and inject the SEP section into the prompt for health/ACA agents
-   - Add SEP-aware qualification logic: if outside Open Enrollment, ask if the caller has experienced a qualifying life event
-   - Add a new screening question for QLE detection (e.g., "Have you recently experienced any life changes such as losing coverage, getting married, having a baby, or moving to a new area?")
-   - Update the qualification logic to reflect:
-     - During Open Enrollment: standard FPL qualification applies
-     - Outside Open Enrollment: caller must have a QLE to enroll, regardless of income
+### Changes
 
-**3. Update `supabase/functions/tick-campaign/index.ts`**
-   - Add the same SEP section and updated qualification logic to the edge function's `buildTaskPrompt`
-   - Include the QLE screening question
+**1. `src/lib/buildTaskPrompt.ts`**
+- Change the agent self-description from "ACA pre-qualification screening agent" to something natural like: "You are a friendly, knowledgeable health benefits advisor having a natural phone conversation."
+- Add `zip_code` to the base health fields (after `state`)
+- Add a zip code label in `formatField`: "What's your zip code?" with a validation note instructing the agent to confirm it's 5 digits
+- Replace the long transfer confirmation with two short sentences: "That's great news -- it looks like you may qualify for some help with your coverage. Let me get you over to a licensed agent right now."
+- Add a prompt instruction: "When transferring, keep your message SHORT. Say one brief sentence, then transfer. Do not give a long speech before transferring."
 
-**4. Update `supabase/functions/run-test-run/index.ts`**
-   - Same changes as tick-campaign for consistency during test runs
+**2. `supabase/functions/tick-campaign/index.ts`**
+- Replace the hardcoded `first_sentence` with a warmer, human opening: "Hey {{first_name}}, it's [agent name] -- I'm following up on the health coverage info you asked about. Got a quick minute?"
+- Use the spec's `opening_line` if available, falling back to the warmer default
+- Add template variable replacement for the first sentence (reuse `replaceTemplateVars` pattern from run-test-run)
+- Add `zip_code` to the field labels
+- Update the transfer confirmation message to be shorter
+- Update the prompt intro to avoid "automated system" language
 
-### Prompt Content to Add
+**3. `supabase/functions/run-test-run/index.ts`**
+- Add `zip_code` to the default field set for health agents (already uses `spec.opening_line` so intro is fine)
+- Update any hardcoded qualification messages to use shorter transfer wording
+- Add zip code validation instruction in the prompt
 
-The SEP section will include:
+**4. `src/lib/fplThresholds.ts`**
+- No changes needed (SEP/FPL sections stay as-is)
 
-```
-SPECIAL ENROLLMENT PERIOD (SEP) RULES (Updated 2025):
-IMPORTANT: The low-income SEP (income ≤150% FPL) was ELIMINATED as of August 25, 2025.
-Income alone does NOT qualify someone for year-round enrollment.
+### Key Prompt Wording Changes
 
-Outside of Open Enrollment (Nov 1 - Dec 15), callers can ONLY enroll if they have
-a Qualifying Life Event (QLE) within the past 60 days:
-1. Involuntary loss of health coverage (job loss, aging off parent's plan, losing Medicaid)
-2. Marriage
-3. Birth, adoption, or placement of a child in foster care
-4. Permanent move to a new coverage area (must have had prior coverage)
-5. Becoming a U.S. citizen or gaining lawful presence
-6. Divorce (if it results in loss of coverage)
-7. Gaining access to a QSEHRA or Individual Coverage HRA from employer
-8. Employer-sponsored plan becoming unaffordable (>9.96% of household income)
-9. Change in income that affects subsidy eligibility
-10. Leaving the Medicaid coverage gap due to income increase
-11. Exceptional circumstances (natural disaster, enrollment errors)
+**Opening (tick-campaign default):**
+- Before: "Hi [name], this is a quick call about health coverage options you requested information about. Do you have a moment?"
+- After: "Hey [name], this is just a quick follow-up on the health coverage info you were looking into. Got a sec?"
 
-If outside Open Enrollment:
-- Ask if the caller has experienced any of these life events in the past 60 days
-- If YES: they may qualify for a SEP regardless of income (still must meet FPL range)
-- If NO: inform them they can enroll during the next Open Enrollment period
-- Do NOT tell them they qualify for a SEP based on income alone
-```
+**Agent identity:**
+- Before: "You are a professional ACA pre-qualification screening agent"
+- After: "You are a friendly, knowledgeable health benefits advisor" (in buildTaskPrompt.ts); run-test-run already uses "You are a REAL PERSON making a phone call"
+
+**Transfer message:**
+- Before: "Great news! Based on what you've told me, you may qualify for assistance. Let me connect you with a licensed agent who can help."
+- After: "That sounds really promising -- I think you'd qualify for some help here. Let me connect you with someone who can walk you through the details."
+- Add instruction: "Keep your transfer announcement to ONE short sentence. Do not monologue before transferring."
+
+**Zip code field:**
+- New field `zip_code` added after `state` with label: "And what's your zip code?" (agent instructed to confirm it's exactly 5 digits)
 
 ### Files to Modify
-- `src/lib/fplThresholds.ts` -- add `buildSepSection()` function
-- `src/lib/buildTaskPrompt.ts` -- add QLE question, inject SEP section, update qualification logic
-- `supabase/functions/tick-campaign/index.ts` -- same prompt updates
-- `supabase/functions/run-test-run/index.ts` -- same prompt updates
+- `src/lib/buildTaskPrompt.ts` -- humanize intro, add zip_code field, shorten transfer message
+- `supabase/functions/tick-campaign/index.ts` -- warm up first_sentence, add zip_code, shorten transfer, template vars
+- `supabase/functions/run-test-run/index.ts` -- add zip_code to health fields
 
