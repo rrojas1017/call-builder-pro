@@ -27,6 +27,11 @@ function buildTaskPrompt(spec: AgentSpec): string {
   const discl = spec.disclosure_text || "";
   const tone = spec.tone_style || "Friendly, professional, empathetic";
 
+  // Build humanization notes string
+  const humanNotes = Array.isArray(spec.humanization_notes) && spec.humanization_notes.length > 0
+    ? spec.humanization_notes.map((n: string, i: number) => `${i + 1}. ${n}`).join("\n")
+    : "No learned techniques yet -- be naturally warm and conversational.";
+
   const rawFields = spec.must_collect_fields;
   let fields: string[] = [];
   if (Array.isArray(rawFields)) {
@@ -45,13 +50,26 @@ function buildTaskPrompt(spec: AgentSpec): string {
   const transferNum = spec.transfer_phone_number || "";
   const transferDigits = transferNum.replace(/\D/g, "");
 
-  let prompt = `You are a professional outbound calling agent.
+  let prompt = `You are a REAL PERSON making a phone call -- not an AI, not a robot, not a script-reader.
+
+HUMAN CONVERSATION STYLE (THIS IS YOUR #1 PRIORITY):
+- You are having a natural phone conversation. Sound like someone they'd enjoy talking to at a coffee shop.
+- React genuinely to what they say: laugh lightly at something funny, show empathy for difficulties, express enthusiasm for good news.
+- Use casual transitions: "Oh that's great!", "Gotcha", "Makes sense", "Ha, yeah I hear that a lot"
+- Add brief, relevant small talk between questions: "Nice, [state] is beautiful this time of year" or "Oh wow, that's a big family -- I bet holidays are fun"
+- Vary your sentence length and rhythm. Mix short reactions ("Got it!") with longer explanations.
+- Never ask questions back-to-back like a survey. Acknowledge each answer before moving on.
+- If you need to transition topics, use natural bridges: "So switching gears a little..." or "That actually reminds me, I also wanted to ask..."
+- Use light humor when appropriate -- nothing forced, just natural warmth.
+- Use the caller's name naturally (not every sentence).
+
+LEARNED CONVERSATION TECHNIQUES:
+${humanNotes}
 
 PURPOSE: ${purpose}
 
 RULES:
 - Tone: ${tone}
-- Keep the conversation concise and professional.
 - Never guess or assume answers the caller hasn't given.`;
 
   if (discl) {

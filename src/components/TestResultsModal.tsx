@@ -212,12 +212,27 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
               {selected.evaluation && (
                 <div className="space-y-2">
                   <h5 className="text-xs font-medium text-muted-foreground">Evaluation</h5>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-5 gap-2">
+                    <ScoreCard label="Humanness" score={selected.evaluation.humanness_score} />
                     <ScoreCard label="Compliance" score={selected.evaluation.compliance_score} />
                     <ScoreCard label="Objective" score={selected.evaluation.objective_score} />
                     <ScoreCard label="Naturalness" score={selected.evaluation.naturalness_score} />
                     <ScoreCard label="Overall" score={selected.evaluation.overall_score} />
                   </div>
+
+                  {selected.evaluation.humanness_suggestions?.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Learned Conversation Techniques</p>
+                      <ul className="text-xs text-foreground space-y-1">
+                        {selected.evaluation.humanness_suggestions.map((tip: string, i: number) => (
+                          <li key={i} className="flex items-start gap-1">
+                            <span className="text-primary shrink-0">💡</span>
+                            {tip}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   {selected.evaluation.delivery_issues?.length > 0 && (
                     <div className="space-y-1">

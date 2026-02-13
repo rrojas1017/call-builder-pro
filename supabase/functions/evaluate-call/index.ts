@@ -44,37 +44,39 @@ serve(async (req) => {
 
     const systemPrompt = `You are a Call Performance Auditor.
 Evaluate the following call transcript against the Agent Specification provided.
-Return JSON only with this exact structure:
-{
-  "compliance_score": 0-100,
-  "objective_score": 0-100,
-  "overall_score": 0-100,
-  "naturalness_score": 0-100,
-  "issues_detected": [],
-  "delivery_issues": [],
-  "missed_fields": [],
-  "incorrect_logic": [],
-  "hallucination_detected": true/false,
-  "recommended_improvements": []
-}
+
+HUMANNESS SCORING (0-100) -- THIS IS THE MOST IMPORTANT METRIC:
+This scores conversational behavior (separate from naturalness which measures voice/delivery quality):
+- Did the agent acknowledge what the caller said before asking the next question?
+- Did it use the caller's name naturally (not robotically every sentence)?
+- Were there moments of genuine warmth, humor, or empathy?
+- Did it vary sentence structure or repeat the same patterns?
+- Did transitions between topics feel natural or abrupt?
+- Was there any small talk or rapport-building?
+- Did the agent react to personal details the caller shared (kids, job, location)?
+- Did it sound like a real person or a survey bot?
+Score 90-100: Indistinguishable from a warm, skilled human caller
+Score 70-89: Mostly human with occasional robotic moments
+Score 40-69: Noticeably scripted, minimal rapport
+Score 0-39: Full robot -- survey-style interrogation
+
+For "humanness_suggestions", provide specific, actionable conversation techniques the agent should learn. Format as concrete instructions like:
+- "When the caller mentions personal details (kids, vacation, job), react warmly before continuing"
+- "Vary acknowledgments -- don't repeat 'Great' after every answer, mix in 'Gotcha', 'Makes sense', 'Oh nice'"
+- "After collecting 2-3 data points, add a brief personal comment before the next question"
 
 NATURALNESS SCORING (0-100):
 Analyze the transcript for signs of AI voice quality problems:
-- Mispronounced or garbled words (words that don't make sense in context)
-- Repeated words or phrases ("I I", "the the", stuttering patterns)
-- Unnatural sentence structure or robotic transitions between topics
-- Cut-off or incomplete sentences mid-thought
-- "[inaudible]" or unclear segments
-- Filler word overuse ("um", "uh") or complete absence of natural fillers
-- Rushed or unnaturally slow pacing (sentences crammed together or overly drawn out)
-- Awkward pauses or lack of appropriate pauses
+- Mispronounced or garbled words
+- Repeated words or phrases ("I I", "the the")
+- Cut-off or incomplete sentences
 - Robotic cadence (every sentence has same rhythm/length)
-Score 90-100: Sounds completely natural, conversational
+Score 90-100: Sounds completely natural
 Score 70-89: Mostly natural with minor issues
-Score 40-69: Noticeable AI artifacts, somewhat robotic
-Score 0-39: Very robotic, multiple pronunciation/pacing errors
+Score 40-69: Noticeable AI artifacts
+Score 0-39: Very robotic
 
-List specific delivery problems in "delivery_issues" (e.g. "Mispronounced 'qualification' as 'qualifiation'", "Repeated 'your' twice in a row", "Sentence cut off mid-word").
+List specific delivery problems in "delivery_issues".
 
 Each recommended_improvement should be an object with:
 - "field": the agent_spec field to change
@@ -82,15 +84,11 @@ Each recommended_improvement should be an object with:
 - "suggested_value": what it should be
 - "reason": why this change would help
 
-For delivery issues, suggest improvements to the agent spec that could help (e.g. simplifying complex words, shortening sentences, adding pause markers).
-
 VOICE TUNING RECOMMENDATIONS:
-When delivery issues are detected, also suggest voice parameter changes:
-- If repeated words or stuttering detected → suggest lowering "temperature" (e.g. from 0.7 to 0.5)
-- If rushed pacing or sentences crammed together → suggest lowering "speaking_speed" (e.g. from 1.0 to 0.9)
-- If AI interrupts the caller too quickly → suggest raising "interruption_threshold" (e.g. from 100 to 200)
-- If specific words are mispronounced → suggest adding entries to "pronunciation_guide" as [{"word":"term","pronunciation":"phonetic"}]
-These are valid agent_spec fields that can be patched directly.`;
+- If repeated words detected → suggest lowering "temperature"
+- If rushed pacing → suggest lowering "speaking_speed"
+- If AI interrupts too quickly → suggest raising "interruption_threshold"
+- If words mispronounced → suggest "pronunciation_guide" entries`;
 
     const userPrompt = `AGENT SPECIFICATION:
 ${JSON.stringify(spec, null, 2)}
@@ -122,6 +120,8 @@ ${call.transcript}`;
                 objective_score: { type: "number" },
                 overall_score: { type: "number" },
                 naturalness_score: { type: "number" },
+                humanness_score: { type: "number" },
+                humanness_suggestions: { type: "array", items: { type: "string" } },
                 issues_detected: { type: "array", items: { type: "string" } },
                 delivery_issues: { type: "array", items: { type: "string" } },
                 missed_fields: { type: "array", items: { type: "string" } },
@@ -141,7 +141,7 @@ ${call.transcript}`;
                   },
                 },
               },
-              required: ["compliance_score", "objective_score", "overall_score", "naturalness_score", "issues_detected", "delivery_issues", "missed_fields", "incorrect_logic", "hallucination_detected", "recommended_improvements"],
+              required: ["compliance_score", "objective_score", "overall_score", "naturalness_score", "humanness_score", "humanness_suggestions", "issues_detected", "delivery_issues", "missed_fields", "incorrect_logic", "hallucination_detected", "recommended_improvements"],
               additionalProperties: false,
             },
           },
@@ -189,6 +189,8 @@ ${call.transcript}`;
         compliance_score: evaluation.compliance_score,
         objective_score: evaluation.objective_score,
         naturalness_score: evaluation.naturalness_score,
+        humanness_score: evaluation.humanness_score,
+        humanness_suggestions: evaluation.humanness_suggestions,
         missed_fields: evaluation.missed_fields,
         incorrect_logic: evaluation.incorrect_logic,
         hallucination_detected: evaluation.hallucination_detected,
@@ -202,6 +204,26 @@ ${call.transcript}`;
         .from("test_run_contacts")
         .update({ evaluation })
         .eq("id", test_run_contact_id);
+    }
+
+    // Auto-apply humanness learnings to the spec
+    if (evaluation.humanness_suggestions?.length > 0) {
+      try {
+        const currentNotes: string[] = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
+        const newSuggestions = evaluation.humanness_suggestions.filter(
+          (s: string) => !currentNotes.some((existing: string) => existing.toLowerCase() === s.toLowerCase())
+        );
+        if (newSuggestions.length > 0) {
+          const merged = [...currentNotes, ...newSuggestions].slice(-20); // keep last 20
+          await supabase
+            .from("agent_specs")
+            .update({ humanization_notes: merged })
+            .eq("id", spec.id);
+          console.log(`Auto-applied ${newSuggestions.length} humanness suggestions to spec ${spec.id}`);
+        }
+      } catch (e) {
+        console.error("Failed to auto-apply humanness notes:", e);
+      }
     }
 
     return new Response(JSON.stringify({ evaluation }), {
