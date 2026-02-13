@@ -1,48 +1,69 @@
 
-## Add "Stop Call" Button to Gym and Test Lab
 
-### Problem
-Once a test call is initiated in the Gym or Test Lab, there is no way to stop or interrupt it. The user must wait for the call to complete naturally.
+## Redesign the Calls Page -- Full Analytics Dashboard
 
-### Solution
-Add a "Stop Call" button that appears while a call is in progress. This button will:
-1. Call a new Edge Function that hits Bland AI's stop endpoint (`POST /v1/calls/{call_id}/stop`)
-2. Update the contact/test record status to "cancelled"
-3. Reset the UI so the user can start a new call immediately
+### What's Wrong Now
+- Just a flat list of call IDs with no summary metrics
+- The US map shows call counts but you can't click a state to drill into it
+- No conversion rate tracking (qualified vs disqualified vs no answer)
+- No aggregate stats (total minutes, avg duration, avg scores)
+- Call list shows truncated IDs instead of useful info (contact name, date, state)
+- No filtering or sorting capability
+- Overall feels like a developer debug view, not a polished analytics page
 
-### Bland AI Endpoint
-- `POST https://us.api.bland.ai/v1/calls/{call_id}/stop`
-- Requires the `Authorization` header with the Bland API key
-- Returns `{ "status": "success", "message": "Call ended successfully." }`
+### Redesigned Layout
 
-### Changes
+The page will be restructured into three sections:
 
-**1. New Edge Function: `supabase/functions/stop-call/index.ts`**
-- Accepts `{ call_id: string, source: "gym" | "test_lab", contact_id: string }`
-- Calls Bland AI's stop endpoint using the stored `BLAND_API_KEY`
-- Updates the relevant record:
-  - For Gym (`test_run_contacts`): set status to "cancelled"
-  - For Test Lab (`test_run_contacts`): set status to "cancelled"
-- Returns success/failure
+**Section 1: Summary KPI Cards (top row)**
+Four cards across the top:
+- Total Calls (count)
+- Total Minutes (sum of duration)
+- Avg Score (average of evaluation.overall_score)
+- Conversion Rate (qualified / total completed calls as %)
 
-**2. Update Gym page (`src/pages/GymPage.tsx`)**
-- Store the `bland_call_id` from the test run contact (fetched via realtime subscription)
-- Replace the disabled "Calling..." button with a red "Stop Call" button while `running` is true and a `bland_call_id` is available
-- On click, invoke the `stop-call` edge function, then reset `running` to false
+**Section 2: Analytics Row (middle)**
+Two side-by-side panels:
+- Left: Interactive US Map -- clicking a state filters the call list below. Shows a tooltip with state name, call count, qualified count, and conversion rate for that state.
+- Right: Outcome Breakdown -- a donut/pie chart showing distribution across completed, qualified, disqualified, no_answer, failed, etc.
 
-**3. Update Test Lab (`src/components/TestLabSection.tsx`)**
-- Similar treatment: show a "Stop Call" button next to or replacing the run button while calls are active
-- Track the test run's contact IDs and their bland_call_ids to allow stopping
+**Section 3: Call Table (bottom)**
+Replace the raw list with a proper data table:
+- Columns: Date/Time, Contact (name from extracted_data or phone), State, Duration, Outcome, Score, Actions (view detail)
+- Sortable by date, duration, score
+- Filterable by outcome (dropdown) and state (via map click or dropdown)
+- Clicking a row opens the existing detail panel as a slide-over sheet instead of shrinking the list
 
-### What Users Will See
-- In the Gym: the "Calling..." button becomes a red "Stop Call" button once the call connects
-- Clicking it immediately ends the call on Bland AI's side
-- The status updates to "cancelled" and the user can start a new test right away
-- In the Test Lab: a "Stop All" button appears during active test runs
+### State Drill-Down
+- Clicking a state on the map filters the table to only show calls from that state
+- A "breadcrumb" chip appears showing the active state filter with an X to clear it
+- The KPI cards update to reflect the filtered data
 
-### Files to Create
-- `supabase/functions/stop-call/index.ts`
+### Technical Details
 
-### Files to Modify
-- `src/pages/GymPage.tsx` -- add stop button, track bland_call_id
-- `src/components/TestLabSection.tsx` -- add stop button for active test runs
+**File: `src/pages/CallsPage.tsx`** -- Full rewrite of the page component:
+- Add `useMemo` aggregations for KPI calculations (total calls, total minutes, avg score, conversion rate)
+- Add `selectedState` filter state that the map and table share
+- Add `outcomeFilter` state for dropdown filtering
+- Add `sortField` / `sortDirection` state for table column sorting
+- Compute per-state stats (calls, qualified, conversion rate) passed to the map for richer tooltips
+- Use Card components for KPI row
+- Use Table components for the call list
+- Use Sheet (slide-over) for call detail instead of the current side-panel approach
+- Format dates with `date-fns` (already installed)
+- Show contact name from `extracted_data.name` or fallback to phone/ID
+
+**File: `src/components/USMapChart.tsx`** -- Enhance with:
+- `onStateClick` callback prop so clicking a state triggers filtering
+- `selectedState` prop to highlight the active state
+- Enhanced tooltip showing calls, qualified, and conversion rate per state
+- Accept a richer data shape: `Record<string, { calls: number; qualified: number }>` instead of just counts
+
+**No database changes needed** -- all data already exists in the `calls` table (outcome, duration_seconds, evaluation, extracted_data with state info).
+
+### What You'll See After
+- A polished dashboard-style page with clear KPIs at the top
+- An interactive map where clicking a state filters everything below it
+- A proper sortable/filterable table showing meaningful call info
+- Conversion rates visible at both the global and per-state level
+- A clean slide-over panel for call details instead of the cramped side panel
