@@ -130,7 +130,9 @@ serve(async (req) => {
         webhook: webhookUrl,
         metadata: { org_id: project?.org_id || num.org_id, project_id },
       };
-      if (spec.voice_id) configBody.voice_id = spec.voice_id;
+      if (spec.voice_id) configBody.voice = spec.voice_id;
+      if (spec.opening_line) configBody.first_sentence = spec.opening_line;
+      if (spec.language) configBody.language = spec.language;
       if (spec.transfer_phone_number) configBody.transfer_phone_number = spec.transfer_phone_number;
       if (spec.background_track && spec.background_track !== "none") configBody.background_track = spec.background_track;
 
@@ -139,9 +141,10 @@ serve(async (req) => {
         headers: { "Content-Type": "application/json", "Authorization": BLAND_API_KEY },
         body: JSON.stringify(configBody),
       });
+      const configData = await configResp.json();
+      console.log("Bland inbound config response:", JSON.stringify(configData));
       if (!configResp.ok) {
-        const err = await configResp.json();
-        throw new Error(`Bland config error: ${JSON.stringify(err)}`);
+        throw new Error(`Bland config error: ${JSON.stringify(configData)}`);
       }
 
       // Update local DB
