@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import USMapChart from "@/components/USMapChart";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader2, Phone, ChevronRight, Zap, AlertTriangle, CheckCircle2, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,18 @@ export default function CallsPage() {
     }
   };
 
+  const stateDistribution = useMemo(() => {
+    const counts: Record<string, number> = {};
+    calls.forEach(call => {
+      const state = (call.extracted_data as any)?.state;
+      if (state && typeof state === 'string') {
+        const abbr = state.toUpperCase().trim();
+        counts[abbr] = (counts[abbr] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [calls]);
+
   if (loading) {
     return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -77,7 +90,13 @@ export default function CallsPage() {
   const eval_ = selected?.evaluation;
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full flex-col">
+      {!selected && (
+        <div className="p-6 border-b border-border">
+          <USMapChart stateData={stateDistribution} />
+        </div>
+      )}
+      <div className="flex flex-1 min-h-0">
       <div className={cn("border-r border-border overflow-y-auto", selected ? "w-96" : "w-full")}>
         <div className="p-6 border-b border-border">
           <h1 className="text-2xl font-bold text-foreground">Calls</h1>
@@ -212,6 +231,7 @@ export default function CallsPage() {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
