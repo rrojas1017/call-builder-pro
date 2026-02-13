@@ -13,7 +13,7 @@ import CampaignsPage from "./pages/CampaignsPage";
 import CallsPage from "./pages/CallsPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import SettingsPage from "./pages/SettingsPage";
-import QuickTestPage from "./pages/QuickTestPage";
+import GymPage from "./pages/GymPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,7 +32,7 @@ const App = () => (
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/agents/:id/knowledge" element={<AgentKnowledgePage />} />
             <Route path="/create-agent" element={<CreateAgentPage />} />
-            <Route path="/test" element={<QuickTestPage />} />
+            <Route path="/test" element={<GymPage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/calls" element={<CallsPage />} />
             <Route path="/knowledge" element={<KnowledgeBasePage />} />
