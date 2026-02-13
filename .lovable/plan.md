@@ -1,48 +1,48 @@
 
-## Conditionally Apply FPL Guidelines Only to Health/ACA Agents
+
+## Persist Last Evaluation and Show Historical Results on Gym Page
 
 ### Problem
-The 2025 Federal Poverty Level (FPL) guidelines are currently being injected into **all agent prompts**, regardless of their use case. This is inappropriate for non-health-related agents (e.g., sales, lead generation, survey agents) that don't need FPL qualification logic.
+When you navigate away from the Gym page and come back, the last test result disappears because it's only stored in React state (memory). You also can't see a history of past test calls to track how the agent is improving over time.
 
 ### Solution
-Conditionally include the FPL table only when the agent's `use_case` field indicates it's a health-related or ACA agent.
+1. **Auto-load the most recent test result** when the page loads, so you always see the last evaluation
+2. **Add a historical results list** showing past Gym test calls with scores, so you can see improvement over time
 
-### Implementation
+### Changes
 
-**1. Update `src/lib/fplThresholds.ts`**
-   - Add a new helper function `shouldIncludeFplTable(useCase: string | null | undefined): boolean`
-   - Return `true` only if `use_case` contains health-related keywords: 'aca', 'health', 'insurance', 'medicaid', 'medicare', 'wellness'
-   - Export this function for use in prompt builders
+**File: `src/pages/GymPage.tsx`**
 
-**2. Update `src/lib/buildTaskPrompt.ts`**
-   - Import the new `shouldIncludeFplTable` function
-   - Update the `AgentSpec` interface to include the `use_case` field
-   - Conditionally include the FPL table section only if `shouldIncludeFplTable(spec.use_case)` returns true
-   - Non-ACA agents will skip the FPL section entirely
+1. **Load last test result on mount**: When the page loads with a selected agent, query `test_run_contacts` (joined with `test_runs`) for the most recent completed contact for that agent. Pre-populate the `contact` state so the evaluation card is visible immediately.
 
-**3. Update `supabase/functions/run-test-run/index.ts`**
-   - Update the `AgentSpec` interface to include `use_case` field
-   - Import the FPL utility function
-   - Conditionally include the FPL table in the `buildTaskPrompt` function only for health-related agents
-   - This ensures test runs respect the agent's actual use case
+2. **Add a "History" section** below the current result card:
+   - Query the last 10-20 completed test contacts for the selected agent
+   - Display each as a compact row showing: date, outcome, overall score, humanness score, and a button to expand/view full details
+   - Highlight score changes (up/down arrows or color) compared to the previous test
+   - Clicking a history row loads that result into the detail view
 
-**4. Update `supabase/functions/tick-campaign/index.ts`**
-   - Add conditional logic in the `buildTaskPrompt` function to include FPL only if the spec's `use_case` is health-related
-   - Retrieve the `use_case` from the agent spec when building the prompt
+3. **Persist `testRunId` in URL params**: Store the active `testRunId` as a search param so refreshing the page also restores the in-progress or completed test
 
-### Design Decision
-- Define a whitelist of health-related keywords in the `shouldIncludeFplTable` function to keep logic maintainable
-- This allows future use cases to be added without code changes (e.g., 'telehealth', 'benefits_enrollment')
-- Non-matching agents simply get no FPL reference in their prompt
+4. **Re-fetch history after each new test completes**: Append the new result to the history list automatically
+
+### Technical Details
+
+**Loading last result on mount (new `useEffect`)**:
+- Query: `test_run_contacts` joined with `test_runs` where `test_runs.project_id = agentId`, ordered by `created_at desc`, limit 1
+- Set both `contact` and `testRunId` state from the result
+- Only runs when `agentId` changes and no active test is running
+
+**History list (new `useEffect` + state)**:
+- New state: `history: TestContact[]` and `selectedHistoryId: string | null`
+- Query: same join but limit 20, all completed contacts with evaluations
+- Render as a compact table/list with columns: Date, Outcome, Overall, Humanness, Naturalness
+- Each row is clickable to load full details into the existing result card
+- Add delta indicators (green up arrow / red down arrow) comparing each score to the previous entry
+
+**URL persistence**:
+- Use `useSearchParams` (already imported) to store `testRunId` when a test starts
+- On mount, check for `testRunId` in URL params and restore that test's contact data
 
 ### Files to Modify
-- **Modify**: `src/lib/fplThresholds.ts` (add `shouldIncludeFplTable` function)
-- **Modify**: `src/lib/buildTaskPrompt.ts` (add `use_case` to interface, conditionally include FPL)
-- **Modify**: `supabase/functions/run-test-run/index.ts` (add `use_case` to interface, conditional FPL)
-- **Modify**: `supabase/functions/tick-campaign/index.ts` (conditional FPL in prompt builder)
+- `src/pages/GymPage.tsx` -- add history state, load-last-result effect, history UI section, URL param persistence
 
-### Benefits
-- ✅ FPL guidelines only appear in health/ACA agent prompts
-- ✅ Sales, lead gen, and other agents won't have irrelevant FPL qualification logic
-- ✅ Easy to add new health-related use cases in the future
-- ✅ Maintains consistency across test runs and live campaigns
