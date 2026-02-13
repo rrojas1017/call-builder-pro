@@ -219,6 +219,17 @@ Deno.serve(async (req) => {
     const { error: deleteErr } = await adminClient.auth.admin.deleteUser(user_id);
     if (deleteErr) throw deleteErr;
 
+    // Log audit event
+    await adminClient.rpc("log_audit_event", {
+      _org_id: orgId,
+      _user_id: caller.id,
+      _user_email: caller.email,
+      _action: "user.deleted",
+      _entity_type: "user",
+      _entity_id: user_id,
+      _details: { org_deleted: isSoleMember },
+    });
+
     console.log(`Successfully deleted user ${user_id}`);
 
     return new Response(JSON.stringify({ success: true, org_deleted: isSoleMember }), {

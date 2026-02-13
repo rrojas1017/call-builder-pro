@@ -2,7 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { 
   LayoutDashboard, Bot, PlusCircle, Megaphone, Phone, PhoneIncoming,
   BookOpen, Settings, LogOut, Dumbbell, FileSpreadsheet, Users, CreditCard,
-  Building2, X
+  Building2, ScrollText, X
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -49,6 +49,7 @@ const adminSection = {
   label: "ADMIN",
   items: [
     { label: "Companies", icon: Building2, path: "/admin/companies" },
+    { label: "Audit Log", icon: ScrollText, path: "/admin/audit" },
   ],
 };
 
