@@ -71,6 +71,21 @@ export default function GymPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
 
+  // Reset all state when agent changes
+  useEffect(() => {
+    setContact(null);
+    setTestRunId(null);
+    setTrendData([]);
+    setHistory([]);
+    setSelectedHistoryId(null);
+    setAppliedFixes([]);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("testRunId");
+      return next;
+    }, { replace: true });
+  }, [agentId]);
+
   // Persist testRunId in URL
   const updateUrlParams = useCallback((params: Record<string, string | null>) => {
     setSearchParams((prev) => {

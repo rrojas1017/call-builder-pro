@@ -6,6 +6,7 @@ export interface BlandVoice {
   name: string;
   description?: string;
   is_custom?: boolean;
+  language?: string;
 }
 
 export function useBlandVoices() {
@@ -25,6 +26,7 @@ export function useBlandVoices() {
           name: v.name ?? v.voice_id ?? "Unknown",
           description: v.description ?? "",
           is_custom: !!v.user_id,
+          language: v.language ?? v.lang ?? undefined,
         }));
         setVoices(mapped);
       } catch (err) {
