@@ -6,6 +6,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function shouldIncludeFplTable(useCase: string | null | undefined): boolean {
+  if (!useCase) return false;
+  const lower = useCase.toLowerCase();
+  return ['aca', 'health', 'insurance', 'medicaid', 'medicare', 'wellness', 'telehealth', 'benefits_enrollment']
+    .some(kw => lower.includes(kw));
+}
+
 function buildTaskPrompt(spec: any): string {
   const discl = spec.disclosure_text || "This call may be recorded for quality and compliance purposes.";
   const fields = spec.must_collect_fields || ["consent", "state", "age", "household_size", "income_est_annual", "coverage_type"];
@@ -19,7 +26,7 @@ function buildTaskPrompt(spec: any): string {
     coverage_type: "Do you currently have health insurance? (uninsured, private, employer, Medicare, Medicaid)",
   };
 
-  return `You are a professional ACA pre-qualification screening agent.
+  let prompt = `You are a professional ACA pre-qualification screening agent.
 
 DISCLOSURE (read verbatim): "${discl}"
 
@@ -30,7 +37,10 @@ RULES:
 
 QUESTIONS:
 ${(fields as string[]).map((f: string, i: number) => `${i + 1}. ${fieldLabels[f] || f}`).join("\n")}
+`;
 
+  if (shouldIncludeFplTable(spec.use_case)) {
+    prompt += `
 FEDERAL POVERTY LEVEL THRESHOLDS (2025):
 Qualification Range: 100-400% of Federal Poverty Level
 
@@ -45,13 +55,19 @@ Household Size | 100% FPL  | 400% FPL
 8+             | $50,560+  | $202,240+
 (Add $5,140 per additional person beyond 8 for 100% FPL; multiply by 4 for 400% FPL)
 
+`;
+  }
+
+  prompt += `
 QUALIFICATION:
 - ESI or Medicare → disqualify
 - Medicaid → tag, no transfer
-- Uninsured/private + income within 100-400% FPL (use table above) → qualified, transfer
+- Uninsured/private + income within 100-400% FPL${shouldIncludeFplTable(spec.use_case) ? ' (use table above)' : ''} → qualified, transfer
 ${transferNum ? `- Transfer to: ${transferNum}` : ""}
 
 After call, provide JSON: consent, state, age, household_size, income_est_annual, coverage_type, qualified, disqual_reason, transfer_attempted, transfer_completed`;
+
+  return prompt;
 }
 
 serve(async (req) => {

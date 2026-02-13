@@ -32,6 +32,14 @@ export function getFplRange(householdSize: number, percentageRange: [number, num
   ];
 }
 
+const HEALTH_KEYWORDS = ['aca', 'health', 'insurance', 'medicaid', 'medicare', 'wellness', 'telehealth', 'benefits_enrollment'];
+
+export function shouldIncludeFplTable(useCase: string | null | undefined): boolean {
+  if (!useCase) return false;
+  const lower = useCase.toLowerCase();
+  return HEALTH_KEYWORDS.some(keyword => lower.includes(keyword));
+}
+
 export function buildFplTableSection(): string {
   return `FEDERAL POVERTY LEVEL THRESHOLDS (2025):
 Qualification Range: 100-400% of Federal Poverty Level
