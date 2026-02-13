@@ -1,64 +1,56 @@
 
-## Make Agent Introduction Sound More Human and Less Scripted
 
-### Problem Analysis
-The current opening line on line 193 of `supabase/functions/tick-campaign/index.ts`:
-```
-"Hey {{first_name}}, this is just a quick follow-up on the health coverage info you were looking into. Got a sec?"
-```
+## Add Name Confirmation Without Disrupting the Screening Flow
 
-Issues:
-1. **"this is just a quick follow-up"** — Too formal/scripted; sounds like a automated system reading a script
-2. **"health coverage info you were looking into"** — Clunky phrasing; too much detail upfront
-3. **"Got a sec?"** — Good casual ending, but the whole sentence feels disjointed
-4. The test revealed it comes across as "automated assistance calling" because the phrasing is too polished and formal
+### Problem
+The agent greets the caller by their first name (from the contact list) but never actually confirms or asks for their name during the call. If the name on file is wrong or missing, the agent just skips it entirely. At the same time, asking for a name right at the start ("Can I get your name?") would feel like a survey and throw off the natural flow before consent and screening even begin.
 
-### Root Cause
-The opening is trying to be too explanatory. Real people don't explain what they're calling about in such detail on the first second. They get straight to the point in a conversational, natural way.
+### Solution
+Add a **name confirmation step** placed strategically AFTER consent but BEFORE diving into state/zip/age questions. This way:
+- The agent gets consent first (required for compliance)
+- Then naturally confirms: "And just so I have it right, can I confirm your name?"
+- Then flows into the screening questions seamlessly
 
-### Solution: More Natural Opening Lines
+This mirrors how real people handle calls -- they greet you, get permission to talk, then confirm who they're speaking with.
 
-The best option is to **drop the explanation entirely** and just acknowledge them naturally:
+### Changes
 
-**Recommended (Most Human):**
-```
-"Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at."
-```
-*Why: Flips the order (ask permission first), "health coverage thing" is casual, no overexplaining*
+**1. `src/lib/buildTaskPrompt.ts`**
+- Add `confirm_name` as the second field in `baseFields` (right after `consent`)
+- New field order: `consent` -> `confirm_name` -> `state` -> `zip_code` -> `age` -> ...
+- Add label in `formatField`: "And just so I have it right, can I confirm your full name?" 
+- Add `confirm_name` to the JSON summary fields
 
-**Alternative 1 (Shortest/Punchiest):**
-```
-"{{first_name}}, hey! Quick question about your health coverage — you got a sec?"
-```
-*Why: Very casual, minimal phrasing, sounds like a real person*
+**2. `supabase/functions/run-test-run/index.ts`**
+- The `run-test-run` function builds its own prompt with a separate field list for health agents
+- Add `confirm_name` instruction after the consent field in the health agent prompt section
+- Add zip code validation note (already present but confirm it includes name)
 
-**Alternative 2 (Conversational):**
-```
-"Hey {{first_name}}, it's about that health coverage — you have like a minute?"
-```
-*Why: Drops "following up" and "info," uses "like a minute" (very conversational)*
+**3. `supabase/functions/tick-campaign/index.ts`**
+- No structural changes needed since it calls `buildTaskPrompt()` which will pick up the new field automatically
+- The `summary_prompt` on line 205 should be updated to include `confirm_name` / `caller_name` in the JSON output
 
-**Alternative 3 (Narratively Human):**
-```
-"Hey {{first_name}}, so I'm reaching out to folks about health coverage options. You free for just a quick second?"
-```
-*Why: Explains the context naturally without sounding scripted, "reaching out" is more personal than "following up"*
+### Field Placement Logic
 
-### Implementation
-Update line 193 in `supabase/functions/tick-campaign/index.ts` to use the recommended opening:
 ```
-spec.opening_line || "Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at."
+1. Consent (required first -- compliance)
+2. Confirm name (natural transition -- "Great, and just to make sure I have your info right...")
+3. State
+4. Zip code
+5. Age
+6. Household size
+7. Annual income
+8. Coverage type
+9. Qualifying life event (health agents only)
 ```
 
-### Why This Works Better
-- **Removes formality**: No "this is just" or "following up"
-- **Casual language**: "health coverage thing" instead of "health coverage info"
-- **Permission-first**: Asking if they have time before diving in (more respectful, more human)
-- **Shorter sentences**: Easier for voice model to deliver naturally without stuttering
-- **Conversational flow**: Sounds like someone calling a friend, not a system reading prompts
+### Why This Order Works
+- Consent must come first (compliance)
+- Name confirmation feels natural right after consent -- like a real person double-checking their records
+- It does NOT derail the screening because it's a quick, one-answer question before the heavier questions start
+- The agent already said the caller's name in the greeting, so confirming it feels like a polite formality, not a cold survey question
 
 ### Files to Modify
-- `supabase/functions/tick-campaign/index.ts` (line 193)
-
-### Testing
-After update, run a Gym test call to verify the opening no longer sounds like "automated assistance calling."
+- `src/lib/buildTaskPrompt.ts` -- add `confirm_name` field and label
+- `supabase/functions/run-test-run/index.ts` -- add name confirmation to health agent fields
+- `supabase/functions/tick-campaign/index.ts` -- update summary_prompt to capture caller name
