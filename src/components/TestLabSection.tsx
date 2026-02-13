@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, Play, Loader2, Users, FileText, SlidersHorizontal, ChevronDown, Plus, Trash2 } from "lucide-react";
+import { Upload, Play, Loader2, Users, FileText, SlidersHorizontal, ChevronDown, Plus, Trash2, StopCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Slider } from "@/components/ui/slider";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -35,6 +35,8 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
   const [parsedContacts, setParsedContacts] = useState<{ name: string; phone: string }[]>([]);
   const [testRunId, setTestRunId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [activeContacts, setActiveContacts] = useState<{ id: string; bland_call_id: string | null }[]>([]);
   const [showResults, setShowResults] = useState(false);
 
   // Voice tuning state
@@ -100,9 +102,33 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
     }
   };
 
+  // Poll active contacts for bland_call_ids when running
+  useEffect(() => {
+    if (!running || !testRunId) return;
+    const poll = async () => {
+      const { data } = await supabase
+        .from("test_run_contacts")
+        .select("id, bland_call_id, status")
+        .eq("test_run_id", testRunId);
+      if (data) {
+        const active = data
+          .filter((c: any) => ["queued", "calling"].includes(c.status))
+          .map((c: any) => ({ id: c.id, bland_call_id: c.bland_call_id }));
+        setActiveContacts(active);
+        if (active.length === 0 && data.every((c: any) => !["queued", "calling"].includes(c.status))) {
+          setRunning(false);
+        }
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => clearInterval(interval);
+  }, [running, testRunId]);
+
   const handleRunTest = async () => {
     if (!parsedContacts.length) return;
     setRunning(true);
+    setActiveContacts([]);
     try {
       const { data: createData, error: createErr } = await supabase.functions.invoke("create-test-run", {
         body: {
@@ -127,7 +153,32 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
+      // Don't set running=false here; polling handles it
+    }
+  };
+
+  const handleStopAll = async () => {
+    const withCallId = activeContacts.filter((c) => c.bland_call_id);
+    if (!withCallId.length) {
+      toast({ title: "No active calls", description: "No calls with active connections to stop.", variant: "destructive" });
+      return;
+    }
+    setStopping(true);
+    try {
+      await Promise.all(
+        withCallId.map((c) =>
+          supabase.functions.invoke("stop-call", {
+            body: { call_id: c.bland_call_id, contact_id: c.id },
+          })
+        )
+      );
       setRunning(false);
+      setActiveContacts([]);
+      toast({ title: "Calls stopped", description: `${withCallId.length} call(s) ended.` });
+    } catch (err: any) {
+      toast({ title: "Failed to stop", description: err.message, variant: "destructive" });
+    } finally {
+      setStopping(false);
     }
   };
 
@@ -206,6 +257,18 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
           {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
           Run {parsedContacts.length || 0} Test Call{parsedContacts.length !== 1 ? "s" : ""}
         </Button>
+
+        {running && (
+          <Button
+            variant="destructive"
+            className="w-full"
+            disabled={stopping}
+            onClick={handleStopAll}
+          >
+            {stopping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <StopCircle className="mr-2 h-4 w-4" />}
+            Stop All Calls
+          </Button>
+        )}
 
         {showResults && testRunId && (
           <TestResultsModal
