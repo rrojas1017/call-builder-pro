@@ -1,35 +1,83 @@
 
 
-## Improve User Creation Flow (No Email Service)
+## User Audit Log -- Admin-Only Section
 
-### Problem
-The Team page currently only offers "Invite Member" which creates an `org_invitations` record -- but since there is no email service configured, the invited user never receives the invitation email, making this flow broken. Meanwhile, the direct user creation (email + password) only exists on the super-admin Company Detail page.
+### Overview
+A new "Audit Log" page under the ADMIN section in the sidebar, accessible only to super admins. It will track all user activities across the platform with filtering and search capabilities.
 
-### Solution
-Add a **"Create User"** button on the Team page that lets admins directly create users with credentials (email, password, full name, role) using the existing `create-user` edge function. The invite flow will be kept but deprioritized.
+### Database
 
-### Changes
+**New table: `audit_logs`**
 
-**`src/pages/TeamPage.tsx`**
-- Add a new "Create User" dialog (similar to the one on `AdminCompanyDetailPage`) with fields: email, full name, password, role
-- Wire it to call `supabase.functions.invoke("create-user", { body: { email, password, full_name, org_id: activeOrgId, role } })`
-- After successful creation, show a toast with the credentials so the admin can copy/share them with the new user
-- Include a "Copy credentials" button in the success state so rrojas can easily send login details
-- Keep the existing "Invite Member" button but make "Create User" the primary action
-- Only show the "Create User" button for users with admin or super_admin role (using `useUserRole`)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK, auto-generated |
+| org_id | uuid | Organization context |
+| user_id | uuid | Who performed the action |
+| user_email | text | Denormalized for easy display |
+| action | text | e.g. `login`, `agent.created`, `campaign.started` |
+| entity_type | text | e.g. `agent`, `campaign`, `user`, `settings` |
+| entity_id | text | ID of the affected record (nullable) |
+| details | jsonb | Extra context (old/new values, metadata) |
+| ip_address | text | Optional, from edge functions |
+| created_at | timestamptz | When it happened |
 
-**`supabase/functions/create-user/index.ts`**
-- Update the authorization check to also allow `admin` role (not just `super_admin`), but restrict admins to only create users within their own organization
-- Add a check: if caller is `admin` (not super_admin), verify the `org_id` in the request matches the caller's own org
+**RLS policies:**
+- Super admins can SELECT all rows
+- No direct INSERT/UPDATE/DELETE from client -- inserts happen via a database function called from edge functions and triggers
 
-### User Experience
-1. Admin clicks "Create User" on Team page
-2. Fills in email, full name, password, role
-3. On success, a confirmation dialog shows the credentials with a "Copy to clipboard" button
-4. Admin shares credentials with the new team member directly (e.g., via chat, phone)
+**Database function: `log_audit_event`**
+- A `SECURITY DEFINER` function that inserts into `audit_logs`
+- Called from edge functions and can be called from triggers
 
-### Technical Details
-- The `create-user` edge function already handles user creation with `adminClient.auth.admin.createUser` and sets `email_confirm: true` (skipping email verification)
-- The `handle_new_user` trigger assigns the user to the correct org and role based on `user_metadata`
-- No new database tables or migrations needed
+### Tracked Activities
+
+Events will be logged by adding `log_audit_event` calls to existing edge functions and adding database triggers:
+
+| Category | Events |
+|----------|--------|
+| **Auth** | `user.login`, `user.login_failed`, `user.created`, `user.deleted` |
+| **Agents** | `agent.created`, `agent.updated`, `agent.deleted`, `agent.spec_updated` |
+| **Campaigns** | `campaign.created`, `campaign.started`, `campaign.paused` |
+| **Test Runs** | `test_run.created`, `test_run.started` |
+| **Lists** | `list.uploaded`, `list.deleted` |
+| **Knowledge** | `knowledge.added`, `knowledge.deleted` |
+| **Team** | `user.role_changed`, `user.removed`, `invitation.sent` |
+| **Settings** | `settings.updated`, `org.name_changed` |
+| **Billing** | `credits.topped_up` |
+| **Inbound** | `number.purchased`, `number.released` |
+
+### Frontend
+
+**New page: `src/pages/AuditLogPage.tsx`**
+
+- Table view with columns: Timestamp, User, Action, Entity, Details
+- Filters: date range, user, action category, entity type
+- Search by user email or entity ID
+- Paginated (50 rows per page)
+- Color-coded action badges (auth = blue, destructive actions = red, etc.)
+- Expandable detail rows to show full JSON details
+
+**Sidebar update: `src/components/AppSidebar.tsx`**
+
+- Add "Audit Log" item under the ADMIN section with a `ScrollText` icon
+
+**Route: `src/App.tsx`**
+
+- Add `/admin/audit` route pointing to `AuditLogPage`
+
+### Implementation Order
+
+1. Create `audit_logs` table + RLS + `log_audit_event` function (migration)
+2. Add database triggers for table-level events (INSERT/UPDATE/DELETE on key tables)
+3. Update edge functions (`create-user`, `delete-user`, `start-campaign`, `run-test-run`, etc.) to call `log_audit_event`
+4. Build `AuditLogPage.tsx` with filters, pagination, and detail expansion
+5. Add sidebar link and route
+
+### Technical Notes
+
+- The `log_audit_event` function will accept parameters and insert with `SECURITY DEFINER` so it works regardless of RLS
+- For edge functions, the audit call uses the service role client
+- Database triggers on `agent_projects`, `campaigns`, `dial_lists`, `agent_specs`, `org_invitations`, and `inbound_numbers` will automatically log INSERT/UPDATE/DELETE events
+- Auth events (login/logout) will be logged by adding calls in the `create-user` and `delete-user` edge functions; login tracking requires a lightweight auth webhook or can be pulled from the existing auth logs view
 
