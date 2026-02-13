@@ -1,63 +1,64 @@
 
+## Make Agent Introduction Sound More Human and Less Scripted
 
-## Fix Agent Introduction, Add Zip Code Validation, and Smooth Transfer Message
+### Problem Analysis
+The current opening line on line 193 of `supabase/functions/tick-campaign/index.ts`:
+```
+"Hey {{first_name}}, this is just a quick follow-up on the health coverage info you were looking into. Got a sec?"
+```
 
-### Problem 1: Agent Sounds Like an Automated System
-The opening line and prompt framing sound robotic. The `tick-campaign` edge function hardcodes a stiff first sentence: "this is a quick call about health coverage options you requested information about." The prompt also labels the agent as an "ACA pre-qualification screening agent" which leaks into how it talks.
+Issues:
+1. **"this is just a quick follow-up"** — Too formal/scripted; sounds like a automated system reading a script
+2. **"health coverage info you were looking into"** — Clunky phrasing; too much detail upfront
+3. **"Got a sec?"** — Good casual ending, but the whole sentence feels disjointed
+4. The test revealed it comes across as "automated assistance calling" because the phrasing is too polished and formal
 
-### Problem 2: No Zip Code Collection or Validation
-The agent currently only asks for state. Adding a zip code question allows more precise location data and can be cross-validated (5-digit US zip format). This also gets passed along with the transfer for the licensed agent.
+### Root Cause
+The opening is trying to be too explanatory. Real people don't explain what they're calling about in such detail on the first second. They get straight to the point in a conversational, natural way.
 
-### Problem 3: Transfer Message Breaks Up
-The qualified transfer line -- "Great news! Based on what you've told me, you may qualify for assistance. Let me connect you with a licensed agent who can help." -- is too long and wordy, causing audio breakup when spoken. Needs to be split into shorter, natural sentences.
+### Solution: More Natural Opening Lines
 
----
+The best option is to **drop the explanation entirely** and just acknowledge them naturally:
 
-### Changes
+**Recommended (Most Human):**
+```
+"Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at."
+```
+*Why: Flips the order (ask permission first), "health coverage thing" is casual, no overexplaining*
 
-**1. `src/lib/buildTaskPrompt.ts`**
-- Change the agent self-description from "ACA pre-qualification screening agent" to something natural like: "You are a friendly, knowledgeable health benefits advisor having a natural phone conversation."
-- Add `zip_code` to the base health fields (after `state`)
-- Add a zip code label in `formatField`: "What's your zip code?" with a validation note instructing the agent to confirm it's 5 digits
-- Replace the long transfer confirmation with two short sentences: "That's great news -- it looks like you may qualify for some help with your coverage. Let me get you over to a licensed agent right now."
-- Add a prompt instruction: "When transferring, keep your message SHORT. Say one brief sentence, then transfer. Do not give a long speech before transferring."
+**Alternative 1 (Shortest/Punchiest):**
+```
+"{{first_name}}, hey! Quick question about your health coverage — you got a sec?"
+```
+*Why: Very casual, minimal phrasing, sounds like a real person*
 
-**2. `supabase/functions/tick-campaign/index.ts`**
-- Replace the hardcoded `first_sentence` with a warmer, human opening: "Hey {{first_name}}, it's [agent name] -- I'm following up on the health coverage info you asked about. Got a quick minute?"
-- Use the spec's `opening_line` if available, falling back to the warmer default
-- Add template variable replacement for the first sentence (reuse `replaceTemplateVars` pattern from run-test-run)
-- Add `zip_code` to the field labels
-- Update the transfer confirmation message to be shorter
-- Update the prompt intro to avoid "automated system" language
+**Alternative 2 (Conversational):**
+```
+"Hey {{first_name}}, it's about that health coverage — you have like a minute?"
+```
+*Why: Drops "following up" and "info," uses "like a minute" (very conversational)*
 
-**3. `supabase/functions/run-test-run/index.ts`**
-- Add `zip_code` to the default field set for health agents (already uses `spec.opening_line` so intro is fine)
-- Update any hardcoded qualification messages to use shorter transfer wording
-- Add zip code validation instruction in the prompt
+**Alternative 3 (Narratively Human):**
+```
+"Hey {{first_name}}, so I'm reaching out to folks about health coverage options. You free for just a quick second?"
+```
+*Why: Explains the context naturally without sounding scripted, "reaching out" is more personal than "following up"*
 
-**4. `src/lib/fplThresholds.ts`**
-- No changes needed (SEP/FPL sections stay as-is)
+### Implementation
+Update line 193 in `supabase/functions/tick-campaign/index.ts` to use the recommended opening:
+```
+spec.opening_line || "Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at."
+```
 
-### Key Prompt Wording Changes
-
-**Opening (tick-campaign default):**
-- Before: "Hi [name], this is a quick call about health coverage options you requested information about. Do you have a moment?"
-- After: "Hey [name], this is just a quick follow-up on the health coverage info you were looking into. Got a sec?"
-
-**Agent identity:**
-- Before: "You are a professional ACA pre-qualification screening agent"
-- After: "You are a friendly, knowledgeable health benefits advisor" (in buildTaskPrompt.ts); run-test-run already uses "You are a REAL PERSON making a phone call"
-
-**Transfer message:**
-- Before: "Great news! Based on what you've told me, you may qualify for assistance. Let me connect you with a licensed agent who can help."
-- After: "That sounds really promising -- I think you'd qualify for some help here. Let me connect you with someone who can walk you through the details."
-- Add instruction: "Keep your transfer announcement to ONE short sentence. Do not monologue before transferring."
-
-**Zip code field:**
-- New field `zip_code` added after `state` with label: "And what's your zip code?" (agent instructed to confirm it's exactly 5 digits)
+### Why This Works Better
+- **Removes formality**: No "this is just" or "following up"
+- **Casual language**: "health coverage thing" instead of "health coverage info"
+- **Permission-first**: Asking if they have time before diving in (more respectful, more human)
+- **Shorter sentences**: Easier for voice model to deliver naturally without stuttering
+- **Conversational flow**: Sounds like someone calling a friend, not a system reading prompts
 
 ### Files to Modify
-- `src/lib/buildTaskPrompt.ts` -- humanize intro, add zip_code field, shorten transfer message
-- `supabase/functions/tick-campaign/index.ts` -- warm up first_sentence, add zip_code, shorten transfer, template vars
-- `supabase/functions/run-test-run/index.ts` -- add zip_code to health fields
+- `supabase/functions/tick-campaign/index.ts` (line 193)
 
+### Testing
+After update, run a Gym test call to verify the opening no longer sounds like "automated assistance calling."
