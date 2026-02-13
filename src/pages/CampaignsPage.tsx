@@ -1,82 +1,155 @@
-import { useEffect, useState, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Play, Pause, Upload, Megaphone, Plus } from "lucide-react";
+import { Loader2, Play, Pause, Megaphone, Plus, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent } from "@/components/ui/card";
+import { Link } from "react-router-dom";
 
 interface Campaign {
   id: string;
   name: string;
   status: string;
   project_id: string;
+  agent_project_id: string | null;
   max_concurrent_calls: number;
   created_at: string;
-  contact_count?: number;
+}
+
+interface Agent {
+  id: string;
+  name: string;
+}
+
+interface DialList {
+  id: string;
+  name: string;
+  row_count: number;
+  created_at: string;
 }
 
 export default function CampaignsPage() {
   const { user } = useAuth();
-  const [params] = useSearchParams();
-  const projectId = params.get("project");
+  const navigate = useNavigate();
   const { toast } = useToast();
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
-  const [showCreate, setShowCreate] = useState(!!projectId);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState("");
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [dialLists, setDialLists] = useState<DialList[]>([]);
+  const [selectedLists, setSelectedLists] = useState<string[]>([]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const load = async () => {
-    let query = supabase.from("campaigns").select("*").order("created_at", { ascending: false });
-    if (projectId) query = query.eq("project_id", projectId);
-    const { data } = await query;
-    setCampaigns(data || []);
+    const [campRes, agentRes, listRes] = await Promise.all([
+      supabase.from("campaigns").select("*").order("created_at", { ascending: false }),
+      supabase.from("agent_projects").select("id, name").order("name"),
+      supabase.from("dial_lists").select("id, name, row_count, created_at").eq("status", "ready").order("created_at", { ascending: false }),
+    ]);
+    setCampaigns((campRes.data as Campaign[]) || []);
+    setAgents(agentRes.data || []);
+    setDialLists((listRes.data as any[]) || []);
     setLoading(false);
   };
 
   useEffect(() => {
-    if (!user) return;
-    load();
-  }, [user, projectId]);
+    if (user) load();
+  }, [user]);
+
+  const toggleList = (id: string) => {
+    setSelectedLists((prev) =>
+      prev.includes(id) ? prev.filter((l) => l !== id) : [...prev, id]
+    );
+  };
 
   const handleCreate = async () => {
-    if (!newName.trim() || !projectId) return;
+    if (!newName.trim() || !selectedAgent || selectedLists.length === 0) return;
     setCreating(true);
     try {
-      const { data: campaign, error } = await supabase.from("campaigns").insert({
-        name: newName,
-        project_id: projectId,
-      }).select().single();
+      // Create campaign
+      const { data: campaign, error } = await supabase
+        .from("campaigns")
+        .insert({
+          name: newName,
+          project_id: selectedAgent,
+          agent_project_id: selectedAgent,
+        } as any)
+        .select()
+        .single();
       if (error) throw error;
 
-      // Parse CSV and insert contacts
-      if (csvFile) {
-        const text = await csvFile.text();
-        const lines = text.trim().split("\n").slice(1); // skip header
-        const contacts = lines.map((line) => {
-          const [name, phone] = line.split(",").map((s) => s.trim().replace(/"/g, ""));
-          return { campaign_id: campaign.id, name: name || "Unknown", phone: phone || "" };
-        }).filter((c) => c.phone);
+      const campId = (campaign as any).id;
 
-        if (contacts.length > 0) {
-          const { error: contactErr } = await supabase.from("contacts").insert(contacts);
-          if (contactErr) throw contactErr;
+      // Insert campaign_lists junction rows
+      const junctionRows = selectedLists.map((listId) => ({
+        campaign_id: campId,
+        list_id: listId,
+      }));
+      await supabase.from("campaign_lists" as any).insert(junctionRows);
+
+      // Copy contacts from dial_list_rows into contacts
+      for (const listId of selectedLists) {
+        const list = dialLists.find((l) => l.id === listId);
+        const { data: rows } = await supabase
+          .from("dial_list_rows" as any)
+          .select("row_data")
+          .eq("list_id", listId);
+
+        if (rows && rows.length > 0) {
+          // We need to figure out phone/name columns from the list's detected_fields
+          const { data: listMeta } = await supabase
+            .from("dial_lists")
+            .select("detected_fields")
+            .eq("id", listId)
+            .single();
+
+          const fields = (listMeta as any)?.detected_fields as string[] || [];
+          // Simple heuristic: find phone and name columns
+          const phoneCols = ["phone", "phone_number", "mobile", "cell", "telephone"];
+          const nameCols = ["name", "full_name", "first_name", "contact"];
+          const phoneField = fields.find((f) => phoneCols.includes(f.toLowerCase())) || fields[1] || "";
+          const nameField = fields.find((f) => nameCols.includes(f.toLowerCase())) || fields[0] || "";
+
+          const contacts = (rows as any[]).map((r: any) => {
+            const rd = r.row_data;
+            const extraFields: Record<string, any> = {};
+            fields.forEach((f) => {
+              if (f !== phoneField && f !== nameField) extraFields[f] = rd[f];
+            });
+            return {
+              campaign_id: campId,
+              list_id: listId,
+              name: rd[nameField] || "Unknown",
+              phone: rd[phoneField] || "",
+              extra_data: Object.keys(extraFields).length > 0 ? extraFields : null,
+            };
+          }).filter((c: any) => c.phone);
+
+          if (contacts.length > 0) {
+            // Batch insert
+            const batchSize = 500;
+            for (let i = 0; i < contacts.length; i += batchSize) {
+              await supabase.from("contacts").insert(contacts.slice(i, i + batchSize) as any);
+            }
+          }
         }
-        toast({ title: "Campaign created", description: `${contacts.length} contacts loaded.` });
-      } else {
-        toast({ title: "Campaign created", description: "Upload a CSV to add contacts." });
       }
 
+      toast({ title: "Campaign created", description: "Contacts loaded from selected lists." });
       setNewName("");
-      setCsvFile(null);
+      setSelectedAgent("");
+      setSelectedLists([]);
       setShowCreate(false);
       load();
     } catch (err: any) {
@@ -121,8 +194,8 @@ export default function CampaignsPage() {
 
   const statusColor: Record<string, string> = {
     draft: "text-muted-foreground bg-muted",
-    running: "text-success bg-success/10",
-    paused: "text-warning bg-warning/10",
+    running: "text-green-700 bg-green-100",
+    paused: "text-yellow-700 bg-yellow-100",
     completed: "text-primary bg-primary/10",
   };
 
@@ -133,38 +206,73 @@ export default function CampaignsPage() {
           <h1 className="text-2xl font-bold text-foreground">Campaigns</h1>
           <p className="text-muted-foreground mt-1">Manage outbound call campaigns.</p>
         </div>
-        {projectId && (
-          <Button onClick={() => setShowCreate(!showCreate)}>
-            <Plus className="mr-2 h-4 w-4" /> New Campaign
-          </Button>
-        )}
+        <Button onClick={() => setShowCreate(!showCreate)}>
+          <Plus className="mr-2 h-4 w-4" /> New Campaign
+        </Button>
       </div>
 
-      {showCreate && projectId && (
-        <div className="surface-elevated rounded-xl p-6 space-y-4">
-          <div className="space-y-2">
-            <Label>Campaign Name</Label>
-            <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Q1 ACA Outreach" />
-          </div>
-          <div className="space-y-2">
-            <Label>Upload CSV (name, phone)</Label>
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary transition-colors">
-              <Upload className="h-4 w-4" />
-              {csvFile ? csvFile.name : "Choose CSV file"}
-              <input
-                ref={fileRef}
-                type="file"
-                className="hidden"
-                accept=".csv"
-                onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
-              />
-            </label>
-          </div>
-          <Button onClick={handleCreate} disabled={creating || !newName.trim()}>
-            {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Megaphone className="mr-2 h-4 w-4" />}
-            Create Campaign
-          </Button>
-        </div>
+      {showCreate && (
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Campaign Name</Label>
+                <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Q1 ACA Outreach" />
+              </div>
+              <div className="space-y-2">
+                <Label>Agent</Label>
+                <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+                  <SelectTrigger><SelectValue placeholder="Select an agent" /></SelectTrigger>
+                  <SelectContent>
+                    {agents.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Select Lists</Label>
+              {dialLists.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No lists available. <Link to="/lists" className="text-primary underline">Upload one first</Link>.
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                  {dialLists.map((l) => (
+                    <label
+                      key={l.id}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors",
+                        selectedLists.includes(l.id) ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                      )}
+                    >
+                      <Checkbox
+                        checked={selectedLists.includes(l.id)}
+                        onCheckedChange={() => toggleList(l.id)}
+                      />
+                      <div className="flex-1">
+                        <span className="font-medium text-sm">{l.name}</span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                          {l.row_count} contacts • {new Date(l.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Button
+              onClick={handleCreate}
+              disabled={creating || !newName.trim() || !selectedAgent || selectedLists.length === 0}
+            >
+              {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Megaphone className="mr-2 h-4 w-4" />}
+              Create Campaign
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       {campaigns.length === 0 ? (
@@ -175,29 +283,34 @@ export default function CampaignsPage() {
       ) : (
         <div className="space-y-3">
           {campaigns.map((c) => (
-            <div key={c.id} className="surface-elevated rounded-xl p-5 flex items-center justify-between">
-              <div className="space-y-1">
-                <h3 className="font-semibold text-foreground">{c.name}</h3>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                  <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", statusColor[c.status])}>
-                    {c.status}
-                  </span>
-                  <span>{new Date(c.created_at).toLocaleDateString()}</span>
+            <Card key={c.id} className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate(`/campaigns/${c.id}`)}>
+              <CardContent className="p-5 flex items-center justify-between">
+                <div className="space-y-1">
+                  <h3 className="font-semibold text-foreground">{c.name}</h3>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", statusColor[c.status])}>
+                      {c.status}
+                    </span>
+                    <span>{new Date(c.created_at).toLocaleDateString()}</span>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {(c.status === "draft" || c.status === "paused") && (
-                  <Button size="sm" onClick={() => handleStart(c.id)} disabled={actionLoading === c.id}>
-                    {actionLoading === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <Button size="sm" variant="ghost" onClick={() => navigate(`/campaigns/${c.id}`)}>
+                    <Eye className="h-4 w-4" />
                   </Button>
-                )}
-                {c.status === "running" && (
-                  <Button size="sm" variant="outline" onClick={() => handlePause(c.id)} disabled={actionLoading === c.id}>
-                    {actionLoading === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}
-                  </Button>
-                )}
-              </div>
-            </div>
+                  {(c.status === "draft" || c.status === "paused") && (
+                    <Button size="sm" onClick={() => handleStart(c.id)} disabled={actionLoading === c.id}>
+                      {actionLoading === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                    </Button>
+                  )}
+                  {c.status === "running" && (
+                    <Button size="sm" variant="outline" onClick={() => handlePause(c.id)} disabled={actionLoading === c.id}>
+                      {actionLoading === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
