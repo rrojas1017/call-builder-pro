@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "react-router-dom";
-import { Plus, Loader2, FlaskConical, BookOpen, Pencil, Phone, PhoneIncoming, PhoneForwarded } from "lucide-react";
+import { Plus, Loader2, FlaskConical, BookOpen, Pencil, Phone, PhoneIncoming, PhoneForwarded, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface Agent {
   id: string;
@@ -25,6 +27,9 @@ export default function AgentsPage() {
   const { user } = useAuth();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!user) return;
@@ -46,6 +51,24 @@ export default function AgentsPage() {
     };
     load();
   }, [user]);
+
+  const handleDelete = async () => {
+    if (!deletingId) return;
+    setDeleteLoading(true);
+    try {
+      await supabase.from("inbound_numbers").update({ project_id: null }).eq("project_id", deletingId);
+      await supabase.from("campaigns").update({ agent_project_id: null }).eq("agent_project_id", deletingId);
+      const { error } = await supabase.from("agent_projects").delete().eq("id", deletingId);
+      if (error) throw error;
+      setAgents((prev) => prev.filter((a) => a.id !== deletingId));
+      toast({ title: "Agent deleted", description: "The agent and all related data have been removed." });
+    } catch (e: any) {
+      toast({ title: "Delete failed", description: e.message, variant: "destructive" });
+    } finally {
+      setDeleteLoading(false);
+      setDeletingId(null);
+    }
+  };
 
   if (loading) {
     return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
@@ -125,12 +148,40 @@ export default function AgentsPage() {
                     >
                       <BookOpen className="h-3 w-3" /> Knowledge
                     </Link>
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeletingId(agent.id); }}
+                      className="inline-flex items-center gap-1 text-xs text-destructive hover:underline"
+                    >
+                      <Trash2 className="h-3 w-3" /> Delete
+                    </button>
                   </div>
                 </Link>
               );
             })}
           </div>
         )}
+
+        <AlertDialog open={!!deletingId} onOpenChange={(open) => { if (!open) setDeletingId(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Agent?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete this agent and all its data including campaigns, calls, test results, and knowledge. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleteLoading}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={deleteLoading}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleteLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </TooltipProvider>
   );
