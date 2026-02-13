@@ -1,83 +1,34 @@
 
 
-## User Audit Log -- Admin-Only Section
+## Hide "Apply Improvement" Button for Already-Applied Fixes
 
-### Overview
-A new "Audit Log" page under the ADMIN section in the sidebar, accessible only to super admins. It will track all user activities across the platform with filtering and search capabilities.
+### Problem
+When viewing past calls, the "Apply Improvement" buttons still appear even if the fix was already applied. This is confusing and risks applying the same change twice.
 
-### Database
+### Solution
+When a call is selected, fetch the `improvements` table for that call's `project_id` and cross-reference each recommended improvement with already-applied records. If a match is found, show an "Applied" badge instead of the button.
 
-**New table: `audit_logs`**
+### Changes
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK, auto-generated |
-| org_id | uuid | Organization context |
-| user_id | uuid | Who performed the action |
-| user_email | text | Denormalized for easy display |
-| action | text | e.g. `login`, `agent.created`, `campaign.started` |
-| entity_type | text | e.g. `agent`, `campaign`, `user`, `settings` |
-| entity_id | text | ID of the affected record (nullable) |
-| details | jsonb | Extra context (old/new values, metadata) |
-| ip_address | text | Optional, from edge functions |
-| created_at | timestamptz | When it happened |
+**`src/pages/CallsPage.tsx`**
 
-**RLS policies:**
-- Super admins can SELECT all rows
-- No direct INSERT/UPDATE/DELETE from client -- inserts happen via a database function called from edge functions and triggers
+1. Add a new state: `appliedImprovements` to hold fetched improvement records for the selected call's project.
+2. Add a state: `appliedSet` (a `Set<string>`) built from the fetched improvements, keyed by a normalized field name from the `patch` keys.
+3. When `selected` changes (and has evaluation data), query:
+   ```
+   supabase.from("improvements").select("patch, change_summary").eq("project_id", selected.project_id)
+   ```
+4. Build a set of applied field names from each improvement's `patch` keys (excluding `version`).
+5. In the recommended improvements render loop, check if `imp.field` (normalized -- strip parenthetical suffixes, replace `/` with `.`) exists in the applied set.
+6. If matched: replace the "Apply Improvement" button with a green "Applied" badge (using `CheckCircle2` icon, already imported).
+7. If not matched: show the button as before.
+8. Also add the improvement to the applied set locally after a successful apply, so it immediately shows as "Applied" without re-fetching.
 
-**Database function: `log_audit_event`**
-- A `SECURITY DEFINER` function that inserts into `audit_logs`
-- Called from edge functions and can be called from triggers
-
-### Tracked Activities
-
-Events will be logged by adding `log_audit_event` calls to existing edge functions and adding database triggers:
-
-| Category | Events |
-|----------|--------|
-| **Auth** | `user.login`, `user.login_failed`, `user.created`, `user.deleted` |
-| **Agents** | `agent.created`, `agent.updated`, `agent.deleted`, `agent.spec_updated` |
-| **Campaigns** | `campaign.created`, `campaign.started`, `campaign.paused` |
-| **Test Runs** | `test_run.created`, `test_run.started` |
-| **Lists** | `list.uploaded`, `list.deleted` |
-| **Knowledge** | `knowledge.added`, `knowledge.deleted` |
-| **Team** | `user.role_changed`, `user.removed`, `invitation.sent` |
-| **Settings** | `settings.updated`, `org.name_changed` |
-| **Billing** | `credits.topped_up` |
-| **Inbound** | `number.purchased`, `number.released` |
-
-### Frontend
-
-**New page: `src/pages/AuditLogPage.tsx`**
-
-- Table view with columns: Timestamp, User, Action, Entity, Details
-- Filters: date range, user, action category, entity type
-- Search by user email or entity ID
-- Paginated (50 rows per page)
-- Color-coded action badges (auth = blue, destructive actions = red, etc.)
-- Expandable detail rows to show full JSON details
-
-**Sidebar update: `src/components/AppSidebar.tsx`**
-
-- Add "Audit Log" item under the ADMIN section with a `ScrollText` icon
-
-**Route: `src/App.tsx`**
-
-- Add `/admin/audit` route pointing to `AuditLogPage`
-
-### Implementation Order
-
-1. Create `audit_logs` table + RLS + `log_audit_event` function (migration)
-2. Add database triggers for table-level events (INSERT/UPDATE/DELETE on key tables)
-3. Update edge functions (`create-user`, `delete-user`, `start-campaign`, `run-test-run`, etc.) to call `log_audit_event`
-4. Build `AuditLogPage.tsx` with filters, pagination, and detail expansion
-5. Add sidebar link and route
+### Visual Change
+- **Before**: Every recommended improvement shows an "Apply Improvement" button
+- **After**: Already-applied improvements show a green "Applied" label; unapplied ones still show the button
 
 ### Technical Notes
-
-- The `log_audit_event` function will accept parameters and insert with `SECURITY DEFINER` so it works regardless of RLS
-- For edge functions, the audit call uses the service role client
-- Database triggers on `agent_projects`, `campaigns`, `dial_lists`, `agent_specs`, `org_invitations`, and `inbound_numbers` will automatically log INSERT/UPDATE/DELETE events
-- Auth events (login/logout) will be logged by adding calls in the `create-user` and `delete-user` edge functions; login tracking requires a lightweight auth webhook or can be pulled from the existing auth logs view
-
+- Field matching uses the same normalization as `apply-improvement` edge function: strip `(...)` suffixes, replace `/` with `.`
+- The `improvements` table `patch` column contains the fields that were changed, so we match on patch keys
+- No database changes needed
