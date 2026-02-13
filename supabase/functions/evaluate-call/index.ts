@@ -214,7 +214,7 @@ ${call.transcript}`;
           (s: string) => !currentNotes.some((existing: string) => existing.toLowerCase() === s.toLowerCase())
         );
         if (newSuggestions.length > 0) {
-          const merged = [...currentNotes, ...newSuggestions].slice(-20); // keep last 20
+          const merged = [...currentNotes, ...newSuggestions].slice(-20);
           await supabase
             .from("agent_specs")
             .update({ humanization_notes: merged })
@@ -223,6 +223,38 @@ ${call.transcript}`;
         }
       } catch (e) {
         console.error("Failed to auto-apply humanness notes:", e);
+      }
+    }
+
+    // Trigger auto-research when gaps are significant
+    const shouldResearch =
+      (evaluation.humanness_score != null && evaluation.humanness_score < 80) ||
+      (evaluation.issues_detected?.length >= 2) ||
+      (evaluation.humanness_suggestions?.length >= 2);
+
+    if (shouldResearch) {
+      try {
+        console.log("Triggering research-and-improve for project:", call.project_id);
+        const researchResp = await fetch(`${supabaseUrl}/functions/v1/research-and-improve`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${supabaseKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            project_id: call.project_id,
+            evaluation,
+            spec,
+          }),
+        });
+        if (researchResp.ok) {
+          const researchData = await researchResp.json();
+          console.log(`Research complete: ${researchData.research_notes?.length || 0} techniques found`);
+        } else {
+          console.error("Research failed:", researchResp.status, await researchResp.text());
+        }
+      } catch (e) {
+        console.error("Failed to trigger research:", e);
       }
     }
 
