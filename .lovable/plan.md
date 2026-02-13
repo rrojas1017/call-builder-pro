@@ -1,48 +1,73 @@
 
 
-## Persist Last Evaluation and Show Historical Results on Gym Page
+## Update Agent Prompts with Current Special Enrollment Period (SEP) Rules
 
 ### Problem
-When you navigate away from the Gym page and come back, the last test result disappears because it's only stored in React state (memory). You also can't see a history of past test calls to track how the agent is improving over time.
+The agent's ACA qualification logic is missing Special Enrollment Period (SEP) guidance entirely, and the user's test revealed the agent incorrectly suggested that low income alone (under 150% FPL) qualifies someone for a SEP. **This is outdated.** As of August 25, 2025, the low-income SEP was eliminated nationwide by both an HHS rule change and the "One Big Beautiful Bill Act" (OBBBA, enacted July 4, 2025). Income alone no longer triggers year-round enrollment eligibility.
 
-### Solution
-1. **Auto-load the most recent test result** when the page loads, so you always see the last evaluation
-2. **Add a historical results list** showing past Gym test calls with scores, so you can see improvement over time
+### What Changed (Research Findings)
+- The low-income SEP (available to people with income at or below 150% FPL) **was permanently eliminated** as of August 25, 2025.
+- Enrollment outside of Open Enrollment now **requires a Qualifying Life Event (QLE)**.
+- The 13 current qualifying life events include: loss of coverage, marriage, birth/adoption, permanent move, gaining citizenship, employer plan becoming unaffordable, and others.
+- Open Enrollment for 2026 plans ran November 1 - December 15, 2025 (varies by state).
+- Some states (DC, OR, MN, NY, MA, CT) have their own year-round programs for very low-income residents, but these are state-specific and separate from the federal marketplace SEP.
 
-### Changes
+### Implementation
 
-**File: `src/pages/GymPage.tsx`**
+**1. Update `src/lib/fplThresholds.ts`**
+   - Add a new exported function `buildSepSection()` that returns a prompt section with current SEP rules
+   - Include the 13 qualifying life events (summarized concisely for the agent)
+   - Explicitly state that low-income alone does NOT qualify for a SEP
+   - Condition this section on the same `shouldIncludeFplTable()` health keyword check
 
-1. **Load last test result on mount**: When the page loads with a selected agent, query `test_run_contacts` (joined with `test_runs`) for the most recent completed contact for that agent. Pre-populate the `contact` state so the evaluation card is visible immediately.
+**2. Update `src/lib/buildTaskPrompt.ts`**
+   - Import and inject the SEP section into the prompt for health/ACA agents
+   - Add SEP-aware qualification logic: if outside Open Enrollment, ask if the caller has experienced a qualifying life event
+   - Add a new screening question for QLE detection (e.g., "Have you recently experienced any life changes such as losing coverage, getting married, having a baby, or moving to a new area?")
+   - Update the qualification logic to reflect:
+     - During Open Enrollment: standard FPL qualification applies
+     - Outside Open Enrollment: caller must have a QLE to enroll, regardless of income
 
-2. **Add a "History" section** below the current result card:
-   - Query the last 10-20 completed test contacts for the selected agent
-   - Display each as a compact row showing: date, outcome, overall score, humanness score, and a button to expand/view full details
-   - Highlight score changes (up/down arrows or color) compared to the previous test
-   - Clicking a history row loads that result into the detail view
+**3. Update `supabase/functions/tick-campaign/index.ts`**
+   - Add the same SEP section and updated qualification logic to the edge function's `buildTaskPrompt`
+   - Include the QLE screening question
 
-3. **Persist `testRunId` in URL params**: Store the active `testRunId` as a search param so refreshing the page also restores the in-progress or completed test
+**4. Update `supabase/functions/run-test-run/index.ts`**
+   - Same changes as tick-campaign for consistency during test runs
 
-4. **Re-fetch history after each new test completes**: Append the new result to the history list automatically
+### Prompt Content to Add
 
-### Technical Details
+The SEP section will include:
 
-**Loading last result on mount (new `useEffect`)**:
-- Query: `test_run_contacts` joined with `test_runs` where `test_runs.project_id = agentId`, ordered by `created_at desc`, limit 1
-- Set both `contact` and `testRunId` state from the result
-- Only runs when `agentId` changes and no active test is running
+```
+SPECIAL ENROLLMENT PERIOD (SEP) RULES (Updated 2025):
+IMPORTANT: The low-income SEP (income ≤150% FPL) was ELIMINATED as of August 25, 2025.
+Income alone does NOT qualify someone for year-round enrollment.
 
-**History list (new `useEffect` + state)**:
-- New state: `history: TestContact[]` and `selectedHistoryId: string | null`
-- Query: same join but limit 20, all completed contacts with evaluations
-- Render as a compact table/list with columns: Date, Outcome, Overall, Humanness, Naturalness
-- Each row is clickable to load full details into the existing result card
-- Add delta indicators (green up arrow / red down arrow) comparing each score to the previous entry
+Outside of Open Enrollment (Nov 1 - Dec 15), callers can ONLY enroll if they have
+a Qualifying Life Event (QLE) within the past 60 days:
+1. Involuntary loss of health coverage (job loss, aging off parent's plan, losing Medicaid)
+2. Marriage
+3. Birth, adoption, or placement of a child in foster care
+4. Permanent move to a new coverage area (must have had prior coverage)
+5. Becoming a U.S. citizen or gaining lawful presence
+6. Divorce (if it results in loss of coverage)
+7. Gaining access to a QSEHRA or Individual Coverage HRA from employer
+8. Employer-sponsored plan becoming unaffordable (>9.96% of household income)
+9. Change in income that affects subsidy eligibility
+10. Leaving the Medicaid coverage gap due to income increase
+11. Exceptional circumstances (natural disaster, enrollment errors)
 
-**URL persistence**:
-- Use `useSearchParams` (already imported) to store `testRunId` when a test starts
-- On mount, check for `testRunId` in URL params and restore that test's contact data
+If outside Open Enrollment:
+- Ask if the caller has experienced any of these life events in the past 60 days
+- If YES: they may qualify for a SEP regardless of income (still must meet FPL range)
+- If NO: inform them they can enroll during the next Open Enrollment period
+- Do NOT tell them they qualify for a SEP based on income alone
+```
 
 ### Files to Modify
-- `src/pages/GymPage.tsx` -- add history state, load-last-result effect, history UI section, URL param persistence
+- `src/lib/fplThresholds.ts` -- add `buildSepSection()` function
+- `src/lib/buildTaskPrompt.ts` -- add QLE question, inject SEP section, update qualification logic
+- `supabase/functions/tick-campaign/index.ts` -- same prompt updates
+- `supabase/functions/run-test-run/index.ts` -- same prompt updates
 
