@@ -27,6 +27,16 @@ function normalizePhone(raw: string): string | null {
   return null;
 }
 
+async function extractEdgeFunctionError(err: any): Promise<string> {
+  try {
+    if (err?.context instanceof Response) {
+      const body = await err.context.json();
+      if (body?.error) return body.error;
+    }
+  } catch {}
+  return err?.message || "Unknown error";
+}
+
 export default function TestLabSection({ projectId }: TestLabSectionProps) {
   const { toast } = useToast();
   const [mode, setMode] = useState<"manual" | "upload">("manual");
@@ -139,14 +149,20 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
           contacts: parsedContacts,
         },
       });
-      if (createErr) throw createErr;
+      if (createErr) {
+        const msg = await extractEdgeFunctionError(createErr);
+        throw new Error(msg);
+      }
 
       setTestRunId(createData.test_run_id);
 
       const { error: runErr } = await supabase.functions.invoke("run-test-run", {
         body: { test_run_id: createData.test_run_id },
       });
-      if (runErr) throw runErr;
+      if (runErr) {
+        const msg = await extractEdgeFunctionError(runErr);
+        throw new Error(msg);
+      }
 
       setShowResults(true);
       toast({ title: "Test started", description: `${parsedContacts.length} call(s) initiated.` });

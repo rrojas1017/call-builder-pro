@@ -38,6 +38,16 @@ interface TrendPoint {
   naturalness: number | null;
 }
 
+async function extractEdgeFunctionError(err: any): Promise<string> {
+  try {
+    if (err?.context instanceof Response) {
+      const body = await err.context.json();
+      if (body?.error) return body.error;
+    }
+  } catch {}
+  return err?.message || "Unknown error";
+}
+
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
   if (digits.length === 10) return `+1${digits}`;
@@ -259,7 +269,10 @@ export default function GymPage() {
           contacts: [{ name: "Gym Test", phone: normalized }],
         },
       });
-      if (createErr) throw createErr;
+      if (createErr) {
+        const msg = await extractEdgeFunctionError(createErr);
+        throw new Error(msg);
+      }
 
       const newTestRunId = createData.test_run_id;
       setTestRunId(newTestRunId);
@@ -268,7 +281,10 @@ export default function GymPage() {
       const { error: runErr } = await supabase.functions.invoke("run-test-run", {
         body: { test_run_id: newTestRunId },
       });
-      if (runErr) throw runErr;
+      if (runErr) {
+        const msg = await extractEdgeFunctionError(runErr);
+        throw new Error(msg);
+      }
     } catch (err: any) {
       toast({ title: "Test failed", description: err.message, variant: "destructive" });
       setRunning(false);
