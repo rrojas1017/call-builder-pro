@@ -1,31 +1,41 @@
 
 
-## Better Voice Filtering and Search
+## Fix Voice Filtering and Selected Voice Display
 
-Right now the voice selector only has a text search box and an optional language dropdown. With dozens (or hundreds) of voices coming back from the API, that's not enough to find what you need quickly.
+Two bugs are causing the issues you see:
 
-### What's Changing
+### Problem 1: Gender filter shows 0 results
+The Bland API does not return a separate `gender` field. Instead, gender is embedded in the voice description (e.g., "American Male", "Casual American Female"). The current code tries to read `v.gender` which doesn't exist, so every voice has `undefined` gender and no filter ever matches.
 
-**1. Gender Filter** -- Add a toggle row (All / Male / Female) so you can instantly narrow down the list by half. The Bland API returns gender info on most voices, so we'll extract and expose it.
+### Problem 2: Your chosen voice ("maya") doesn't appear
+The agent has `voice_id` stored as `"maya"` (the name), but the API returns UUIDs like `"2f9fdbc7-..."` as the voice ID. Since the selector looks for a voice where `voice_id === "maya"`, it finds nothing.
 
-**2. Accent / Style Tags** -- Add a second filter dropdown for accent or style (e.g. "American", "British", "Australian", "Narrative", "Conversational"). These are parsed from the voice description or tags returned by the API.
+---
 
-**3. "Currently Selected" Pinned at Top** -- The voice you already have selected will always appear at the very top of the list (outside the scroll area), so you never lose track of it.
+### Fixes
 
-**4. Smarter Search** -- The search box will also match against language, gender, and accent tags -- not just name and description.
+**`src/hooks/useBlandVoices.ts`**
+- Parse gender from the `description` field using simple keyword matching: if description contains "female" -> female, "male" -> male
+- Parse accent the same way from description (e.g., "British", "American", "Australian")
+- Match voices by both `id` AND `name` so that stored name-based IDs like "maya" still resolve
 
-**5. Increased Scroll Height** -- Bump the scrollable area from 320px to 420px so more voices are visible at once without scrolling.
+**`src/components/VoiceSelector.tsx`**
+- Update the pinned voice lookup to also match by `name` (case-insensitive), not just `voice_id`
+- Same for the "selected" highlight in the main list
 
 ### Technical Details
 
-**`BlandVoice` interface** (in `useBlandVoices.ts`):
-- Add `gender?: string` field, mapped from `v.gender` in the API response
+In `useBlandVoices.ts`, the mapping will change to:
 
-**`VoiceSelector.tsx`**:
-- Add `genderFilter` state (`"all" | "male" | "female"`) with a pill-style toggle row
-- Pin the currently selected voice card above the scroll area
-- Exclude the pinned voice from the main list to avoid duplication
-- Expand `max-h-[320px]` to `max-h-[420px]`
-- Update the filter logic to also match gender and include language/gender in search text
+```text
+gender:  extract from description ("Male"/"Female" keywords)
+accent:  extract from description ("American"/"British"/etc.)
+```
 
-**No database changes required** -- this is purely a UI/hook update.
+In `VoiceSelector.tsx`, voice matching will use:
+
+```text
+voice_id === selectedVoice OR name === selectedVoice (case-insensitive)
+```
+
+No database or backend changes needed.
