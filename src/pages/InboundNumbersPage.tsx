@@ -8,7 +8,6 @@ const POPULAR_AREA_CODES = [
   { code: "213", city: "Los Angeles, CA" },
   { code: "312", city: "Chicago, IL" },
   { code: "415", city: "San Francisco, CA" },
-  { code: "469", city: "Dallas-Fort Worth, TX" },
   { code: "516", city: "Long Island, NY" },
   { code: "604", city: "Vancouver, BC" },
   { code: "647", city: "Toronto, ON" },
