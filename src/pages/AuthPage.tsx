@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Zap, Loader2, MessageSquare, BarChart3, FlaskConical } from "lucide-react";
+import { Loader2, MessageSquare, BarChart3, FlaskConical } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
+import appendifyLogo from "@/assets/appendify-logo.png";
 
 const valueProps = [
   { icon: MessageSquare, text: "Natural, human-like conversations" },
@@ -56,10 +57,8 @@ export default function AuthPage() {
 
         <div className="relative z-10 max-w-md">
           <Link to="/" className="flex items-center gap-3 mb-10">
-            <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center glow-primary">
-              <Zap className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="text-xl font-bold tracking-tight">VoiceForge</span>
+            <img src={appendifyLogo} alt="Appendify Voz" className="h-10 w-10 object-contain" />
+            <span className="text-xl font-bold tracking-tight">Appendify Voz</span>
           </Link>
 
           <h2 className="text-3xl font-bold tracking-tight leading-tight mb-4">
@@ -89,10 +88,8 @@ export default function AuthPage() {
           {/* Mobile logo */}
           <div className="lg:hidden text-center space-y-2">
             <Link to="/" className="inline-flex items-center gap-2">
-              <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center glow-primary">
-                <Zap className="h-5 w-5 text-primary-foreground" />
-              </div>
-              <span className="text-xl font-bold tracking-tight">VoiceForge</span>
+              <img src={appendifyLogo} alt="Appendify Voz" className="h-10 w-10 object-contain" />
+              <span className="text-xl font-bold tracking-tight">Appendify Voz</span>
             </Link>
           </div>
 

@@ -9,7 +9,6 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import {
-  Zap,
   Bot,
   PhoneOutgoing,
   PhoneIncoming,
@@ -22,7 +21,9 @@ import {
   Menu,
   X,
   Timer,
+  Zap,
 } from "lucide-react";
+import appendifyLogo from "@/assets/appendify-logo.png";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -95,7 +96,7 @@ const faqs = [
   },
   {
     q: "Can I connect my existing phone number?",
-    a: "Yes. You can purchase inbound numbers directly through VoiceForge and assign them to any agent. For outbound campaigns, we handle the telephony infrastructure for you.",
+    a: "Yes. You can purchase inbound numbers directly through Appendify Voz and assign them to any agent. For outbound campaigns, we handle the telephony infrastructure for you.",
   },
   {
     q: "How does the testing gym work?",
@@ -136,10 +137,8 @@ export default function LandingPage() {
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <Zap className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <span className="text-lg font-bold tracking-tight">VoiceForge</span>
+            <img src={appendifyLogo} alt="Appendify Voz" className="h-8 w-8 object-contain" />
+            <span className="text-lg font-bold tracking-tight">Appendify Voz</span>
           </Link>
 
           <div className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
@@ -259,8 +258,7 @@ export default function LandingPage() {
                 <ul className="list-disc pl-5 space-y-1.5">
                   <li>"Fully functional" means the agent can hold a natural conversation, follow your script, and handle basic objections as demonstrated in a test call via the Gym.</li>
                   <li>The 10-minute clock starts when you begin the agent creation wizard and stops when you run your first successful test call.</li>
-                  <li>Credit is applied to your VoiceForge account and can be used toward calling minutes.</li>
-                  <li>Limit one claim per account. Must be a new account created after this promotion launches.</li>
+                  <li>Credit is applied to your Appendify Voz account and can be used toward calling minutes.</li>
                   <li>To claim, contact support with your account email and a screenshot of your wizard start time.</li>
                 </ul>
               </AccordionContent>
@@ -422,10 +420,8 @@ export default function LandingPage() {
       <footer className="border-t border-border py-10 px-4">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-md bg-primary flex items-center justify-center">
-              <Zap className="h-3.5 w-3.5 text-primary-foreground" />
-            </div>
-            <span className="text-sm font-semibold">VoiceForge</span>
+            <img src={appendifyLogo} alt="Appendify Voz" className="h-7 w-7 object-contain" />
+            <span className="text-sm font-semibold">Appendify Voz</span>
           </div>
           <div className="flex items-center gap-6 text-sm text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Features</a>
@@ -433,7 +429,7 @@ export default function LandingPage() {
             <Link to="/auth" className="hover:text-foreground transition-colors">Sign In</Link>
           </div>
           <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} VoiceForge. All rights reserved.
+            © {new Date().getFullYear()} Appendify Voz. All rights reserved.
           </p>
         </div>
       </footer>

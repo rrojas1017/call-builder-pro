@@ -1,11 +1,12 @@
 import { Link, useLocation } from "react-router-dom";
 import { 
   LayoutDashboard, Bot, PlusCircle, Megaphone, Phone, PhoneIncoming,
-  BookOpen, Settings, LogOut, Zap, Dumbbell, FileSpreadsheet
+  BookOpen, Settings, LogOut, Dumbbell, FileSpreadsheet
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import appendifyLogo from "@/assets/appendify-logo.png";
 
 const navSections = [
   {
@@ -52,10 +53,8 @@ export default function AppSidebar() {
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar">
       <div className="flex items-center gap-2.5 px-6 py-5 border-b border-sidebar-border">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-          <Zap className="h-4 w-4 text-primary-foreground" />
-        </div>
-        <span className="text-lg font-bold text-foreground tracking-tight">VoiceForge</span>
+        <img src={appendifyLogo} alt="Appendify Voz" className="h-8 w-8 object-contain" />
+        <span className="text-lg font-bold text-foreground tracking-tight">Appendify Voz</span>
       </div>
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
