@@ -7,6 +7,8 @@ export interface BlandVoice {
   description?: string;
   is_custom?: boolean;
   language?: string;
+  gender?: string;
+  accent?: string;
 }
 
 export function useBlandVoices() {
@@ -27,6 +29,8 @@ export function useBlandVoices() {
           description: v.description ?? "",
           is_custom: !!v.user_id,
           language: v.language ?? v.lang ?? undefined,
+          gender: v.gender?.toLowerCase() ?? undefined,
+          accent: v.accent?.toLowerCase() ?? undefined,
         }));
         setVoices(mapped);
       } catch (err) {
