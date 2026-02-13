@@ -234,6 +234,28 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                     </div>
                   )}
 
+                  {selected.evaluation.research_sources?.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                        🔍 Research Sources
+                      </p>
+                      <ul className="text-xs text-foreground space-y-1">
+                        {selected.evaluation.research_sources.map((url: string, i: number) => (
+                          <li key={i}>
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline truncate block"
+                            >
+                              {url}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {selected.evaluation.delivery_issues?.length > 0 && (
                     <div className="space-y-1">
                       <p className="text-xs font-medium text-muted-foreground">Delivery Issues</p>

@@ -1,0 +1,1 @@
+ALTER TABLE public.agent_specs ADD COLUMN IF NOT EXISTS research_sources JSONB DEFAULT '[]'::jsonb;

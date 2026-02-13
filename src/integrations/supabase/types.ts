@@ -75,6 +75,7 @@ export type Database = {
           project_id: string
           pronunciation_guide: Json | null
           qualification_rules: Json | null
+          research_sources: Json | null
           retry_policy: Json | null
           speaking_speed: number | null
           success_definition: string | null
@@ -106,6 +107,7 @@ export type Database = {
           project_id: string
           pronunciation_guide?: Json | null
           qualification_rules?: Json | null
+          research_sources?: Json | null
           retry_policy?: Json | null
           speaking_speed?: number | null
           success_definition?: string | null
@@ -137,6 +139,7 @@ export type Database = {
           project_id?: string
           pronunciation_guide?: Json | null
           qualification_rules?: Json | null
+          research_sources?: Json | null
           retry_policy?: Json | null
           speaking_speed?: number | null
           success_definition?: string | null

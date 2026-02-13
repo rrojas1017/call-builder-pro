@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.run-test-run]
 verify_jwt = false
+
+[functions.research-and-improve]
+verify_jwt = false
