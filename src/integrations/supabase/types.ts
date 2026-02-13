@@ -216,6 +216,7 @@ export type Database = {
           evaluation: Json | null
           extracted_data: Json | null
           id: string
+          inbound_number_id: string | null
           org_id: string
           outcome: string | null
           project_id: string
@@ -237,6 +238,7 @@ export type Database = {
           evaluation?: Json | null
           extracted_data?: Json | null
           id?: string
+          inbound_number_id?: string | null
           org_id: string
           outcome?: string | null
           project_id: string
@@ -258,6 +260,7 @@ export type Database = {
           evaluation?: Json | null
           extracted_data?: Json | null
           id?: string
+          inbound_number_id?: string | null
           org_id?: string
           outcome?: string | null
           project_id?: string
@@ -280,6 +283,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calls_inbound_number_id_fkey"
+            columns: ["inbound_number_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_numbers"
             referencedColumns: ["id"]
           },
           {
@@ -622,6 +632,60 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "improvements_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inbound_numbers: {
+        Row: {
+          area_code: string | null
+          created_at: string
+          id: string
+          label: string | null
+          monthly_cost_usd: number
+          org_id: string
+          phone_number: string
+          project_id: string | null
+          purchased_at: string
+          status: string
+        }
+        Insert: {
+          area_code?: string | null
+          created_at?: string
+          id?: string
+          label?: string | null
+          monthly_cost_usd?: number
+          org_id: string
+          phone_number: string
+          project_id?: string | null
+          purchased_at?: string
+          status?: string
+        }
+        Update: {
+          area_code?: string | null
+          created_at?: string
+          id?: string
+          label?: string | null
+          monthly_cost_usd?: number
+          org_id?: string
+          phone_number?: string
+          project_id?: string | null
+          purchased_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbound_numbers_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_numbers_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "agent_projects"
