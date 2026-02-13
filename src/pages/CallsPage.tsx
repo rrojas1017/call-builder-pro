@@ -33,6 +33,31 @@ export default function CallsPage() {
   const [selected, setSelected] = useState<Call | null>(null);
   const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
   const [dirFilter, setDirFilter] = useState<"all" | "inbound" | "outbound">("all");
+  const [appliedSet, setAppliedSet] = useState<Set<string>>(new Set());
+
+  const normalizeField = (field: string) =>
+    field.trim().replace(/\s*\(.*\)$/, "").replace(/\//g, ".").trim();
+
+  useEffect(() => {
+    if (!selected?.evaluation?.recommended_improvements?.length) {
+      setAppliedSet(new Set());
+      return;
+    }
+    const fetchApplied = async () => {
+      const { data } = await supabase
+        .from("improvements")
+        .select("patch")
+        .eq("project_id", selected.project_id);
+      const fields = new Set<string>();
+      (data || []).forEach((row: any) => {
+        if (row.patch && typeof row.patch === "object") {
+          Object.keys(row.patch).filter(k => k !== "version").forEach(k => fields.add(k));
+        }
+      });
+      setAppliedSet(fields);
+    };
+    fetchApplied();
+  }, [selected]);
 
   useEffect(() => {
     if (!user) return;
@@ -60,6 +85,9 @@ export default function CallsPage() {
         title: "Improvement Applied",
         description: `v${data.from_version} → v${data.to_version}: ${data.change_summary}`,
       });
+      // Mark as applied locally
+      const field = normalizeField(improvement.field);
+      setAppliedSet(prev => new Set(prev).add(field));
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -218,15 +246,21 @@ export default function CallsPage() {
                       {imp.suggested_value && (
                         <p className="text-xs text-muted-foreground">Suggested: {typeof imp.suggested_value === "object" ? JSON.stringify(imp.suggested_value) : imp.suggested_value}</p>
                       )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={applyingIdx === i}
-                        onClick={() => handleApplyImprovement(imp, i)}
-                      >
-                        {applyingIdx === i ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Zap className="mr-2 h-3 w-3" />}
-                        Apply Improvement
-                      </Button>
+                      {appliedSet.has(normalizeField(imp.field)) ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-400">
+                          <CheckCircle2 className="h-3 w-3" /> Applied
+                        </span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={applyingIdx === i}
+                          onClick={() => handleApplyImprovement(imp, i)}
+                        >
+                          {applyingIdx === i ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Zap className="mr-2 h-3 w-3" />}
+                          Apply Improvement
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
