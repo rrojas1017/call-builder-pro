@@ -1,96 +1,72 @@
 
 
-## Fix Task Prompt to Consume Spec Fields and Knowledge Base
+## Enhance Voice Recommendations: Cross-Agent Catalog Suggestions
 
 ### The Problem
 
-There are **three separate copies** of `buildTaskPrompt`, and only one of them (in `run-test-run`) actually uses the spec's dynamic fields. The other two ignore coaching improvements entirely:
+The current voice recommendation logic (lines 293-344 of `evaluate-call/index.ts`) only queries `score_snapshots` filtered by `project_id`:
 
-| Location | Uses `qualification_rules` | Uses `humanization_notes` | Uses Knowledge Base | Uses `disqualification_rules` |
-|---|---|---|---|---|
-| `supabase/functions/run-test-run/index.ts` | Yes | Yes | Yes | Yes |
-| `supabase/functions/tick-campaign/index.ts` | **No** | **No** (uses global only) | Appended after | **No** |
-| `src/lib/buildTaskPrompt.ts` (client) | **No** | **No** | **No** | **No** |
+```
+.eq("project_id", call.project_id)
+```
 
-This means:
-- **Test calls** (Gym) get the coaching improvements because `run-test-run` reads `qualification_rules`, `humanization_notes`, and knowledge entries
-- **Real campaign calls** use a completely different hardcoded prompt that ignores all of those fields
-- **Client-side preview** is hardcoded to health insurance only
+This means it can only recommend voices that **this specific agent** has already tried. A brand new agent or one that has only ever used one voice will never get a recommendation, even if the platform has extensive data showing that certain voices consistently score higher across other agents.
 
-The coaching loop is broken: Claude evaluates calls, suggests improvements, they get saved to `agent_specs`, but `tick-campaign` never reads them back.
+### The Fix
 
----
+Expand the recommendation to two tiers:
 
-### Solution: Unify Around the `run-test-run` Prompt Builder
-
-The `run-test-run` version is already correct. The fix is to:
-
-1. **Extract** the good `buildTaskPrompt` and its helpers from `run-test-run` into a shared file (`supabase/functions/_shared/buildTaskPrompt.ts`)
-2. **Replace** the hardcoded version in `tick-campaign` with an import of the shared builder
-3. **Replace** the client-side `src/lib/buildTaskPrompt.ts` with a version that accepts the same spec shape (for preview purposes)
-
----
+1. **Tier 1 (same agent)**: Keep the existing logic -- compare voices this agent has tried (unchanged).
+2. **Tier 2 (cross-agent catalog)**: If no same-agent recommendation is found, query `score_snapshots` across ALL projects, filtered by matching `language` (so a Spanish agent doesn't get recommended an English-optimized voice). Aggregate by `voice_id` globally to find top-performing voices platform-wide.
 
 ### Changes
 
-#### 1. Create shared prompt builder: `supabase/functions/_shared/buildTaskPrompt.ts`
+#### 1. `supabase/functions/evaluate-call/index.ts` -- Voice recommendation section (lines 293-344)
 
-Extract from `run-test-run/index.ts` (lines 31-173):
-- `isHealthAgent()`
-- `buildCompactFplSep()`
-- `buildCompactKnowledge()`
-- `buildCompactStyle()`
-- `buildTaskPrompt(spec, knowledge, knowledgeBriefing?)`
-- `replaceTemplateVars()`
+Replace the current voice recommendation block with expanded logic:
 
-All exported. This becomes the single source of truth.
+- **Same-agent check (Tier 1)**: Keep existing logic that compares voices within `call.project_id`. No changes here.
+- **Cross-agent fallback (Tier 2)**: When Tier 1 produces no recommendation (either because only one voice was tried, or no alternative beat the threshold):
+  - Query `score_snapshots` across all projects (no `project_id` filter), with `call_count >= 5` (higher bar for cross-agent confidence)
+  - Join or cross-reference `agent_specs` to filter by matching language (e.g., only suggest voices used by agents with the same `language` field)
+  - Exclude the current voice from candidates
+  - Find the voice with the highest weighted `avg_humanness` across all agents
+  - Apply a higher threshold: must beat current voice by 8+ points (vs 5 for same-agent) to account for use-case variance
+  - Tag the recommendation with `source: "cross_agent"` so the UI can distinguish it from same-agent recommendations
 
-#### 2. Update `supabase/functions/tick-campaign/index.ts`
+- **Recommendation output shape** (enhanced):
 
-- Remove the local `isHealthAgent()`, `buildCompactFplSep()`, `buildCompactStyle()`, `buildTaskPrompt()` functions (lines 9-92)
-- Import from `../_shared/buildTaskPrompt.ts`
-- Update the call site (line 178) to pass knowledge entries and the knowledge briefing:
-  - Fetch `agent_knowledge` entries for the project (like `run-test-run` does, as fallback)
-  - Merge `globalTechniques` into `spec.humanization_notes` (like `run-test-run` does at lines 274-280)
-  - Call `buildTaskPrompt(spec, knowledgeEntries, knowledgeBriefing)`
+```json
+{
+  "current_voice": "maya",
+  "current_avg_humanness": 72,
+  "suggested_voice": "josh",
+  "suggested_avg_humanness": 85,
+  "source": "cross_agent",
+  "confidence": "medium",
+  "sample_size": 47,
+  "reason": "Voice 'josh' averaged 85 humanness across 47 calls on 3 agents vs your current voice 'maya' at 72. Consider A/B testing."
+}
+```
 
-This ensures campaign calls now use:
-- `spec.qualification_rules` -- dynamic qualification logic from coaching
-- `spec.disqualification_rules` -- disqualification rules
-- `spec.humanization_notes` -- conversation style improvements from evaluations
-- `spec.success_definition` / `spec.use_case` -- agent purpose
-- Knowledge base entries (product knowledge, objection handling, etc.)
+- `source`: `"same_agent"` or `"cross_agent"` -- lets the UI show appropriate context
+- `confidence`: `"high"` (same agent, 10+ calls) / `"medium"` (cross-agent, 5+ calls) / `"low"` (fewer calls)
+- `sample_size`: total calls behind the suggestion
 
-#### 3. Update `supabase/functions/run-test-run/index.ts`
+#### 2. Frontend display (no file changes needed)
 
-- Remove the local prompt builder functions (lines 31-183)
-- Import from `../_shared/buildTaskPrompt.ts`
-- No logic changes needed -- the behavior stays identical
+The existing UI already renders `voice_recommendation` as a card. The new `source` and `confidence` fields can be used later to add a "Based on platform-wide data" label or a confidence indicator -- but no frontend changes are required for this to work. The `reason` string already explains the context.
 
-#### 4. Update `src/lib/buildTaskPrompt.ts` (client-side preview)
+### What This Solves
 
-- Rewrite to mirror the shared builder's logic (consuming `qualification_rules`, `disqualification_rules`, `humanization_notes`, knowledge entries)
-- Expand the `AgentSpec` interface to include all fields the shared builder uses
-- Remove the hardcoded health-insurance-only qualification section
-- This file is used for prompt preview in the UI, so it should reflect what actually gets sent to the phone agent
-
-#### 5. Keep `replaceTemplateVars` in the shared file
-
-Both `tick-campaign` and `run-test-run` have identical copies. Consolidate into the shared file.
-
----
-
-### What This Fixes
-
-1. **Coaching improvements now flow to real calls**: When Claude suggests changing `qualification_rules` or adding `humanization_notes`, those changes are consumed by `tick-campaign` on the next campaign run
-2. **Single source of truth**: One prompt builder, three consumers (test runs, campaigns, client preview)
-3. **No more hardcoded health insurance logic in campaigns**: The prompt dynamically includes FPL rules only when the use case is health-related, and uses the spec's custom `qualification_rules` for everything else
-4. **Knowledge base reaches campaigns**: Agent knowledge entries are now fetched and included in campaign prompts, not just test run prompts
+- **New agents get voice suggestions immediately** based on platform-wide performance data
+- **Single-voice agents** (never A/B tested) can still receive data-driven recommendations
+- **Cross-pollination**: A voice that consistently scores 90+ humanness across 5 different agents becomes a platform-wide recommendation
+- **Language safety**: A Spanish agent won't be recommended an English-only voice
 
 ### What Stays the Same
 
-- The `evaluate-call` and `apply-improvement` functions (no changes)
-- The agent knowledge table and summarization logic
-- The Bland/Retell API call structures
-- All frontend evaluation UI (severity badges, regression alerts, etc.)
-
+- Same-agent Tier 1 logic is unchanged (existing behavior preserved)
+- The 5-point threshold for same-agent recommendations stays
+- Score snapshot tracking logic is untouched
+- No database schema changes needed
