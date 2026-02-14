@@ -73,8 +73,14 @@ serve(async (req) => {
       if (!res.ok) {
         const text = await res.text();
         console.error("Bland listen error:", res.status, text);
-        return new Response(JSON.stringify({ error: `Failed to get listen URL: ${res.status}` }), {
-          status: 502,
+        let userMessage = `Failed to get listen URL: ${res.status}`;
+        try {
+          const errData = JSON.parse(text);
+          const blandMsg = errData?.errors?.[0]?.message || errData?.message;
+          if (blandMsg) userMessage = blandMsg;
+        } catch { /* use default message */ }
+        return new Response(JSON.stringify({ error: userMessage }), {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
