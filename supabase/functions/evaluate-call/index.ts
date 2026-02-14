@@ -290,25 +290,29 @@ VOICE TUNING RECOMMENDATIONS:
       console.error("Failed to update score_snapshots:", e);
     }
 
-    // ── Voice performance recommendation ──
+    // ── Voice performance recommendation (Tier 1: same-agent, Tier 2: cross-agent) ──
     try {
       const currentVoice = spec.voice_id || null;
       if (currentVoice) {
-        const { data: allSnapshots } = await supabase
+        // --- Tier 1: Same-agent voice comparison ---
+        const { data: agentSnapshots } = await supabase
           .from("score_snapshots")
           .select("voice_id, avg_humanness, avg_overall, call_count")
           .eq("project_id", call.project_id)
           .gte("call_count", 3);
 
-        const currentSnaps = (allSnapshots || []).filter((s: any) => s.voice_id === currentVoice);
-        const otherSnaps = (allSnapshots || []).filter((s: any) => s.voice_id && s.voice_id !== currentVoice && s.call_count >= 3);
+        const currentSnaps = (agentSnapshots || []).filter((s: any) => s.voice_id === currentVoice);
+        const otherSnaps = (agentSnapshots || []).filter((s: any) => s.voice_id && s.voice_id !== currentVoice && s.call_count >= 3);
+
+        // Weighted average for current voice
+        const currentTotal = currentSnaps.reduce((a: number, s: any) => a + (s.call_count || 0), 0);
+        const currentAvgH = currentTotal > 0
+          ? currentSnaps.reduce((a: number, s: any) => a + (s.avg_humanness || 0) * (s.call_count || 0), 0) / currentTotal
+          : evaluation.humanness_score || 0;
+
+        let recommended = false;
 
         if (currentSnaps.length > 0 && otherSnaps.length > 0) {
-          // Weighted average across versions for current voice
-          const currentTotal = currentSnaps.reduce((a: number, s: any) => a + (s.call_count || 0), 0);
-          const currentAvgH = currentSnaps.reduce((a: number, s: any) => a + (s.avg_humanness || 0) * (s.call_count || 0), 0) / (currentTotal || 1);
-
-          // Find best alternative voice
           const voiceMap = new Map<string, { totalCalls: number; weightedH: number }>();
           for (const s of otherSnaps) {
             const v = voiceMap.get(s.voice_id) || { totalCalls: 0, weightedH: 0 };
@@ -321,7 +325,7 @@ VOICE TUNING RECOMMENDATIONS:
           let bestAvgH = currentAvgH;
           for (const [vid, v] of voiceMap) {
             const avg = v.weightedH / (v.totalCalls || 1);
-            if (avg > bestAvgH + 5 && v.totalCalls >= 3) { // 5+ point improvement threshold
+            if (avg > bestAvgH + 5 && v.totalCalls >= 3) {
               bestAvgH = avg;
               bestVoice = vid;
             }
@@ -329,17 +333,91 @@ VOICE TUNING RECOMMENDATIONS:
 
           if (bestVoice) {
             const bestData = voiceMap.get(bestVoice)!;
+            const confidence = bestData.totalCalls >= 10 ? "high" : bestData.totalCalls >= 5 ? "medium" : "low";
             evaluation.voice_recommendation = {
               current_voice: currentVoice,
               current_avg_humanness: Math.round(currentAvgH),
               suggested_voice: bestVoice,
               suggested_avg_humanness: Math.round(bestAvgH),
-              reason: `Voice '${bestVoice}' averaged ${Math.round(bestAvgH)} humanness over ${bestData.totalCalls} calls vs current voice '${currentVoice}' at ${Math.round(currentAvgH)}`,
+              source: "same_agent",
+              confidence,
+              sample_size: bestData.totalCalls,
+              reason: `Voice '${bestVoice}' averaged ${Math.round(bestAvgH)} humanness over ${bestData.totalCalls} calls vs your current voice '${currentVoice}' at ${Math.round(currentAvgH)}. Consider A/B testing.`,
             };
-            // Re-save evaluation with voice_recommendation
-            await supabase.from("calls").update({ evaluation }).eq("id", call_id);
-            console.log(`Voice recommendation: switch from ${currentVoice} to ${bestVoice}`);
+            recommended = true;
+            console.log(`Tier 1 voice recommendation: ${currentVoice} → ${bestVoice}`);
           }
+        }
+
+        // --- Tier 2: Cross-agent fallback ---
+        if (!recommended) {
+          const agentLang = (spec.language || "en").toLowerCase();
+
+          // Get all snapshots platform-wide with higher confidence bar
+          const { data: globalSnapshots } = await supabase
+            .from("score_snapshots")
+            .select("voice_id, avg_humanness, call_count, project_id")
+            .neq("voice_id", currentVoice)
+            .gte("call_count", 5)
+            .not("voice_id", "is", null);
+
+          if (globalSnapshots && globalSnapshots.length > 0) {
+            // Get all agent_specs to filter by matching language
+            const projectIds = [...new Set(globalSnapshots.map((s: any) => s.project_id))];
+            const { data: specs } = await supabase
+              .from("agent_specs")
+              .select("project_id, language")
+              .in("project_id", projectIds);
+
+            const langMatchProjects = new Set(
+              (specs || [])
+                .filter((s: any) => (s.language || "en").toLowerCase() === agentLang)
+                .map((s: any) => s.project_id)
+            );
+
+            // Aggregate by voice_id across language-matched projects
+            const crossVoiceMap = new Map<string, { totalCalls: number; weightedH: number; agentCount: number; agents: Set<string> }>();
+            for (const s of globalSnapshots) {
+              if (!langMatchProjects.has(s.project_id)) continue;
+              const existing = crossVoiceMap.get(s.voice_id) || { totalCalls: 0, weightedH: 0, agentCount: 0, agents: new Set<string>() };
+              existing.totalCalls += s.call_count || 0;
+              existing.weightedH += (s.avg_humanness || 0) * (s.call_count || 0);
+              existing.agents.add(s.project_id);
+              crossVoiceMap.set(s.voice_id, existing);
+            }
+
+            let bestCrossVoice: string | null = null;
+            let bestCrossAvgH = currentAvgH;
+            for (const [vid, v] of crossVoiceMap) {
+              const avg = v.weightedH / (v.totalCalls || 1);
+              // Higher threshold (8 points) for cross-agent recommendations
+              if (avg > bestCrossAvgH + 8 && v.totalCalls >= 5) {
+                bestCrossAvgH = avg;
+                bestCrossVoice = vid;
+              }
+            }
+
+            if (bestCrossVoice) {
+              const bestData = crossVoiceMap.get(bestCrossVoice)!;
+              const agentCount = bestData.agents.size;
+              evaluation.voice_recommendation = {
+                current_voice: currentVoice,
+                current_avg_humanness: Math.round(currentAvgH),
+                suggested_voice: bestCrossVoice,
+                suggested_avg_humanness: Math.round(bestCrossAvgH),
+                source: "cross_agent",
+                confidence: bestData.totalCalls >= 10 ? "medium" : "low",
+                sample_size: bestData.totalCalls,
+                reason: `Voice '${bestCrossVoice}' averaged ${Math.round(bestCrossAvgH)} humanness across ${bestData.totalCalls} calls on ${agentCount} agent${agentCount > 1 ? "s" : ""} vs your current voice '${currentVoice}' at ${Math.round(currentAvgH)}. Based on platform-wide data. Consider A/B testing.`,
+              };
+              console.log(`Tier 2 cross-agent voice recommendation: ${currentVoice} → ${bestCrossVoice}`);
+            }
+          }
+        }
+
+        // Save evaluation with voice_recommendation if one was added
+        if (evaluation.voice_recommendation) {
+          await supabase.from("calls").update({ evaluation }).eq("id", call_id);
         }
       }
     } catch (e) {

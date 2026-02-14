@@ -223,11 +223,26 @@ export default function CallsPage() {
               {/* Voice Recommendation */}
               {eval_.voice_recommendation && (
                 <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-2">
-                  <p className="text-xs font-medium text-primary flex items-center gap-1">🎙️ Voice Recommendation</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-medium text-primary flex items-center gap-1">🎙️ Voice Recommendation</p>
+                    {eval_.voice_recommendation.source === "cross_agent" && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent text-accent-foreground font-medium">Platform-wide</span>
+                    )}
+                    {eval_.voice_recommendation.confidence && (
+                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                        eval_.voice_recommendation.confidence === "high" ? "bg-green-500/15 text-green-400" :
+                        eval_.voice_recommendation.confidence === "medium" ? "bg-yellow-500/15 text-yellow-400" :
+                        "bg-muted text-muted-foreground"
+                      )}>{eval_.voice_recommendation.confidence} confidence</span>
+                    )}
+                  </div>
                   <p className="text-sm text-foreground">{eval_.voice_recommendation.reason}</p>
                   <div className="flex items-center gap-3 text-xs">
                     <span className="text-muted-foreground">Current: <strong>{eval_.voice_recommendation.current_voice}</strong> ({eval_.voice_recommendation.current_avg_humanness})</span>
                     <span className="text-primary">→ <strong>{eval_.voice_recommendation.suggested_voice}</strong> ({eval_.voice_recommendation.suggested_avg_humanness})</span>
+                    {eval_.voice_recommendation.sample_size && (
+                      <span className="text-muted-foreground">({eval_.voice_recommendation.sample_size} calls)</span>
+                    )}
                   </div>
                 </div>
               )}
