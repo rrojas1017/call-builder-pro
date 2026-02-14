@@ -31,6 +31,9 @@ interface TestResultsModalProps {
 const normalizeField = (field: string) =>
   field.replace(/\s*\(.*\)\s*$/, "").replace(/\//g, ".").trim();
 
+const improvementKey = (imp: any) =>
+  normalizeField(imp.field) + "::" + JSON.stringify(imp.suggested_value);
+
 export default function TestResultsModal({ testRunId, projectId, open, onClose }: TestResultsModalProps) {
   const { toast } = useToast();
   const [contacts, setContacts] = useState<TestContact[]>([]);
@@ -49,10 +52,14 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
         .select("patch")
         .eq("project_id", projectId);
       if (data) {
-        const fields = data.flatMap((row: any) =>
-          row.patch ? Object.keys(row.patch).filter((k) => k !== "version") : []
+        const keys = data.flatMap((row: any) =>
+          row.patch
+            ? Object.keys(row.patch)
+                .filter((k) => k !== "version")
+                .map((k) => k + "::" + JSON.stringify(row.patch[k]))
+            : []
         );
-        setAppliedFixes(fields);
+        setAppliedFixes(keys);
       }
     };
     fetchApplied();
@@ -72,7 +79,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
         },
       });
       if (error) throw error;
-      setAppliedFixes((prev) => [...prev, normalizeField(improvement.field)]);
+      setAppliedFixes((prev) => [...prev, improvementKey(improvement)]);
       toast({
         title: "Fix applied!",
         description: `Agent spec updated to version ${data.to_version}.`,
@@ -89,7 +96,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
   };
 
   const handleApplyAllFixes = async (improvements: any[]) => {
-    const unapplied = improvements.filter((imp: any) => !appliedFixes.includes(normalizeField(imp.field)));
+    const unapplied = improvements.filter((imp: any) => !appliedFixes.includes(improvementKey(imp)));
     if (!unapplied.length) return;
     setApplyingAll(true);
     for (const imp of unapplied) {
@@ -326,7 +333,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                         {selected.evaluation.recommended_improvements.length > 1 && (
                           <Button
                             onClick={() => handleApplyAllFixes(selected.evaluation.recommended_improvements)}
-                            disabled={applyingAll || selected.evaluation.recommended_improvements.every((imp: any) => appliedFixes.includes(normalizeField(imp.field)))}
+                            disabled={applyingAll || selected.evaluation.recommended_improvements.every((imp: any) => appliedFixes.includes(improvementKey(imp)))}
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs"
@@ -350,13 +357,13 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                               </div>
                               <Button
                                 onClick={() => handleApplyFix(imp)}
-                                disabled={applyingFixId === imp.field || appliedFixes.includes(normalizeField(imp.field))}
+                                disabled={applyingFixId === imp.field || appliedFixes.includes(improvementKey(imp))}
                                 size="sm"
-                                variant={appliedFixes.includes(normalizeField(imp.field)) ? "ghost" : "default"}
+                                variant={appliedFixes.includes(improvementKey(imp)) ? "ghost" : "default"}
                                 className="shrink-0"
                               >
                                 {applyingFixId === imp.field && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-                                {appliedFixes.includes(normalizeField(imp.field)) ? (
+                                {appliedFixes.includes(improvementKey(imp)) ? (
                                   <><CheckCircle className="mr-1 h-3 w-3" /> Applied</>
                                 ) : (
                                   "Apply Fix"

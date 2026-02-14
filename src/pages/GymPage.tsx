@@ -52,6 +52,9 @@ async function extractEdgeFunctionError(err: any): Promise<string> {
 const normalizeField = (field: string) =>
   field.replace(/\s*\(.*\)\s*$/, "").replace(/\//g, ".").trim();
 
+const improvementKey = (imp: any) =>
+  normalizeField(imp.field) + "::" + JSON.stringify(imp.suggested_value);
+
 function normalizePhone(raw: string): string {
   const digits = raw.replace(/\D/g, "");
   if (digits.length === 10) return `+1${digits}`;
@@ -96,13 +99,15 @@ export default function GymPage() {
         .from("improvements")
         .select("patch")
         .eq("project_id", selectedProjectId);
-      const fields: string[] = [];
+      const keys: string[] = [];
       (data || []).forEach((row: any) => {
         if (row.patch && typeof row.patch === "object") {
-          Object.keys(row.patch).filter(k => k !== "version").forEach(k => fields.push(k));
+          Object.keys(row.patch).filter(k => k !== "version").forEach(k => {
+            keys.push(k + "::" + JSON.stringify(row.patch[k]));
+          });
         }
       });
-      setAppliedFixes(fields);
+      setAppliedFixes(keys);
     };
     fetchApplied();
   }, [selectedProjectId, contact]);
@@ -331,7 +336,7 @@ export default function GymPage() {
         },
       });
       if (error) throw error;
-      setAppliedFixes((prev) => [...prev, normalizeField(improvement.field)]);
+      setAppliedFixes((prev) => [...prev, improvementKey(improvement)]);
       toast({ title: "Fix applied!", description: `Agent spec updated to version ${data.to_version}.` });
     } catch (err: any) {
       toast({ title: "Failed to apply fix", description: err.message, variant: "destructive" });
@@ -669,13 +674,13 @@ function ResultCard({
                       </div>
                       <Button
                         onClick={() => onApplyFix(imp)}
-                        disabled={applyingFixId === imp.field || appliedFixes.includes(normalizeField(imp.field))}
+                        disabled={applyingFixId === imp.field || appliedFixes.includes(improvementKey(imp))}
                         size="sm"
-                        variant={appliedFixes.includes(normalizeField(imp.field)) ? "ghost" : "default"}
+                        variant={appliedFixes.includes(improvementKey(imp)) ? "ghost" : "default"}
                         className="shrink-0"
                       >
                         {applyingFixId === imp.field && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-                        {appliedFixes.includes(normalizeField(imp.field)) ? (
+                        {appliedFixes.includes(improvementKey(imp)) ? (
                           <><CheckCircle className="mr-1 h-3 w-3" /> Applied</>
                         ) : (
                           "Apply Fix"
