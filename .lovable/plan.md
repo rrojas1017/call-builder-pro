@@ -1,126 +1,96 @@
 
 
-## Upgrading the Coaching AI: Model Analysis and Implementation Plan
+## Fix Task Prompt to Consume Spec Fields and Knowledge Base
 
-### Current State
+### The Problem
 
-Your platform uses AI in 4 critical coaching roles:
+There are **three separate copies** of `buildTaskPrompt`, and only one of them (in `run-test-run`) actually uses the spec's dynamic fields. The other two ignore coaching improvements entirely:
 
-| Role | Current Model | Function |
-|---|---|---|
-| Call Evaluation (scoring + fixes) | Gemini 3 Flash | `evaluate-call` |
-| Spec Generation | Gemini 3 Flash | `generate-spec` |
-| Success Pattern Extraction | Gemini 3 Flash (via ai-client) | `learn-from-success` |
-| Research Distillation | Gemini 3 Flash | `research-and-improve` |
+| Location | Uses `qualification_rules` | Uses `humanization_notes` | Uses Knowledge Base | Uses `disqualification_rules` |
+|---|---|---|---|---|
+| `supabase/functions/run-test-run/index.ts` | Yes | Yes | Yes | Yes |
+| `supabase/functions/tick-campaign/index.ts` | **No** | **No** (uses global only) | Appended after | **No** |
+| `src/lib/buildTaskPrompt.ts` (client) | **No** | **No** | **No** | **No** |
 
-All four use the same fast, cheap model. That's fine for research and spec generation, but **evaluation is the cornerstone** -- if scoring is inaccurate, every downstream fix is wrong, and the agent never improves meaningfully.
+This means:
+- **Test calls** (Gym) get the coaching improvements because `run-test-run` reads `qualification_rules`, `humanization_notes`, and knowledge entries
+- **Real campaign calls** use a completely different hardcoded prompt that ignores all of those fields
+- **Client-side preview** is hardcoded to health insurance only
 
----
-
-### Model Comparison for Coaching/Evaluation
-
-| Model | Reasoning Depth | Structured Output | Speed | Cost | Best For |
-|---|---|---|---|---|---|
-| **Gemini 3 Flash** (current) | Good | Good | Very fast | Very low | Bulk tasks, research |
-| **Gemini 2.5 Pro** | Excellent | Excellent | Medium | Medium | Complex analysis |
-| **Claude Sonnet 4** (you have the key) | Excellent | Excellent | Medium | Medium | Nuanced judgment, coaching |
-| **GPT-5** (via Lovable AI) | Excellent | Excellent | Slow | High | Deep reasoning |
-| **MiniMax M2.5** | Good for coding | Decent | Very fast | Very low | Bulk/speed tasks |
-
-### Verdict
-
-**MiniMax is not the right choice for coaching.** It excels at coding benchmarks and bulk speed, but lags behind Claude and GPT-5 in nuanced judgment, long-context reasoning, and structured evaluation quality -- which is exactly what your auditor needs.
-
-**The best option: Claude Sonnet 4 for evaluation, Gemini Flash for everything else.**
-
-Why Claude for the evaluator:
-- You already have `ANTHROPIC_API_KEY` configured and the `ai-client.ts` abstraction ready
-- Claude excels at **nuanced text analysis** -- detecting subtle conversational failures, not just keyword matching
-- Claude is stronger at **consistent scoring** -- less score drift between identical transcripts
-- Claude produces more **specific, non-repetitive coaching suggestions** -- the exact problem you're experiencing
-- Cost is reasonable for this use case since evaluations happen per-call, not per-token-stream
-
-Gemini Flash remains ideal for research distillation, knowledge compression, and spec generation where speed matters more than deep judgment.
+The coaching loop is broken: Claude evaluates calls, suggests improvements, they get saved to `agent_specs`, but `tick-campaign` never reads them back.
 
 ---
 
-### Implementation Plan
+### Solution: Unify Around the `run-test-run` Prompt Builder
 
-#### 1. Upgrade `evaluate-call` to use Claude via `ai-client.ts`
+The `run-test-run` version is already correct. The fix is to:
 
-**File: `supabase/functions/evaluate-call/index.ts`**
-
-- Replace the direct Lovable AI Gateway fetch with `callAI({ provider: "claude", ... })`
-- This uses the existing `ai-client.ts` abstraction and the already-configured `ANTHROPIC_API_KEY`
-- Remove the raw `fetch()` call and use the shared client for cleaner code
-- Keep all existing prompt content, tool schemas, and scoring rubric unchanged
-
-#### 2. Enhance the evaluation prompt for Claude's strengths
-
-**File: `supabase/functions/evaluate-call/index.ts`**
-
-Claude responds better to explicit reasoning instructions. Add to the system prompt:
-
-- **Chain-of-thought scoring**: "Before assigning each score, write a brief internal rationale (2-3 sentences) explaining your reasoning. Then assign the numeric score."
-- **Anti-repetition directive**: "Check your suggested improvements against the RECENT CHANGE HISTORY. If a similar suggestion was already applied without improvement, you MUST suggest a fundamentally different approach -- not a variation of the same fix."
-- **Severity tiers for improvements**: Tag each recommendation as `critical` (blocking agent success), `important` (noticeably hurts performance), or `minor` (polish). This helps users prioritize.
-
-#### 3. Add improvement severity to the tool schema
-
-**File: `supabase/functions/evaluate-call/index.ts`**
-
-Add a `severity` field to each `recommended_improvement`:
-
-```
-{
-  field: "opening_line",
-  current_value: "...",
-  suggested_value: "...",
-  reason: "...",
-  severity: "critical" | "important" | "minor"
-}
-```
-
-#### 4. Update `learn-from-success` to use Claude
-
-**File: `supabase/functions/learn-from-success/index.ts`**
-
-This function compares successful vs. unsuccessful call transcripts -- exactly the kind of nuanced pattern recognition Claude excels at. Switch from `provider: "gemini"` to `provider: "claude"` in the existing `callAI()` call.
-
-#### 5. Keep Gemini Flash for speed-critical functions
-
-These stay on Gemini 3 Flash (no changes):
-- `generate-spec` -- speed matters for onboarding UX
-- `research-and-improve` -- bulk article processing
-- `summarize-agent-knowledge` -- simple compression task
-
-#### 6. Frontend: Display improvement severity badges
-
-**Files: `src/pages/GymPage.tsx`, `src/components/TestResultsModal.tsx`, `src/pages/CallsPage.tsx`**
-
-When rendering `recommended_improvements`, show severity badges:
-- Red badge for `critical`
-- Yellow badge for `important`  
-- Gray badge for `minor`
-
-Sort improvements by severity (critical first) so users fix the most impactful issues first.
+1. **Extract** the good `buildTaskPrompt` and its helpers from `run-test-run` into a shared file (`supabase/functions/_shared/buildTaskPrompt.ts`)
+2. **Replace** the hardcoded version in `tick-campaign` with an import of the shared builder
+3. **Replace** the client-side `src/lib/buildTaskPrompt.ts` with a version that accepts the same spec shape (for preview purposes)
 
 ---
 
-### Architecture After Changes
+### Changes
 
-```text
-evaluate-call ──────► Claude Sonnet 4  (deep judgment, coaching)
-learn-from-success ─► Claude Sonnet 4  (pattern recognition)
-generate-spec ──────► Gemini 3 Flash   (speed, onboarding)
-research-and-improve► Gemini 3 Flash   (bulk processing)
-summarize-knowledge ► Gemini 3 Flash   (compression)
-```
+#### 1. Create shared prompt builder: `supabase/functions/_shared/buildTaskPrompt.ts`
 
-### What This Solves
+Extract from `run-test-run/index.ts` (lines 31-173):
+- `isHealthAgent()`
+- `buildCompactFplSep()`
+- `buildCompactKnowledge()`
+- `buildCompactStyle()`
+- `buildTaskPrompt(spec, knowledge, knowledgeBriefing?)`
+- `replaceTemplateVars()`
 
-1. **Repetitive suggestions**: Claude's stronger reasoning + the anti-repetition directive stops circular fixes
-2. **Inaccurate scoring**: Claude produces more consistent, calibrated scores across calls
-3. **Vague coaching**: Claude generates more specific, actionable improvements with severity tiers
-4. **No wasted effort**: Users see which fixes matter most (critical vs. minor) and act accordingly
+All exported. This becomes the single source of truth.
+
+#### 2. Update `supabase/functions/tick-campaign/index.ts`
+
+- Remove the local `isHealthAgent()`, `buildCompactFplSep()`, `buildCompactStyle()`, `buildTaskPrompt()` functions (lines 9-92)
+- Import from `../_shared/buildTaskPrompt.ts`
+- Update the call site (line 178) to pass knowledge entries and the knowledge briefing:
+  - Fetch `agent_knowledge` entries for the project (like `run-test-run` does, as fallback)
+  - Merge `globalTechniques` into `spec.humanization_notes` (like `run-test-run` does at lines 274-280)
+  - Call `buildTaskPrompt(spec, knowledgeEntries, knowledgeBriefing)`
+
+This ensures campaign calls now use:
+- `spec.qualification_rules` -- dynamic qualification logic from coaching
+- `spec.disqualification_rules` -- disqualification rules
+- `spec.humanization_notes` -- conversation style improvements from evaluations
+- `spec.success_definition` / `spec.use_case` -- agent purpose
+- Knowledge base entries (product knowledge, objection handling, etc.)
+
+#### 3. Update `supabase/functions/run-test-run/index.ts`
+
+- Remove the local prompt builder functions (lines 31-183)
+- Import from `../_shared/buildTaskPrompt.ts`
+- No logic changes needed -- the behavior stays identical
+
+#### 4. Update `src/lib/buildTaskPrompt.ts` (client-side preview)
+
+- Rewrite to mirror the shared builder's logic (consuming `qualification_rules`, `disqualification_rules`, `humanization_notes`, knowledge entries)
+- Expand the `AgentSpec` interface to include all fields the shared builder uses
+- Remove the hardcoded health-insurance-only qualification section
+- This file is used for prompt preview in the UI, so it should reflect what actually gets sent to the phone agent
+
+#### 5. Keep `replaceTemplateVars` in the shared file
+
+Both `tick-campaign` and `run-test-run` have identical copies. Consolidate into the shared file.
+
+---
+
+### What This Fixes
+
+1. **Coaching improvements now flow to real calls**: When Claude suggests changing `qualification_rules` or adding `humanization_notes`, those changes are consumed by `tick-campaign` on the next campaign run
+2. **Single source of truth**: One prompt builder, three consumers (test runs, campaigns, client preview)
+3. **No more hardcoded health insurance logic in campaigns**: The prompt dynamically includes FPL rules only when the use case is health-related, and uses the spec's custom `qualification_rules` for everything else
+4. **Knowledge base reaches campaigns**: Agent knowledge entries are now fetched and included in campaign prompts, not just test run prompts
+
+### What Stays the Same
+
+- The `evaluate-call` and `apply-improvement` functions (no changes)
+- The agent knowledge table and summarization logic
+- The Bland/Retell API call structures
+- All frontend evaluation UI (severity badges, regression alerts, etc.)
 
