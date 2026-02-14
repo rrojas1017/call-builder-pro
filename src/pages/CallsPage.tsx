@@ -255,9 +255,17 @@ export default function CallsPage() {
               {eval_.recommended_improvements?.length > 0 && (
                 <div className="surface-elevated rounded-lg p-4 space-y-3">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Recommended Improvements</p>
-                  {eval_.recommended_improvements.map((imp: any, i: number) => (
+                  {[...eval_.recommended_improvements]
+                    .sort((a: any, b: any) => {
+                      const order: Record<string, number> = { critical: 0, important: 1, minor: 2 };
+                      return (order[a.severity] ?? 2) - (order[b.severity] ?? 2);
+                    })
+                    .map((imp: any, i: number) => (
                     <div key={i} className="p-3 rounded-lg bg-muted/30 border border-border space-y-2">
-                      <p className="text-sm text-foreground"><strong>{imp.field}:</strong> {imp.reason}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-foreground"><strong>{imp.field}:</strong> {imp.reason}</p>
+                        <SeverityBadge severity={imp.severity} />
+                      </div>
                       {imp.suggested_value && (
                         <p className="text-xs text-muted-foreground">Suggested: {typeof imp.suggested_value === "object" ? JSON.stringify(imp.suggested_value) : imp.suggested_value}</p>
                       )}
@@ -313,5 +321,19 @@ function ScoreCard({ label, score }: { label: string; score: number | undefined 
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={cn("text-lg font-bold", color)}>{score}%</p>
     </div>
+  );
+}
+
+function SeverityBadge({ severity }: { severity?: string }) {
+  if (!severity) return null;
+  const styles: Record<string, string> = {
+    critical: "bg-destructive/15 text-destructive border-destructive/30",
+    important: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+    minor: "bg-muted text-muted-foreground border-border",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${styles[severity] || styles.minor}`}>
+      {severity}
+    </span>
   );
 }

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callAI } from "../_shared/ai-client.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,7 +16,7 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    // LOVABLE_API_KEY no longer needed for evaluation — using Claude via ai-client
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data: call, error: callErr } = await supabase
@@ -31,8 +32,6 @@ serve(async (req) => {
     const { data: spec, error: specErr } = await supabase
       .from("agent_specs").select("*").eq("project_id", call.project_id).single();
     if (specErr) throw specErr;
-
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     // ── Fetch improvement history + score trends for context ──
     let changeHistoryBlock = "";
@@ -90,7 +89,14 @@ serve(async (req) => {
       ? `\n\nIMPORTANT: The agent operates in "${spec.language}". Write ALL evaluation text -- issues_detected, humanness_suggestions, knowledge_gaps, delivery_issues, missed_fields, incorrect_logic, and recommended_improvements (field, reason, suggested_value) -- in ${spec.language}. Only field names that map to spec keys (e.g. "opening_line") stay in English.`
       : "";
 
-    const systemPrompt = `You are a Call Performance Auditor.
+    const systemPrompt = `You are a Call Performance Auditor. You are an expert at evaluating AI phone agent conversations.
+
+CRITICAL INSTRUCTION — CHAIN-OF-THOUGHT SCORING:
+Before assigning each numeric score, write a brief internal rationale (2-3 sentences) explaining your reasoning. Consider specific transcript moments that support your score. Then assign the numeric score. This ensures calibrated, consistent scoring.
+
+ANTI-REPETITION DIRECTIVE:
+Check your suggested improvements against the RECENT CHANGE HISTORY below. If a similar suggestion was already applied without score improvement, you MUST suggest a fundamentally different approach — not a variation of the same fix. For example, if lowering temperature didn't help, don't suggest lowering it further; suggest changing tone_style or opening_line instead.
+
 Evaluate the following call transcript against the Agent Specification provided.
 
 HUMANNESS SCORING (0-100) -- THIS IS THE MOST IMPORTANT METRIC:
@@ -136,6 +142,12 @@ Each recommended_improvement should be an object with:
 - "current_value": what it is now
 - "suggested_value": what it should be
 - "reason": why this change would help
+- "severity": one of "critical" (blocking agent success), "important" (noticeably hurts performance), or "minor" (polish)
+
+SEVERITY GUIDELINES:
+- "critical": Issues that directly cause call failures, hang-ups, or compliance violations
+- "important": Issues that noticeably reduce conversion rates or caller satisfaction
+- "minor": Polish items that would incrementally improve quality
 
 VOICE TUNING RECOMMENDATIONS:
 - If repeated words detected → suggest lowering "temperature"
@@ -145,81 +157,61 @@ VOICE TUNING RECOMMENDATIONS:
 
     const userPrompt = `AGENT SPECIFICATION:\n${JSON.stringify(spec, null, 2)}\n\nCALL TRANSCRIPT:\n${call.transcript}`;
 
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "evaluate_call",
-            description: "Return the call evaluation results.",
-            parameters: {
-              type: "object",
-              properties: {
-                compliance_score: { type: "number" },
-                objective_score: { type: "number" },
-                overall_score: { type: "number" },
-                naturalness_score: { type: "number" },
-                humanness_score: { type: "number" },
-                humanness_suggestions: { type: "array", items: { type: "string" } },
-                knowledge_gaps: { type: "array", items: { type: "string" }, description: "Specific topics the agent lacked knowledge about during the call" },
-                issues_detected: { type: "array", items: { type: "string" } },
-                delivery_issues: { type: "array", items: { type: "string" } },
-                missed_fields: { type: "array", items: { type: "string" } },
-                incorrect_logic: { type: "array", items: { type: "string" } },
-                hallucination_detected: { type: "boolean" },
-                recommended_improvements: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      field: { type: "string" },
-                      current_value: { type: "string" },
-                      suggested_value: { type: "string" },
-                      reason: { type: "string" },
-                    },
-                    required: ["field", "suggested_value", "reason"],
+    const aiResponse = await callAI({
+      provider: "claude",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      tools: [{
+        type: "function",
+        function: {
+          name: "evaluate_call",
+          description: "Return the call evaluation results.",
+          parameters: {
+            type: "object",
+            properties: {
+              compliance_score: { type: "number" },
+              objective_score: { type: "number" },
+              overall_score: { type: "number" },
+              naturalness_score: { type: "number" },
+              humanness_score: { type: "number" },
+              humanness_suggestions: { type: "array", items: { type: "string" } },
+              knowledge_gaps: { type: "array", items: { type: "string" }, description: "Specific topics the agent lacked knowledge about during the call" },
+              issues_detected: { type: "array", items: { type: "string" } },
+              delivery_issues: { type: "array", items: { type: "string" } },
+              missed_fields: { type: "array", items: { type: "string" } },
+              incorrect_logic: { type: "array", items: { type: "string" } },
+              hallucination_detected: { type: "boolean" },
+              recommended_improvements: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    field: { type: "string" },
+                    current_value: { type: "string" },
+                    suggested_value: { type: "string" },
+                    reason: { type: "string" },
+                    severity: { type: "string", enum: ["critical", "important", "minor"], description: "How impactful this fix is" },
                   },
+                  required: ["field", "suggested_value", "reason", "severity"],
                 },
               },
-              required: ["compliance_score", "objective_score", "overall_score", "naturalness_score", "humanness_score", "humanness_suggestions", "knowledge_gaps", "issues_detected", "delivery_issues", "missed_fields", "incorrect_logic", "hallucination_detected", "recommended_improvements"],
-              additionalProperties: false,
             },
+            required: ["compliance_score", "objective_score", "overall_score", "naturalness_score", "humanness_score", "humanness_suggestions", "knowledge_gaps", "issues_detected", "delivery_issues", "missed_fields", "incorrect_logic", "hallucination_detected", "recommended_improvements"],
+            additionalProperties: false,
           },
-        }],
-        tool_choice: { type: "function", function: { name: "evaluate_call" } },
-      }),
+        },
+      }],
+      tool_choice: { type: "function", function: { name: "evaluate_call" } },
+      max_tokens: 8192,
     });
 
-    if (!aiResp.ok) {
-      const errText = await aiResp.text();
-      console.error("AI gateway error:", aiResp.status, errText);
-      throw new Error("AI evaluation failed");
+    const toolResult = aiResponse.tool_calls[0]?.arguments;
+    if (!toolResult) {
+      throw new Error("Claude did not return structured evaluation");
     }
-
-    const aiData = await aiResp.json();
-    let evaluation: any;
-
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      evaluation = typeof toolCall.function.arguments === "string"
-        ? JSON.parse(toolCall.function.arguments)
-        : toolCall.function.arguments;
-    } else {
-      const content = aiData.choices?.[0]?.message?.content || "";
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) evaluation = JSON.parse(jsonMatch[0]);
-      else throw new Error("Could not parse evaluation from AI response");
-    }
+    let evaluation: any = toolResult;
 
     // Store in calls.evaluation
     await supabase.from("calls").update({ evaluation }).eq("id", call_id);
