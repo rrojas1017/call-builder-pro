@@ -28,8 +28,47 @@ serve(async (req) => {
     const fromVersion = spec.version;
     const toVersion = fromVersion + 1;
 
+    // ── Deduplication caution: check if same field was changed recently without improvement ──
+    let caution: string | null = null;
+    try {
+      const rawField = (improvement.field as string).trim();
+      const fieldNorm = rawField.replace(/\s*\(.*\)$/, "").replace(/\//g, ".").trim();
+
+      const { data: recentPatches } = await supabase
+        .from("improvements")
+        .select("from_version, to_version, patch, created_at")
+        .eq("project_id", project_id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      const recentFieldChanges = (recentPatches || []).filter((p: any) => {
+        if (!p.patch || typeof p.patch !== "object") return false;
+        return Object.keys(p.patch).some(k => k !== "version" && k === fieldNorm);
+      });
+
+      if (recentFieldChanges.length >= 2) {
+        // Check if scores improved between the last two changes
+        const { data: snapshots } = await supabase
+          .from("score_snapshots")
+          .select("spec_version, avg_overall")
+          .eq("project_id", project_id)
+          .order("spec_version", { ascending: false })
+          .limit(5);
+
+        const lastChange = recentFieldChanges[0];
+        const beforeSnap = (snapshots || []).find((s: any) => s.spec_version === lastChange.from_version);
+        const afterSnap = (snapshots || []).find((s: any) => s.spec_version === lastChange.to_version);
+
+        if (beforeSnap && afterSnap && (afterSnap.avg_overall || 0) <= (beforeSnap.avg_overall || 0)) {
+          caution = `Field "${fieldNorm}" was changed ${recentFieldChanges.length} times recently without score improvement. Consider a different approach.`;
+          console.warn(caution);
+        }
+      }
+    } catch (e) {
+      console.error("Dedup check failed:", e);
+    }
+
     // Build patch — strip parenthetical descriptions from field names
-    // e.g. "must_collect_fields (household_size prompt)" → "must_collect_fields"
     const rawField = (improvement.field as string).trim();
     const field = rawField.replace(/\s*\(.*\)$/, "").replace(/\//g, ".").trim();
     const patch: Record<string, any> = {};
@@ -44,9 +83,7 @@ serve(async (req) => {
     // Handle dot-notation fields (e.g. "qualification_rules.income_range")
     if (field.includes(".")) {
       const [parentCol, ...rest] = field.split(".");
-      // Validate that the parent column exists
       if (!ALL_KNOWN.includes(parentCol)) {
-        // Store in business_rules as fallback
         const currentBR = spec.business_rules || {};
         const brObj = typeof currentBR === "string" ? JSON.parse(currentBR) : { ...currentBR };
         brObj[field.replace(/\./g, "_")] = improvement.suggested_value;
@@ -75,7 +112,6 @@ serve(async (req) => {
     } else if (NUM_FIELDS.includes(field)) {
       patch[field] = Number(improvement.suggested_value);
     } else {
-      // Unknown field — store in business_rules JSON instead of trying to create a new column
       console.warn(`Unknown field "${field}", storing in business_rules`);
       const currentBR = spec.business_rules || {};
       const brObj = typeof currentBR === "string" ? JSON.parse(currentBR) : { ...currentBR };
@@ -108,6 +144,7 @@ serve(async (req) => {
       to_version: toVersion,
       change_summary: improvement.reason,
       patch,
+      ...(caution ? { caution } : {}),
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

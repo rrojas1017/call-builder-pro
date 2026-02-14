@@ -86,11 +86,10 @@ export default function CallsPage() {
         body: { project_id: selected.project_id, improvement },
       });
       if (error) throw error;
-      toast({
-        title: "Improvement Applied",
-        description: `v${data.from_version} → v${data.to_version}: ${data.change_summary}`,
-      });
-      // Mark as applied locally
+      const desc = data.caution
+        ? `v${data.from_version} → v${data.to_version} — ⚠️ ${data.caution}`
+        : `v${data.from_version} → v${data.to_version}: ${data.change_summary}`;
+      toast({ title: "Improvement Applied", description: desc });
       setAppliedSet(prev => new Set(prev).add(improvementKey(improvement)));
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -211,7 +210,7 @@ export default function CallsPage() {
 
           {/* Evaluation Scores */}
           {eval_ && (
-            <div className="space-y-4">
+             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-primary" /> Evaluation
               </h3>
@@ -220,6 +219,18 @@ export default function CallsPage() {
                 <ScoreCard label="Objective" score={eval_.objective_score} />
                 <ScoreCard label="Overall" score={eval_.overall_score} />
               </div>
+
+              {/* Voice Recommendation */}
+              {eval_.voice_recommendation && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-2">
+                  <p className="text-xs font-medium text-primary flex items-center gap-1">🎙️ Voice Recommendation</p>
+                  <p className="text-sm text-foreground">{eval_.voice_recommendation.reason}</p>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-muted-foreground">Current: <strong>{eval_.voice_recommendation.current_voice}</strong> ({eval_.voice_recommendation.current_avg_humanness})</span>
+                    <span className="text-primary">→ <strong>{eval_.voice_recommendation.suggested_voice}</strong> ({eval_.voice_recommendation.suggested_avg_humanness})</span>
+                  </div>
+                </div>
+              )}
 
               {eval_.hallucination_detected && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
