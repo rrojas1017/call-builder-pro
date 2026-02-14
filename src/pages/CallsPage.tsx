@@ -38,6 +38,9 @@ export default function CallsPage() {
   const normalizeField = (field: string) =>
     field.trim().replace(/\s*\(.*\)$/, "").replace(/\//g, ".").trim();
 
+  const improvementKey = (imp: any) =>
+    normalizeField(imp.field) + "::" + JSON.stringify(imp.suggested_value);
+
   useEffect(() => {
     if (!selected?.evaluation?.recommended_improvements?.length) {
       setAppliedSet(new Set());
@@ -48,13 +51,15 @@ export default function CallsPage() {
         .from("improvements")
         .select("patch")
         .eq("project_id", selected.project_id);
-      const fields = new Set<string>();
+      const keys = new Set<string>();
       (data || []).forEach((row: any) => {
         if (row.patch && typeof row.patch === "object") {
-          Object.keys(row.patch).filter(k => k !== "version").forEach(k => fields.add(k));
+          Object.keys(row.patch).filter(k => k !== "version").forEach(k => {
+            keys.add(k + "::" + JSON.stringify(row.patch[k]));
+          });
         }
       });
-      setAppliedSet(fields);
+      setAppliedSet(keys);
     };
     fetchApplied();
   }, [selected]);
@@ -86,8 +91,7 @@ export default function CallsPage() {
         description: `v${data.from_version} → v${data.to_version}: ${data.change_summary}`,
       });
       // Mark as applied locally
-      const field = normalizeField(improvement.field);
-      setAppliedSet(prev => new Set(prev).add(field));
+      setAppliedSet(prev => new Set(prev).add(improvementKey(improvement)));
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
@@ -246,7 +250,7 @@ export default function CallsPage() {
                       {imp.suggested_value && (
                         <p className="text-xs text-muted-foreground">Suggested: {typeof imp.suggested_value === "object" ? JSON.stringify(imp.suggested_value) : imp.suggested_value}</p>
                       )}
-                      {appliedSet.has(normalizeField(imp.field)) ? (
+                      {appliedSet.has(improvementKey(imp)) ? (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-green-400">
                           <CheckCircle2 className="h-3 w-3" /> Applied
                         </span>
