@@ -167,6 +167,13 @@ serve(async (req) => {
     const { file_content } = await req.json();
 
     const text = file_content.includes(",") ? file_content : atob(file_content);
+
+    if (text.includes('\x00') || text.startsWith('PK')) {
+      return new Response(JSON.stringify({ error: "This appears to be an Excel file. Please save it as CSV first." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const lines = text.trim().split("\n").filter((l: string) => l.trim());
 
     if (lines.length === 0) {
@@ -185,12 +192,14 @@ serve(async (req) => {
     let detected_fields: string[];
     let rows: Record<string, string>[];
 
+    const sanitize = (v: string) => (v || "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+
     if (firstRowLooksLikeHeader) {
-      detected_fields = headerParts;
+      detected_fields = headerParts.map(sanitize);
       rows = dataRows.map((parts) => {
         const obj: Record<string, string> = {};
         detected_fields.forEach((field, i) => {
-          obj[field] = parts[i] || "";
+          obj[field] = sanitize(parts[i] || "");
         });
         return obj;
       });
@@ -200,7 +209,7 @@ serve(async (req) => {
       rows = allRows.map((parts) => {
         const obj: Record<string, string> = {};
         detected_fields.forEach((field, i) => {
-          obj[field] = parts[i] || "";
+          obj[field] = sanitize(parts[i] || "");
         });
         return obj;
       });

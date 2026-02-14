@@ -88,11 +88,22 @@ export default function ListsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (['xlsx', 'xls', 'xlsm', 'ods'].includes(ext || '')) {
+      toast({ title: "Unsupported format", description: "Please export your spreadsheet as CSV first.", variant: "destructive" });
+      return;
+    }
+
     setStep("analyzing");
     setFileName(file.name);
 
     try {
       const text = await file.text();
+      if (text.includes('\x00') || text.startsWith('PK')) {
+        toast({ title: "Unsupported format", description: "This appears to be a binary file. Please save it as CSV first.", variant: "destructive" });
+        setStep("idle");
+        return;
+      }
       const { data, error } = await supabase.functions.invoke("parse-dial-list", {
         body: { file_content: text },
       });
@@ -120,10 +131,14 @@ export default function ListsPage() {
         const phone = row[phoneCol] || "";
         return isValidPhone(phone);
       })
-      .map((row) => ({
-        ...row,
-        [phoneCol]: normalizePhone(row[phoneCol] || ""),
-      }));
+      .map((row) => {
+        const sanitized: Record<string, string> = {};
+        for (const [k, v] of Object.entries(row)) {
+          sanitized[k] = (v || "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+        }
+        sanitized[phoneCol] = normalizePhone(sanitized[phoneCol] || "");
+        return sanitized;
+      });
 
     try {
       const { data: profile } = await supabase
