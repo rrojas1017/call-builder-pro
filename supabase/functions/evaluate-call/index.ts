@@ -85,9 +85,7 @@ serve(async (req) => {
 
     const agentLang = (spec.language || "en").toLowerCase();
     const isNonEnglish = agentLang !== "en" && agentLang !== "english";
-    const langInstruction = isNonEnglish
-      ? `\n\nIMPORTANT: The agent operates in "${spec.language}". Write ALL evaluation text -- issues_detected, humanness_suggestions, knowledge_gaps, delivery_issues, missed_fields, incorrect_logic, and recommended_improvements (field, reason, suggested_value) -- in ${spec.language}. Only field names that map to spec keys (e.g. "opening_line") stay in English.`
-      : "";
+    const langInstruction = `\n\nLANGUAGE DIRECTIVE: The agent operates in "${spec.language || "English"}". Write ALL evaluation feedback — issues_detected, humanness_suggestions, knowledge_gaps, delivery_issues, missed_fields, incorrect_logic, and recommended_improvements (reason, suggested_value) — in the SAME language as the conversation transcript (${spec.language || "English"}). Only spec field keys (e.g. "opening_line", "tone_style") stay in English. This applies regardless of whether the conversation is in English or another language — always match the transcript's language.`;
 
     const systemPrompt = `You are a Call Performance Auditor. You are an expert at evaluating AI phone agent conversations.
 
@@ -204,7 +202,7 @@ VOICE TUNING RECOMMENDATIONS:
         },
       }],
       tool_choice: { type: "function", function: { name: "evaluate_call" } },
-      max_tokens: 8192,
+      max_tokens: 12000,
     });
 
     const toolResult = aiResponse.tool_calls[0]?.arguments;

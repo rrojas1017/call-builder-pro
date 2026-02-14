@@ -152,7 +152,7 @@ RULES:
 
   if (transferDigits.length >= 10) {
     const formatted = transferDigits.startsWith("1") ? `+${transferDigits}` : `+1${transferDigits}`;
-    prompt += `\n\nTRANSFER: If qualified, say ONE short sentence then transfer to ${formatted}.`;
+    prompt += `\n\nTRANSFER: If qualified, confirm the transfer CLEARLY and COMPLETELY before initiating. Say something like "Great news, you qualify! I'm going to connect you with a specialist now." WAIT for the sentence to finish — do NOT start the transfer mid-sentence. Then transfer to ${formatted}. Never cut off your own confirmation.`;
   }
 
   prompt += `\n\nFALLBACK: After 2 failed attempts to collect info, end politely.`;
