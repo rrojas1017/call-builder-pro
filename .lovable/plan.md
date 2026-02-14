@@ -1,85 +1,57 @@
 
 
-## AI-Powered Smart List Upload
+## Fix: Excel File Detection + Robust File Upload
 
-### Problem
-Currently, uploading a CSV requires the user to manually select the phone column, name column, and review/confirm the data. This is unnecessary friction -- AI can handle all of this automatically, similar to how the agent creation wizard works.
-
-### New Flow
-
-Upload a file and the system does everything:
-
-1. **User drops a CSV** (no change here)
-2. **AI analyzes the file** -- a new edge function sends a sample of the CSV to AI, which returns:
-   - A smart list name based on the file content (e.g., "Texas Health Leads - Feb 2026")
-   - The phone column (auto-detected)
-   - The name column (auto-detected)
-   - A field mapping: which columns map to known contact fields (state, zip, email, age, etc.)
-   - Data quality notes (e.g., "12 rows missing phone numbers -- these will be skipped")
-   - Cleaned/normalized phone numbers (strip formatting, add +1 if needed)
-3. **Show a brief confirmation card** -- not the current manual form, but a summary of what AI decided, with a single "Import" button. The user can see what AI detected but doesn't have to change anything.
+### Problems
+1. The upload only accepts CSV but doesn't block Excel (.xlsx/.xls) files at the frontend — when an Excel file is uploaded, it's read as raw text, producing garbage binary data that the AI correctly identifies as unusable, yet the UI still allows importing the 6 "valid" rows (which are junk).
+2. The binary content contains invalid Unicode escape sequences that crash the database insert (`unsupported Unicode escape sequence`).
 
 ### Changes
 
-**1. Update Edge Function: `supabase/functions/parse-dial-list/index.ts`**
+**1. Frontend: `src/pages/ListsPage.tsx`**
 
-After the existing CSV parsing logic, add an AI analysis step:
-- Send the first 10 rows + all detected headers to Gemini via the shared `ai-client.ts`
-- AI prompt asks it to return structured JSON with:
-  - `suggested_name`: A descriptive list name based on content patterns
-  - `phone_column`: Which header is the phone number
-  - `name_column`: Which header is the contact name  
-  - `field_map`: Maps each header to a semantic role (phone, name, email, state, zip, age, company, notes, etc.) or "other"
-  - `quality_notes`: Array of observations (missing data, formatting issues)
-  - `skip_count`: How many rows should be skipped (no phone number)
-- Fall back to the existing heuristic detection if AI fails
-- Return the AI analysis alongside the existing parsed data
+- Add file type validation in `handleFileSelect` before sending to the edge function:
+  - Check the file extension: reject `.xlsx`, `.xls`, `.xlsm`, `.ods` with a helpful toast message ("Please export your spreadsheet as CSV first")
+  - Also check if the raw text content contains binary indicators (null bytes, xlsx signatures like `PK\x03\x04`) and reject early
+- Sanitize row data before saving: strip any characters that could cause Unicode escape sequence errors in JSONB storage (remove null bytes, control characters)
 
-**2. Update `src/pages/ListsPage.tsx`**
+**2. Backend: `supabase/functions/parse-dial-list/index.ts`**
 
-Replace the manual preview/confirm step with a streamlined AI-powered flow:
+- Add an early binary detection check after receiving `file_content`:
+  - If the content contains null bytes (`\x00`) or starts with the ZIP signature (`PK`), return a 400 error with a clear message: "This appears to be an Excel file. Please save it as CSV first."
+- This acts as a safety net even if the frontend check is bypassed
 
-- **New step: "analyzing"** -- shows an animated card saying "AI is analyzing your file..." with a progress feel
-- **New step: "confirm"** -- replaces the old "preview" step with a clean summary card:
-  - AI-suggested list name (editable, but pre-filled)
-  - Auto-detected column mapping shown as badges (e.g., "Phone: mobile_number", "Name: full_name", "State: state")
-  - Quality summary (e.g., "247 valid contacts, 3 skipped -- missing phone")
-  - A collapsible "Preview data" section (collapsed by default) showing the first 5 rows
-  - Single "Import 247 Contacts" button
-- Remove the phone column and name column dropdowns entirely
-- Phone number normalization: strip non-digits, ensure proper format before saving
-- Skip rows where the AI-detected phone column is empty
+**3. Edge function: Sanitize row data**
 
-**3. Data Cleaning on Save**
+- Before returning rows, strip control characters and null bytes from all cell values to prevent the Unicode escape sequence error on database insert
 
-In the `handleSave` function:
-- Filter out rows where the phone column value is empty or not a valid phone number
-- Normalize phone numbers (strip formatting, add country code if needed)
-- Store the AI-generated `field_map` in the `dial_lists` record for downstream use by campaigns
+### Technical Details
 
-### UI Layout (Confirm Step)
+Frontend validation (in `handleFileSelect`):
+```
+const ext = file.name.split('.').pop()?.toLowerCase();
+if (['xlsx', 'xls', 'xlsm', 'ods'].includes(ext)) {
+  toast error: "Please export as CSV"
+  return
+}
+```
 
-```text
-+------------------------------------------+
-| Ready to Import                          |
-|                                          |
-| List Name: [Texas Health Leads - Feb '26]|
-|                                          |
-| Detected Fields:                         |
-| [Phone: mobile] [Name: full_name]        |
-| [State: state] [Zip: zip_code]           |
-| [Email: email] [Other: notes]            |
-|                                          |
-| 247 valid contacts | 3 skipped (no phone)|
-|                                          |
-| > Preview data (collapsed)               |
-|                                          |
-| [Import 247 Contacts]    [Cancel]        |
-+------------------------------------------+
+Backend binary detection (in edge function):
+```
+if (text includes \x00 or starts with "PK") {
+  return 400: "Excel file detected, please convert to CSV"
+}
+```
+
+Row sanitization (before JSON storage):
+```
+// Strip null bytes and control chars from all values
+value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
 ```
 
 ### What stays the same
-- Existing list display cards unchanged
-- Database schema unchanged (dial_lists + dial_list_rows)
-- File input accepts .csv only
-- Batch insert logic for rows
+- CSV parsing logic unchanged
+- AI analysis flow unchanged
+- Database schema unchanged
+- All existing list display and campaign integration unchanged
+
