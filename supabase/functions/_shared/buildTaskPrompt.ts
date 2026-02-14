@@ -1,6 +1,6 @@
-import { shouldIncludeFplTable } from "./fplThresholds";
+// Shared prompt builder — single source of truth for test runs, campaigns, and client preview.
 
-interface AgentSpec {
+export interface AgentSpec {
   disclosure_text?: string | null;
   consent_required?: boolean;
   must_collect_fields?: string[] | null;
@@ -9,15 +9,24 @@ interface AgentSpec {
   transfer_phone_number?: string | null;
   tone_style?: string | null;
   language?: string | null;
+  opening_line?: string | null;
+  transfer_required?: boolean | null;
+  mode?: string | null;
   use_case?: string | null;
   success_definition?: string | null;
-  humanization_notes?: string[] | null;
-  mode?: string | null;
+  humanization_notes?: string[];
 }
 
-interface KnowledgeEntry {
+export interface KnowledgeEntry {
   category: string;
   content: string;
+}
+
+const HEALTH_KEYWORDS = ['aca', 'health', 'insurance', 'medicaid', 'medicare', 'wellness', 'telehealth', 'benefits_enrollment'];
+
+export function isHealthAgent(spec: AgentSpec): boolean {
+  const uc = (spec.use_case || spec.mode || "").toLowerCase();
+  return HEALTH_KEYWORDS.some(kw => uc.includes(kw));
 }
 
 /** Compact FPL + SEP rules (~800 chars instead of ~3,000) */
@@ -29,7 +38,8 @@ export function buildCompactFplSep(): string {
 ENROLLMENT TIMING: Outside Open Enrollment (Nov 1 - Dec 15), caller MUST have a Qualifying Life Event (lost coverage, marriage, baby, move, citizenship, divorce w/ coverage loss) within 60 days. No QLE = next Open Enrollment. Income alone does NOT qualify for SEP.`;
 }
 
-function buildCompactKnowledge(entries: KnowledgeEntry[]): string {
+/** Compress knowledge entries: group by category, truncate, limit */
+export function buildCompactKnowledge(entries: KnowledgeEntry[]): string {
   if (!entries.length) return "";
   const grouped: Record<string, string[]> = {};
   for (const e of entries) {
@@ -52,7 +62,8 @@ function buildCompactKnowledge(entries: KnowledgeEntry[]): string {
   return parts.join("\n");
 }
 
-function buildCompactStyle(notes: string[]): string {
+/** Condense humanization notes into a single style paragraph */
+export function buildCompactStyle(notes: string[]): string {
   if (!notes.length) return "Be naturally warm and conversational.";
   const condensed = notes.slice(0, 10).map(n => {
     const clean = n.replace(/^\d+\.\s*/, "").trim();
@@ -61,13 +72,12 @@ function buildCompactStyle(notes: string[]): string {
   return condensed.join(". ") + ".";
 }
 
-export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[] = [], knowledgeBriefing?: string): string {
+export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], knowledgeBriefing?: string): string {
   const purpose = spec.use_case || spec.success_definition || "Conduct a professional outbound call.";
   const discl = spec.disclosure_text || "";
   const tone = spec.tone_style || "Friendly, professional, empathetic";
   const transferNum = spec.transfer_phone_number || "";
   const transferDigits = transferNum.replace(/\D/g, "");
-  const isHealth = shouldIncludeFplTable(spec.use_case);
 
   const humanNotes = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
   const styleGuide = buildCompactStyle(humanNotes);
@@ -76,14 +86,14 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[] = [
   const rawFields = spec.must_collect_fields;
   let fields: string[] = [];
   if (Array.isArray(rawFields)) {
-    fields = [...rawFields];
+    fields = rawFields;
   } else if (typeof rawFields === "string") {
     try { const p = JSON.parse(rawFields); if (Array.isArray(p)) fields = p; } catch { /* skip */ }
   }
 
   // Inject name confirmation after consent if not already present
-  if (fields.length > 0 && !fields.some(f => f.toLowerCase().includes('confirm') && f.toLowerCase().includes('name'))) {
-    const consentIdx = fields.findIndex(f => f.toLowerCase().includes('consent'));
+  if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('confirm') && f.toLowerCase().includes('name'))) {
+    const consentIdx = fields.findIndex((f: string) => f.toLowerCase().includes('consent'));
     if (consentIdx >= 0) {
       fields.splice(consentIdx + 1, 0, "Can I confirm your full name?");
     } else {
@@ -110,6 +120,7 @@ RULES:
 - Use caller's name occasionally. Acknowledge each answer before the next question.
 - Never guess or assume answers.`;
 
+  // Knowledge: prefer AI briefing, fallback to compact raw knowledge
   if (knowledgeBriefing) {
     prompt += `\n\nKNOWLEDGE BRIEFING:\n${knowledgeBriefing}`;
   } else {
@@ -128,9 +139,10 @@ RULES:
     prompt += `\nZIP: Must be exactly 5 digits.`;
   }
 
-  if (isHealth) {
+  // Health-specific compact rules
+  if (isHealthAgent(spec)) {
     prompt += `\n\n${buildCompactFplSep()}`;
-    if (fields.length > 0 && !fields.some(f => f.toLowerCase().includes('life event') || f.toLowerCase().includes('qle'))) {
+    if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('life event') || f.toLowerCase().includes('qle'))) {
       prompt += `\nASK: "Have you recently had any life changes like losing coverage, marriage, baby, or moving?"`;
     }
   }
@@ -147,4 +159,15 @@ RULES:
   prompt += `\nSUMMARY: After call, JSON with all collected fields + caller_name.`;
 
   return prompt;
+}
+
+export function replaceTemplateVars(text: string, contact: { name: string; phone: string }): string {
+  const parts = (contact.name || "").trim().split(/\s+/);
+  const firstName = parts[0] || "";
+  const lastName = parts.length > 1 ? parts[parts.length - 1] : "";
+  return text
+    .replace(/\{\{first_name\}\}/gi, firstName)
+    .replace(/\{\{last_name\}\}/gi, lastName)
+    .replace(/\{\{name\}\}/gi, contact.name || "")
+    .replace(/\{\{phone\}\}/gi, contact.phone || "");
 }

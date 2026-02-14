@@ -1,95 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildTaskPrompt, replaceTemplateVars } from "../_shared/buildTaskPrompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const HEALTH_KEYWORDS = ['aca', 'health', 'insurance', 'medicaid', 'medicare', 'wellness', 'telehealth', 'benefits_enrollment'];
-
-function isHealthAgent(useCase: string | null | undefined): boolean {
-  if (!useCase) return false;
-  const lower = useCase.toLowerCase();
-  return HEALTH_KEYWORDS.some(kw => lower.includes(kw));
-}
-
-function replaceTemplateVars(text: string, contact: { name: string; phone: string }): string {
-  const parts = (contact.name || "").trim().split(/\s+/);
-  const firstName = parts[0] || "";
-  const lastName = parts.length > 1 ? parts[parts.length - 1] : "";
-  return text
-    .replace(/\{\{first_name\}\}/gi, firstName)
-    .replace(/\{\{last_name\}\}/gi, lastName)
-    .replace(/\{\{name\}\}/gi, contact.name || "")
-    .replace(/\{\{phone\}\}/gi, contact.phone || "");
-}
-
-/** Compact FPL + SEP rules */
-function buildCompactFplSep(): string {
-  return `FPL QUALIFICATION (2025): Income must be 100-400% of Federal Poverty Level. Reference: Single=$14.6k-$58.3k; Family of 4=$30k-$120k. Add $5.1k per person beyond 8 for 100% FPL; multiply by 4 for 400%.
-- ESI or Medicare → disqualify. Medicaid → tag, no transfer.
-- Uninsured/private + income in FPL range → qualified for transfer.
-
-ENROLLMENT TIMING: Outside Open Enrollment (Nov 1 - Dec 15), caller MUST have a Qualifying Life Event (lost coverage, marriage, baby, move, citizenship, divorce w/ coverage loss) within 60 days. No QLE = next Open Enrollment. Income alone does NOT qualify for SEP.`;
-}
-
-/** Condense humanization notes into a single style paragraph */
-function buildCompactStyle(notes: string[]): string {
-  if (!notes.length) return "Be naturally warm and conversational.";
-  const condensed = notes.slice(0, 10).map(n => {
-    const clean = n.replace(/^\d+\.\s*/, "").trim();
-    return clean.length > 80 ? clean.substring(0, 77) + "..." : clean;
-  });
-  return condensed.join(". ") + ".";
-}
-
-function buildTaskPrompt(spec: any, globalTechniques: string[]): string {
-  const discl = spec.disclosure_text || "This call may be recorded for quality and compliance purposes.";
-  const fields = spec.must_collect_fields || ["consent", "state", "zip_code", "age", "household_size", "income_est_annual", "coverage_type"];
-  const transferNum = spec.transfer_phone_number || "";
-  const tone = spec.tone_style || "Friendly, professional";
-
-  // Build compact style from global techniques
-  const styleGuide = buildCompactStyle(globalTechniques);
-
-  const fieldLabels: Record<string, string> = {
-    consent: "Obtain verbal consent for screening",
-    state: "What state do you live in?",
-    zip_code: "Zip code? (must be 5 digits)",
-    age: "How old are you?",
-    household_size: "How many in your household?",
-    income_est_annual: "Estimated annual household income?",
-    coverage_type: "Current health insurance? (uninsured, private, employer, Medicare, Medicaid)",
-  };
-
-  let prompt = `You are a REAL PERSON on a phone call — not AI, not a robot.
-
-INTERACTION STYLE: ${styleGuide}
-
-DISCLOSURE (read verbatim): "${discl}"
-
-RULES:
-- Obtain verbal consent before screening. Tone: ${tone}.
-- NEVER give insurance advice. Say: "A licensed agent can explain after transfer."
-- Sound natural, acknowledge answers, use caller's name occasionally.
-
-COLLECT (in order):
-${(fields as string[]).map((f: string, i: number) => `${i + 1}. ${fieldLabels[f] || f}`).join("\n")}`;
-
-  if (isHealthAgent(spec.use_case)) {
-    prompt += `\n\n${buildCompactFplSep()}`;
-  }
-
-  prompt += `\n\nQUALIFICATION:
-- If qualified: "That sounds really promising -- let me connect you now."
-- TRANSFER RULE: ONE short sentence before transferring.
-${transferNum ? `- Transfer to: ${transferNum}` : ""}
-
-SUMMARY: After call, JSON with: consent, state, zip_code, age, household_size, income_est_annual, coverage_type, qualifying_life_event, qualified, disqual_reason, transfer_attempted, transfer_completed`;
-
-  return prompt;
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -174,11 +90,16 @@ serve(async (req) => {
 
     const globalTechniques = (globalBehaviors || []).map((g: any) => g.content as string);
 
-    // Build compact task prompt with knowledge briefing
-    let task = buildTaskPrompt(spec, globalTechniques);
-    if (knowledgeBriefing) {
-      task += `\n\nKNOWLEDGE BRIEFING:\n${knowledgeBriefing}`;
+    // Merge global behaviors into spec's humanization_notes (deduped)
+    if (globalTechniques.length > 0) {
+      const currentNotes: string[] = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
+      const existingLower = new Set(currentNotes.map((n: string) => n.toLowerCase().trim()));
+      const newGlobal = globalTechniques.filter((t: string) => !existingLower.has(t.toLowerCase().trim()));
+      spec.humanization_notes = [...currentNotes, ...newGlobal];
     }
+
+    // Build task prompt using shared builder (now consumes qualification_rules, humanization_notes, knowledge)
+    let task = buildTaskPrompt(spec, [], knowledgeBriefing);
 
     const MAX_TASK_LENGTH = 28000;
     if (task.length > MAX_TASK_LENGTH) {
