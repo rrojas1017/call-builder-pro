@@ -1,122 +1,126 @@
 
 
-## Smarter Feedback Loop: Score Regression Tracking and Voice Recommendations
+## Upgrading the Coaching AI: Model Analysis and Implementation Plan
 
-### The Problem
+### Current State
 
-Looking at the data, one agent has **36 improvements applied** in 2 days with the same fields being patched repeatedly (e.g., `must_collect_fields` updated at versions 33, 35, 36, 37). The system keeps suggesting changes without knowing what was already tried or whether previous fixes helped. There is also no mechanism to recommend voice changes based on performance data.
+Your platform uses AI in 4 critical coaching roles:
 
-Three root causes:
+| Role | Current Model | Function |
+|---|---|---|
+| Call Evaluation (scoring + fixes) | Gemini 3 Flash | `evaluate-call` |
+| Spec Generation | Gemini 3 Flash | `generate-spec` |
+| Success Pattern Extraction | Gemini 3 Flash (via ai-client) | `learn-from-success` |
+| Research Distillation | Gemini 3 Flash | `research-and-improve` |
 
-1. **No "before vs after" tracking** -- The evaluation AI doesn't know what was recently changed, so it suggests the same type of fix repeatedly without checking if the last one worked.
-2. **No regression detection** -- If a fix makes scores worse, nothing flags it. The system keeps piling on changes.
-3. **No voice-performance correlation** -- Voice selection is entirely manual with no data on which voices produce better outcomes.
+All four use the same fast, cheap model. That's fine for research and spec generation, but **evaluation is the cornerstone** -- if scoring is inaccurate, every downstream fix is wrong, and the agent never improves meaningfully.
 
 ---
 
-### Changes Overview
+### Model Comparison for Coaching/Evaluation
 
-#### 1. Improvement History Context in Evaluations (Backend)
+| Model | Reasoning Depth | Structured Output | Speed | Cost | Best For |
+|---|---|---|---|---|---|
+| **Gemini 3 Flash** (current) | Good | Good | Very fast | Very low | Bulk tasks, research |
+| **Gemini 2.5 Pro** | Excellent | Excellent | Medium | Medium | Complex analysis |
+| **Claude Sonnet 4** (you have the key) | Excellent | Excellent | Medium | Medium | Nuanced judgment, coaching |
+| **GPT-5** (via Lovable AI) | Excellent | Excellent | Slow | High | Deep reasoning |
+| **MiniMax M2.5** | Good for coding | Decent | Very fast | Very low | Bulk/speed tasks |
+
+### Verdict
+
+**MiniMax is not the right choice for coaching.** It excels at coding benchmarks and bulk speed, but lags behind Claude and GPT-5 in nuanced judgment, long-context reasoning, and structured evaluation quality -- which is exactly what your auditor needs.
+
+**The best option: Claude Sonnet 4 for evaluation, Gemini Flash for everything else.**
+
+Why Claude for the evaluator:
+- You already have `ANTHROPIC_API_KEY` configured and the `ai-client.ts` abstraction ready
+- Claude excels at **nuanced text analysis** -- detecting subtle conversational failures, not just keyword matching
+- Claude is stronger at **consistent scoring** -- less score drift between identical transcripts
+- Claude produces more **specific, non-repetitive coaching suggestions** -- the exact problem you're experiencing
+- Cost is reasonable for this use case since evaluations happen per-call, not per-token-stream
+
+Gemini Flash remains ideal for research distillation, knowledge compression, and spec generation where speed matters more than deep judgment.
+
+---
+
+### Implementation Plan
+
+#### 1. Upgrade `evaluate-call` to use Claude via `ai-client.ts`
 
 **File: `supabase/functions/evaluate-call/index.ts`**
 
-Before calling the AI evaluator, fetch the last 5 improvements applied to this agent and the last 3 evaluation scores. Include them in the system prompt so the AI knows:
-- What was recently changed (and when)
-- Whether scores went up or down after each change
-- What NOT to suggest again if the last attempt didn't help
+- Replace the direct Lovable AI Gateway fetch with `callAI({ provider: "claude", ... })`
+- This uses the existing `ai-client.ts` abstraction and the already-configured `ANTHROPIC_API_KEY`
+- Remove the raw `fetch()` call and use the shared client for cleaner code
+- Keep all existing prompt content, tool schemas, and scoring rubric unchanged
 
-This prevents circular suggestions like "change the opening line" being recommended repeatedly even though it was already changed twice.
+#### 2. Enhance the evaluation prompt for Claude's strengths
 
-New section added to the system prompt:
+**File: `supabase/functions/evaluate-call/index.ts`**
+
+Claude responds better to explicit reasoning instructions. Add to the system prompt:
+
+- **Chain-of-thought scoring**: "Before assigning each score, write a brief internal rationale (2-3 sentences) explaining your reasoning. Then assign the numeric score."
+- **Anti-repetition directive**: "Check your suggested improvements against the RECENT CHANGE HISTORY. If a similar suggestion was already applied without improvement, you MUST suggest a fundamentally different approach -- not a variation of the same fix."
+- **Severity tiers for improvements**: Tag each recommendation as `critical` (blocking agent success), `important` (noticeably hurts performance), or `minor` (polish). This helps users prioritize.
+
+#### 3. Add improvement severity to the tool schema
+
+**File: `supabase/functions/evaluate-call/index.ts`**
+
+Add a `severity` field to each `recommended_improvement`:
+
 ```
-RECENT CHANGE HISTORY (do NOT re-suggest changes that were already applied 
-and didn't improve scores):
-- v31: interruption_threshold changed to 800 (scores before: 45, after: 42 -- NO IMPROVEMENT)
-- v32: temperature changed to 0.8 (scores before: 42, after: 50 -- IMPROVED)
-...
-If a previous fix didn't improve scores, suggest a DIFFERENT approach to the same problem.
-```
-
-#### 2. Score Trend Tracking Table (Database)
-
-**New migration: Create `score_snapshots` table**
-
-```sql
-CREATE TABLE public.score_snapshots (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id UUID NOT NULL REFERENCES agent_projects(id),
-  spec_version INTEGER NOT NULL,
-  voice_id TEXT,
-  avg_humanness NUMERIC,
-  avg_naturalness NUMERIC,
-  avg_overall NUMERIC,
-  call_count INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-```
-
-After each evaluation, update the snapshot for the current spec version + voice combination. This gives a clear picture: "Version 31 with voice 'maya' averaged 45 humanness over 3 calls; version 32 with 'maya' averaged 50 over 2 calls."
-
-#### 3. Voice Performance Analytics and Recommendations (Backend)
-
-**File: `supabase/functions/evaluate-call/index.ts`** (addition at end)
-
-After storing the evaluation, update the `score_snapshots` table. When enough data accumulates (5+ calls on current voice), compare the current voice's average scores against any other voices that were previously used on this agent. If another voice historically performed better, add a voice recommendation to the evaluation output.
-
-**New field in evaluation output**: `voice_recommendation`
-```json
 {
-  "voice_recommendation": {
-    "current_voice": "matt",
-    "current_avg_humanness": 52,
-    "suggested_voice": "maya", 
-    "suggested_avg_humanness": 71,
-    "reason": "Voice 'maya' averaged 71 humanness over 8 calls vs current voice 'matt' at 52 over 5 calls"
-  }
+  field: "opening_line",
+  current_value: "...",
+  suggested_value: "...",
+  reason: "...",
+  severity: "critical" | "important" | "minor"
 }
 ```
 
-#### 4. Regression Alert in Evaluation UI (Frontend)
+#### 4. Update `learn-from-success` to use Claude
+
+**File: `supabase/functions/learn-from-success/index.ts`**
+
+This function compares successful vs. unsuccessful call transcripts -- exactly the kind of nuanced pattern recognition Claude excels at. Switch from `provider: "gemini"` to `provider: "claude"` in the existing `callAI()` call.
+
+#### 5. Keep Gemini Flash for speed-critical functions
+
+These stay on Gemini 3 Flash (no changes):
+- `generate-spec` -- speed matters for onboarding UX
+- `research-and-improve` -- bulk article processing
+- `summarize-agent-knowledge` -- simple compression task
+
+#### 6. Frontend: Display improvement severity badges
 
 **Files: `src/pages/GymPage.tsx`, `src/components/TestResultsModal.tsx`, `src/pages/CallsPage.tsx`**
 
-When displaying evaluation results, if the current scores are lower than the previous evaluation for the same agent:
-- Show a warning badge: "Scores dropped since last change (v31 to v32)"  
-- Show which specific fix may have caused the regression
-- Offer a "Revert" option that undoes the last patch
+When rendering `recommended_improvements`, show severity badges:
+- Red badge for `critical`
+- Yellow badge for `important`  
+- Gray badge for `minor`
 
-#### 5. Voice Suggestion Card in Evaluation Results (Frontend)
-
-**Files: `src/pages/GymPage.tsx`, `src/components/TestResultsModal.tsx`**
-
-When `evaluation.voice_recommendation` is present, render a card:
-- Shows current voice performance vs recommended voice
-- "Switch Voice" button that updates the agent spec's `voice_id`
-- Only appears when there's meaningful data (5+ calls per voice)
-
-#### 6. Smarter Deduplication in Apply-Improvement (Backend)
-
-**File: `supabase/functions/apply-improvement/index.ts`**
-
-Before applying a fix, check if the exact same field was changed in the last 3 versions. If so, and scores didn't improve, log a warning and add a `caution` field to the response so the UI can warn the user: "This field was already changed recently without improvement. Consider a different approach."
+Sort improvements by severity (critical first) so users fix the most impactful issues first.
 
 ---
 
-### Technical Summary
+### Architecture After Changes
 
-| Component | File | Change |
-|---|---|---|
-| Score snapshots table | Migration | New table to track per-version, per-voice averages |
-| Improvement history in eval prompt | `evaluate-call/index.ts` | Fetch last 5 improvements + scores, inject into AI context |
-| Voice performance comparison | `evaluate-call/index.ts` | Compare voice averages, emit `voice_recommendation` |
-| Snapshot updates | `evaluate-call/index.ts` | Upsert `score_snapshots` after each eval |
-| Regression warnings | `GymPage.tsx`, `TestResultsModal.tsx`, `CallsPage.tsx` | Show score delta badges and revert option |
-| Voice suggestion card | `GymPage.tsx`, `TestResultsModal.tsx` | Render voice recommendation with switch button |
-| Duplicate fix caution | `apply-improvement/index.ts` | Warn when re-patching same field without improvement |
+```text
+evaluate-call ──────► Claude Sonnet 4  (deep judgment, coaching)
+learn-from-success ─► Claude Sonnet 4  (pattern recognition)
+generate-spec ──────► Gemini 3 Flash   (speed, onboarding)
+research-and-improve► Gemini 3 Flash   (bulk processing)
+summarize-knowledge ► Gemini 3 Flash   (compression)
+```
 
-### What stays the same
-- The `research-and-improve` and `learn-from-success` loops (they continue enriching knowledge)
-- The existing evaluation scoring rubric (humanness, naturalness, compliance, objective)
-- Voice selection UI in agent editing (this adds data-driven suggestions, not a replacement)
-- All existing improvement application logic
+### What This Solves
+
+1. **Repetitive suggestions**: Claude's stronger reasoning + the anti-repetition directive stops circular fixes
+2. **Inaccurate scoring**: Claude produces more consistent, calibrated scores across calls
+3. **Vague coaching**: Claude generates more specific, actionable improvements with severity tiers
+4. **No wasted effort**: Users see which fixes matter most (critical vs. minor) and act accordingly
 
