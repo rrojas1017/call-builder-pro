@@ -5,13 +5,16 @@ import { useOrgContext } from "@/hooks/useOrgContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Save } from "lucide-react";
+import { useTheme } from "next-themes";
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const { activeOrgId, isAdmin } = useOrgContext();
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
   const [fullName, setFullName] = useState("");
   const [orgName, setOrgName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -89,6 +92,21 @@ export default function SettingsPage() {
           {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
           Save Changes
         </Button>
+      </div>
+
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Appearance</h2>
+          <p className="text-sm text-muted-foreground mt-1">Choose your preferred theme.</p>
+        </div>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="theme-switch">Dark Mode</Label>
+          <Switch
+            id="theme-switch"
+            checked={theme === "dark"}
+            onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+          />
+        </div>
       </div>
     </div>
   );

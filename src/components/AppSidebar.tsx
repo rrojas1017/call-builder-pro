@@ -4,6 +4,7 @@ import {
   BookOpen, Settings, LogOut, Dumbbell, FileSpreadsheet, Users, CreditCard,
   Building2, ScrollText, X
 } from "lucide-react";
+import { ThemeToggle } from "./ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -120,7 +121,8 @@ export default function AppSidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-sidebar-border p-3">
+      <div className="border-t border-sidebar-border p-3 space-y-1">
+        <ThemeToggle />
         <button
           onClick={handleLogout}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-destructive transition-colors"
