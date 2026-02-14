@@ -108,6 +108,7 @@ export default function LiveCallMonitor({ blandCallId, isActive }: LiveCallMonit
         body: { call_id: blandCallId, action: "listen" },
       });
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
       const wsUrl = data?.websocket_url;
       if (!wsUrl) throw new Error("No WebSocket URL returned");
