@@ -248,6 +248,18 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                     <ScoreCard label="Overall" score={selected.evaluation.overall_score} />
                   </div>
 
+                  {/* Voice Recommendation */}
+                  {selected.evaluation.voice_recommendation && (
+                    <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                      <p className="text-xs font-medium text-primary flex items-center gap-1">🎙️ Voice Recommendation</p>
+                      <p className="text-xs text-foreground">{selected.evaluation.voice_recommendation.reason}</p>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-muted-foreground">Current: <strong>{selected.evaluation.voice_recommendation.current_voice}</strong> ({selected.evaluation.voice_recommendation.current_avg_humanness})</span>
+                        <span className="text-primary">→ <strong>{selected.evaluation.voice_recommendation.suggested_voice}</strong> ({selected.evaluation.voice_recommendation.suggested_avg_humanness})</span>
+                      </div>
+                    </div>
+                  )}
+
                   {selected.evaluation.humanness_suggestions?.length > 0 && (
                     <div className="space-y-1">
                       <p className="text-xs font-medium text-muted-foreground">Learned Conversation Techniques</p>

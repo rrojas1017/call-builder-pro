@@ -890,6 +890,50 @@ export type Database = {
           },
         ]
       }
+      score_snapshots: {
+        Row: {
+          avg_humanness: number | null
+          avg_naturalness: number | null
+          avg_overall: number | null
+          call_count: number
+          created_at: string
+          id: string
+          project_id: string
+          spec_version: number
+          voice_id: string | null
+        }
+        Insert: {
+          avg_humanness?: number | null
+          avg_naturalness?: number | null
+          avg_overall?: number | null
+          call_count?: number
+          created_at?: string
+          id?: string
+          project_id: string
+          spec_version: number
+          voice_id?: string | null
+        }
+        Update: {
+          avg_humanness?: number | null
+          avg_naturalness?: number | null
+          avg_overall?: number | null
+          call_count?: number
+          created_at?: string
+          id?: string
+          project_id?: string
+          spec_version?: number
+          voice_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "score_snapshots_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sms_conversations: {
         Row: {
           created_at: string
