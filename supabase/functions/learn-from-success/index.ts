@@ -81,7 +81,7 @@ Example bad pattern: "Be more empathetic"`;
     const userPrompt = `SUCCESSFUL CALLS (qualified):\n\n${successTranscripts}\n\nUNSUCCESSFUL CALLS:\n\n${failTranscripts}`;
 
     const aiResponse = await callAI({
-      provider: "gemini",
+      provider: "claude",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },

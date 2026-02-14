@@ -679,11 +679,19 @@ function ResultCard({
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground">Recommended Improvements</p>
               <ul className="text-xs text-foreground space-y-2">
-                {contact.evaluation.recommended_improvements.map((imp: any, i: number) => (
+                {[...contact.evaluation.recommended_improvements]
+                  .sort((a: any, b: any) => {
+                    const order: Record<string, number> = { critical: 0, important: 1, minor: 2 };
+                    return (order[a.severity] ?? 2) - (order[b.severity] ?? 2);
+                  })
+                  .map((imp: any, i: number) => (
                   <li key={i} className="rounded-lg bg-muted/30 border border-border p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <p className="font-medium">{imp.field}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{imp.field}</p>
+                          <SeverityBadge severity={imp.severity} />
+                        </div>
                         <p className="text-muted-foreground text-xs mt-1">{imp.reason}</p>
                         <p className="mt-2">Suggested: <span className="text-primary">{imp.suggested_value}</span></p>
                       </div>
@@ -744,5 +752,19 @@ function ScoreCard({ label, score }: { label: string; score?: number }) {
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={`text-lg font-bold ${color}`}>{score}</p>
     </div>
+  );
+}
+
+function SeverityBadge({ severity }: { severity?: string }) {
+  if (!severity) return null;
+  const styles: Record<string, string> = {
+    critical: "bg-destructive/15 text-destructive border-destructive/30",
+    important: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+    minor: "bg-muted text-muted-foreground border-border",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${styles[severity] || styles.minor}`}>
+      {severity}
+    </span>
   );
 }
