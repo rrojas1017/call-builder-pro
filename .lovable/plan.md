@@ -1,72 +1,108 @@
 
 
-## Enhance Voice Recommendations: Cross-Agent Catalog Suggestions
+## Design Evaluation and Light/Dark Mode Plan
 
-### The Problem
+### Current Design Evaluation
 
-The current voice recommendation logic (lines 293-344 of `evaluate-call/index.ts`) only queries `score_snapshots` filtered by `project_id`:
+**Strengths:**
+- Clean, modern dark theme with consistent orange primary accent (HSL 24 85% 50%)
+- Good visual hierarchy: KPI cards, charts, and data tables are well-structured
+- The sidebar navigation is well-organized into logical sections (ADMIN, BUILD, DEPLOY, MONITOR, SYSTEM)
+- Effective use of `surface-elevated`, `glass-card`, and `gradient-border` utility classes for depth
+- Charts (Recharts) integrate well with the dark palette using HSL variables
+- Landing page has polished animations (framer-motion) and a professional feel
 
+**Areas for Improvement:**
+- Some hardcoded HSL color values in charts and utility classes (e.g., `hsl(220 18% 10%)` in `.surface-elevated`) that won't adapt to a light theme
+- The `App.css` file contains leftover Vite boilerplate styles that are unused
+- No theme toggle exists anywhere in the app
+- Chart tooltip and grid colors are hardcoded to dark values
+
+---
+
+### Plan: Add Light and Dark Mode Toggle
+
+#### 1. Add Light Mode CSS Variables (`src/index.css`)
+
+Add a `.light` class (or no-class default) with inverted color values under `:root` or a dedicated selector. The dark theme stays as-is under `.dark`:
+
+- Light background: white/near-white (e.g., `0 0% 100%`)
+- Light card/popover: subtle gray tones
+- Light sidebar: light gray background with dark text
+- Primary orange stays the same for brand consistency
+- Muted, border, and input colors shift to light equivalents
+- Update `.surface-elevated`, `.glass-card`, and `.gradient-border` utilities to use CSS variables instead of hardcoded HSL values so they adapt automatically
+
+#### 2. Configure Tailwind for class-based dark mode
+
+The project already has `darkMode: ["class"]` in `tailwind.config.ts` -- this is correct and ready.
+
+#### 3. Create a Theme Provider and Toggle Component
+
+- **`src/components/ThemeProvider.tsx`**: A context provider that reads/writes the theme preference to `localStorage` and applies the `dark` class to `<html>`. Uses `next-themes` (already installed) or a lightweight custom provider.
+- **`src/components/ThemeToggle.tsx`**: A simple Sun/Moon icon button that toggles between light and dark. Placed in the sidebar footer (above "Sign Out") and optionally in Settings.
+
+#### 4. Wrap the App with ThemeProvider (`src/App.tsx`)
+
+Wrap the root `QueryClientProvider` with `ThemeProvider` so the theme is available everywhere. The `next-themes` package is already installed as a dependency.
+
+#### 5. Update Hardcoded Colors
+
+Several places use hardcoded dark-only HSL values that need to become theme-aware:
+
+- **`src/index.css`**: The `.surface-elevated`, `.glass-card`, `.gradient-border`, `.mesh-gradient`, `.glow-primary`, and `.hover-lift` utilities all use hardcoded `hsl(220 18% ...)` values. These need to reference CSS variables instead.
+- **`src/pages/DashboardPage.tsx`**: Chart tooltip `contentStyle`, `CartesianGrid` stroke, and axis tick fills use hardcoded dark colors. Replace with `hsl(var(--border))`, `hsl(var(--muted-foreground))`, etc.
+- **`src/pages/GymPage.tsx`**: Same chart hardcoding pattern.
+- **`src/components/AppSidebar.tsx`**: No changes needed -- it already uses Tailwind semantic classes.
+- **`src/App.css`**: Clean up unused Vite boilerplate.
+
+#### 6. Add Toggle to Sidebar (`src/components/AppSidebar.tsx`)
+
+Add the `ThemeToggle` button in the sidebar footer section, next to or above the "Sign Out" button.
+
+#### 7. Add Toggle to Settings Page (`src/pages/SettingsPage.tsx`)
+
+Add a "Theme" section with a labeled switch (Light / Dark) for users who expect theme preferences in settings.
+
+---
+
+### Light Theme Color Palette
+
+```text
+Variable              Dark Value           Light Value
+--background          220 20% 6%           0 0% 100%
+--foreground          210 20% 92%          222 47% 11%
+--card                220 18% 9%           0 0% 100%
+--card-foreground     210 20% 92%          222 47% 11%
+--popover             220 18% 10%          0 0% 100%
+--popover-foreground  210 20% 92%          222 47% 11%
+--primary             24 85% 50%           24 85% 50%  (unchanged)
+--primary-foreground  0 0% 100%            0 0% 100%   (unchanged)
+--secondary           220 16% 14%          220 14% 96%
+--secondary-foreground 210 20% 80%         220 14% 30%
+--muted               220 14% 12%          220 14% 96%
+--muted-foreground    215 12% 50%          215 16% 47%
+--accent              24 50% 18%           24 50% 95%
+--accent-foreground   24 60% 70%           24 60% 30%
+--border              220 14% 16%          220 13% 91%
+--input               220 14% 16%          220 13% 91%
+--sidebar-background  220 20% 7%           220 14% 97%
+--sidebar-foreground  210 15% 65%          215 16% 47%
+--sidebar-accent      220 16% 12%          220 14% 92%
+--sidebar-border      220 14% 14%          220 13% 91%
 ```
-.eq("project_id", call.project_id)
-```
 
-This means it can only recommend voices that **this specific agent** has already tried. A brand new agent or one that has only ever used one voice will never get a recommendation, even if the platform has extensive data showing that certain voices consistently score higher across other agents.
+### Files Changed
 
-### The Fix
+| File | Change |
+|---|---|
+| `src/index.css` | Add light-mode `:root` vars, move dark vars under `.dark`, update utility classes to use CSS vars |
+| `src/components/ThemeProvider.tsx` | New file -- wraps `next-themes` ThemeProvider |
+| `src/components/ThemeToggle.tsx` | New file -- Sun/Moon toggle button |
+| `src/App.tsx` | Wrap with ThemeProvider |
+| `src/components/AppSidebar.tsx` | Add ThemeToggle to sidebar footer |
+| `src/pages/SettingsPage.tsx` | Add Theme preference section |
+| `src/pages/DashboardPage.tsx` | Replace hardcoded chart colors with CSS variable references |
+| `src/pages/GymPage.tsx` | Replace hardcoded chart colors with CSS variable references |
+| `src/App.css` | Remove unused Vite boilerplate |
 
-Expand the recommendation to two tiers:
-
-1. **Tier 1 (same agent)**: Keep the existing logic -- compare voices this agent has tried (unchanged).
-2. **Tier 2 (cross-agent catalog)**: If no same-agent recommendation is found, query `score_snapshots` across ALL projects, filtered by matching `language` (so a Spanish agent doesn't get recommended an English-optimized voice). Aggregate by `voice_id` globally to find top-performing voices platform-wide.
-
-### Changes
-
-#### 1. `supabase/functions/evaluate-call/index.ts` -- Voice recommendation section (lines 293-344)
-
-Replace the current voice recommendation block with expanded logic:
-
-- **Same-agent check (Tier 1)**: Keep existing logic that compares voices within `call.project_id`. No changes here.
-- **Cross-agent fallback (Tier 2)**: When Tier 1 produces no recommendation (either because only one voice was tried, or no alternative beat the threshold):
-  - Query `score_snapshots` across all projects (no `project_id` filter), with `call_count >= 5` (higher bar for cross-agent confidence)
-  - Join or cross-reference `agent_specs` to filter by matching language (e.g., only suggest voices used by agents with the same `language` field)
-  - Exclude the current voice from candidates
-  - Find the voice with the highest weighted `avg_humanness` across all agents
-  - Apply a higher threshold: must beat current voice by 8+ points (vs 5 for same-agent) to account for use-case variance
-  - Tag the recommendation with `source: "cross_agent"` so the UI can distinguish it from same-agent recommendations
-
-- **Recommendation output shape** (enhanced):
-
-```json
-{
-  "current_voice": "maya",
-  "current_avg_humanness": 72,
-  "suggested_voice": "josh",
-  "suggested_avg_humanness": 85,
-  "source": "cross_agent",
-  "confidence": "medium",
-  "sample_size": 47,
-  "reason": "Voice 'josh' averaged 85 humanness across 47 calls on 3 agents vs your current voice 'maya' at 72. Consider A/B testing."
-}
-```
-
-- `source`: `"same_agent"` or `"cross_agent"` -- lets the UI show appropriate context
-- `confidence`: `"high"` (same agent, 10+ calls) / `"medium"` (cross-agent, 5+ calls) / `"low"` (fewer calls)
-- `sample_size`: total calls behind the suggestion
-
-#### 2. Frontend display (no file changes needed)
-
-The existing UI already renders `voice_recommendation` as a card. The new `source` and `confidence` fields can be used later to add a "Based on platform-wide data" label or a confidence indicator -- but no frontend changes are required for this to work. The `reason` string already explains the context.
-
-### What This Solves
-
-- **New agents get voice suggestions immediately** based on platform-wide performance data
-- **Single-voice agents** (never A/B tested) can still receive data-driven recommendations
-- **Cross-pollination**: A voice that consistently scores 90+ humanness across 5 different agents becomes a platform-wide recommendation
-- **Language safety**: A Spanish agent won't be recommended an English-only voice
-
-### What Stays the Same
-
-- Same-agent Tier 1 logic is unchanged (existing behavior preserved)
-- The 5-point threshold for same-agent recommendations stays
-- Score snapshot tracking logic is untouched
-- No database schema changes needed
