@@ -1,115 +1,51 @@
 
 
-## Calls Command Center -- Complete Rebuild
+## Add Mock/Demo Data to the US Map
 
-### Overview
+### What
+Inject realistic mock state data into the map so you can see how it looks with real geographic distribution across all four metrics, while keeping the real data pipeline intact.
 
-Rebuild the entire Calls section (`CallsPage.tsx` + `USMapChart.tsx`) from scratch into a proper analytics command center. The map gets interactive multi-metric support and drill-down, while the call list gets search, filters, audio playback, chat-style transcripts, and summary stats.
+### How
 
-### Reality Check: Map Data
+**File: `src/pages/CallsPage.tsx`** (lines ~288-310, the `stateMetrics` useMemo)
 
-Right now only 3 out of 100 calls have a linked contact with a phone number (from campaigns). The rest are test calls with no `contact_id`. The area code approach is correct and will populate naturally as more campaign calls are made. The map will show an "empty state" message when data is sparse, and grow richer over time.
+After computing real `stateMetrics` from actual call data, merge in demo data for any states that don't already have real data. The mock covers ~15-20 states with varied values across all metrics (calls, conversion rate, score, duration) to showcase the heat map gradients and tooltips.
 
----
+A flag `useMockData` (defaulting to `true`) wraps this logic. When real campaign data grows, flip it to `false` (or remove it). The mock data will look something like:
 
-### Part 1: Enhanced US Map (`src/components/USMapChart.tsx`)
-
-**New props interface:**
-```text
-stateData: Record<string, {
-  calls: number;
-  conversionRate: number;
-  avgScore: number | null;
-  avgDuration: number;
-}>
-metric: "calls" | "conversion" | "score" | "duration"
-onMetricChange: (metric) => void
-selectedState: string | null
-onStateClick: (abbr | null) => void
+```
+const DEMO_STATE_DATA: Record<string, StateMetrics> = {
+  CA: { calls: 47, conversionRate: 34, avgScore: 78, avgDuration: 185 },
+  TX: { calls: 38, conversionRate: 42, avgScore: 82, avgDuration: 210 },
+  NY: { calls: 31, conversionRate: 28, avgScore: 71, avgDuration: 155 },
+  FL: { calls: 29, conversionRate: 51, avgScore: 85, avgDuration: 240 },
+  IL: { calls: 18, conversionRate: 22, avgScore: 65, avgDuration: 120 },
+  PA: { calls: 15, conversionRate: 38, avgScore: 74, avgDuration: 175 },
+  OH: { calls: 14, conversionRate: 31, avgScore: 69, avgDuration: 140 },
+  GA: { calls: 12, conversionRate: 45, avgScore: 80, avgDuration: 195 },
+  NC: { calls: 11, conversionRate: 36, avgScore: 76, avgDuration: 160 },
+  MI: { calls: 10, conversionRate: 19, avgScore: 58, avgDuration: 95 },
+  NJ: { calls: 9, conversionRate: 55, avgScore: 88, avgDuration: 260 },
+  VA: { calls: 8, conversionRate: 40, avgScore: 73, avgDuration: 150 },
+  WA: { calls: 7, conversionRate: 48, avgScore: 81, avgDuration: 200 },
+  AZ: { calls: 6, conversionRate: 33, avgScore: 70, avgDuration: 130 },
+  CO: { calls: 5, conversionRate: 60, avgScore: 91, avgDuration: 280 },
+  MN: { calls: 4, conversionRate: 25, avgScore: 62, avgDuration: 110 },
+  MO: { calls: 3, conversionRate: 67, avgScore: 84, avgDuration: 220 },
+  TN: { calls: 3, conversionRate: 33, avgScore: 72, avgDuration: 145 },
+};
 ```
 
-**Features:**
-- Metric selector tabs above the map: Call Volume, Conversion %, Avg Score, Avg Duration
-- Color gradients per metric:
-  - Volume: teal gradient (current style)
-  - Conversion: green gradient
-  - Score: blue-purple gradient
-  - Duration: amber gradient
-- Click a state to filter (passes `onStateClick` up to CallsPage)
-- Selected state gets a highlighted border and can be cleared
-- Rich tooltips showing all 4 metrics for the hovered state
-- Color scale legend bar below the map
-- Empty state message when fewer than 3 states have data: "Map populates as campaign calls increase"
+Merge logic: real data takes priority -- mock only fills in states with no real calls.
 
-### Part 2: Rebuilt Calls Page (`src/pages/CallsPage.tsx`)
+A small "Demo data" badge will appear near the map header so it's clear this is sample visualization. Clicking states with mock data won't filter the call list (since there are no matching calls).
 
-Complete rewrite with these sections:
-
-**A. Summary Stats Row (4 cards)**
-- Total Calls (filtered count)
-- Avg Duration (formatted as m:ss)
-- Avg Score (color-coded)
-- Conversion Rate (qualified / total %)
-
-All stats update dynamically based on active filters.
-
-**B. Filter Bar**
-- Text search input (filters transcript content, client-side)
-- Direction tabs: All / Outbound / Inbound
-- Outcome multi-select dropdown: qualified, completed, voicemail, busy, failed
-- Score quick filters: All, 80+, 50-79, Below 50
-- Duration quick filters: All, 30s+, 1min+, 5min+
-- "Showing calls from [State] -- Clear" banner when map state is selected
-
-**C. Call List (left panel when detail is open)**
-- Shows: direction icon, agent name (from `agent_projects`), outcome badge, duration, score, relative timestamp, provider badge
-- Pagination: Load 50 at a time with "Load More" button
-- CSV export button in the header
-
-**D. Detail Panel (right side)**
-
-When a call is clicked, the map hides and the list shrinks to a sidebar:
-
-1. **Header**: Agent name, direction, relative timestamp, close button
-2. **Metric cards** (3 cols): Outcome, Duration, Score
-3. **Call Timeline**: Horizontal visual showing Created, Started, Ended with time labels and duration badge
-4. **Audio Player**: HTML5 audio element with playback speed controls (1x, 1.25x, 1.5x, 2x) -- only when `recording_url` exists
-5. **Evaluation section**: Compliance/Objective/Overall score cards, hallucination alert, issues list, recommended improvements with Apply buttons (preserving existing improvement logic)
-6. **Voice Recommendation**: Same card as current
-7. **Chat-Style Transcript**: Parse "Agent: ... / User: ..." lines into chat bubbles with Bot/User icons (reuse pattern from `LiveCallMonitor`)
-8. **Extracted Data**: Collapsible JSON viewer
-
-### Part 3: Data Fetching Strategy
-
-**Query**: Fetch calls with contact phone via join:
-```text
-calls(*, contacts(phone))
-```
-
-**Agent names**: Fetch `agent_projects(id, name)` once and build a lookup map for `project_id` to agent name.
-
-**State derivation**: Use `phoneToState(contact.phone)` from the existing `areaCodeToState.ts` utility for each call that has a contact.
-
-**Per-state metrics**: Computed in a `useMemo` from filtered calls -- aggregate calls, conversion rate, avg score, avg duration per state.
-
-### Technical Summary
+### Files Changed
 
 | File | Change |
 |------|--------|
-| `src/components/USMapChart.tsx` | Rewrite: multi-metric support, click handler, color gradients per metric, legend, enriched tooltips, selected state highlight, empty state |
-| `src/pages/CallsPage.tsx` | Rewrite from scratch: stats row, filter bar, search, pagination, audio player, chat transcript, CSV export, timeline, state filtering, agent name resolution |
-| `src/lib/areaCodeToState.ts` | Already exists -- no changes needed |
-| Database | No changes -- uses existing join to contacts table |
+| `src/pages/CallsPage.tsx` | Add `DEMO_STATE_DATA` constant and merge logic in `stateMetrics` memo, add "Demo data" indicator badge |
 
-### What This Delivers
+### Removal Later
 
-- A professional analytics dashboard for the Calls section
-- Interactive map that filters the call list by state
-- Toggle between Volume, Conversion, Score, and Duration heat maps
-- Audio playback with speed control for call recordings
-- Chat-style transcript view instead of raw text
-- Powerful filtering across outcome, score, duration, direction, and text search
-- Summary stats that update as you filter
-- CSV export for reporting
-- All built on existing data -- no backend changes needed
-
+When enough real campaign calls exist (say 50+ with contacts), simply delete the `DEMO_STATE_DATA` block and the merge logic. One constant and ~5 lines of merge code to remove.
