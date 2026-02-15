@@ -1,41 +1,45 @@
 
 
-## Fix "contacts_status_check" Constraint Error on Force Cancel
+## Fix: Evaluation Not Triggering for Most Calls
 
-### Problem
+### Root Cause
 
-The `contacts` table has a database CHECK constraint that only allows these status values:
-`queued`, `calling`, `completed`, `failed`, `no_answer`, `voicemail`, `busy`
+The evaluate-call function is only triggered when `contactStatus === "completed"` (line 253 in receive-bland-webhook). But:
 
-But the application uses several additional statuses:
-- `cancelled` (force cancel feature)
-- `dnc` (do not call)
-- `disconnected`
-- `call_me_later`
-- `not_available`
+1. **Ramon Rojas's call**: Was incorrectly set to `contactStatus = "voicemail"` by the old answered_by bug, so evaluation was skipped entirely -- even though the call had a full transcript and qualified outcome.
+2. **Going forward**: Even with the voicemail fix, the condition is too narrow. The evaluation should fire for any call that has a real transcript, regardless of the contact status label.
 
-When you click "Force Cancel", it tries to set `status = 'cancelled'` which violates the constraint.
+This explains why only 1 out of 7 calls in this campaign has evaluation data.
 
 ### Fix
 
-**Database migration:** Drop the old CHECK constraint and replace it with one that includes all statuses the system uses:
+**File: `supabase/functions/receive-bland-webhook/index.ts`**
 
-```sql
-ALTER TABLE contacts DROP CONSTRAINT contacts_status_check;
-ALTER TABLE contacts ADD CONSTRAINT contacts_status_check 
-  CHECK (status = ANY (ARRAY[
-    'queued', 'calling', 'completed', 'failed', 
-    'no_answer', 'voicemail', 'busy',
-    'cancelled', 'dnc', 'disconnected', 
-    'call_me_later', 'not_available'
-  ]));
+Change the evaluate-call trigger condition (line 253) from:
+```
+if (upsertedCall?.id && transcript && contactStatus === "completed")
+```
+to:
+```
+if (upsertedCall?.id && transcript)
 ```
 
-No code changes needed -- the UI and webhooks already handle all these statuses correctly. The constraint is the only thing blocking them.
+This fires evaluation for every call that has a transcript, which is the correct behavior -- voicemail calls with no real transcript will have `transcript` as null/empty, so they'll be naturally excluded.
 
-### Files changed
+Apply the same fix in:
+- The test lab flow (line 123)
+- The inbound flow (line 194)
 
-| Change | Detail |
+**File: `supabase/functions/receive-retell-webhook/index.ts`**
+
+Apply the same broadened condition for consistency.
+
+**Data fix**: Re-trigger evaluate-call for all calls in this campaign that have transcripts but no evaluation, so Ramon Rojas and the other missed calls get scored retroactively.
+
+### Changes
+
+| File | Change |
 |---|---|
-| Database migration | Update `contacts_status_check` to include all valid statuses |
-
+| `supabase/functions/receive-bland-webhook/index.ts` | Remove `contactStatus === "completed"` guard from all 3 evaluate-call triggers |
+| `supabase/functions/receive-retell-webhook/index.ts` | Same fix for Retell provider |
+| Manual | Re-trigger evaluation for the 6 un-evaluated calls in this campaign |
