@@ -43,6 +43,10 @@ serve(async (req) => {
     else if (disconnectReason === "busy" || disconnectReason === "dial_busy") contactStatus = "busy";
     else if (disconnectReason === "error" || disconnectReason === "machine_detected") contactStatus = "failed";
     else if (disconnectReason === "voicemail_reached") contactStatus = "voicemail";
+    else if (disconnectReason === "dnc" || disconnectReason === "do_not_call") contactStatus = "dnc";
+    else if (disconnectReason === "disconnected" || disconnectReason === "invalid_number") contactStatus = "disconnected";
+    else if (disconnectReason === "call_me_later" || disconnectReason === "callback") contactStatus = "call_me_later";
+    else if (disconnectReason === "not_available") contactStatus = "not_available";
 
     // Extract analysis data if available
     let outcome = contactStatus;
@@ -151,11 +155,17 @@ serve(async (req) => {
       .single();
     if (callErr) console.error("Error upserting Retell call:", callErr);
 
-    // Update contact status
+    // Update contact status and increment attempts
     if (metadata.contact_id) {
+      const { data: currentContact } = await supabase
+        .from("contacts")
+        .select("attempts")
+        .eq("id", metadata.contact_id)
+        .single();
+      const newAttempts = ((currentContact as any)?.attempts || 0) + 1;
       await supabase
         .from("contacts")
-        .update({ status: contactStatus })
+        .update({ status: contactStatus, attempts: newAttempts, called_at: new Date().toISOString() })
         .eq("id", metadata.contact_id);
     }
 

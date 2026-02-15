@@ -50,6 +50,9 @@ export default function CampaignsPage() {
   const [dialLists, setDialLists] = useState<DialList[]>([]);
   const [selectedLists, setSelectedLists] = useState<string[]>([]);
   const [maxConcurrent, setMaxConcurrent] = useState(5);
+  const [maxAttempts, setMaxAttempts] = useState(3);
+  const [redialDelay, setRedialDelay] = useState(60);
+  const [redialStatuses, setRedialStatuses] = useState<string[]>(["voicemail", "no_answer", "busy"]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const load = async () => {
@@ -86,6 +89,9 @@ export default function CampaignsPage() {
           project_id: selectedAgent,
           agent_project_id: selectedAgent,
           max_concurrent_calls: maxConcurrent,
+          max_attempts: maxAttempts,
+          redial_delay_minutes: redialDelay,
+          redial_statuses: redialStatuses,
         } as any)
         .select()
         .single();
@@ -182,6 +188,9 @@ export default function CampaignsPage() {
       setSelectedAgent("");
       setSelectedLists([]);
       setMaxConcurrent(5);
+      setMaxAttempts(3);
+      setRedialDelay(60);
+      setRedialStatuses(["voicemail", "no_answer", "busy"]);
       setShowCreate(false);
       load();
     } catch (err: any) {
@@ -272,6 +281,59 @@ export default function CampaignsPage() {
                   onChange={(e) => setMaxConcurrent(Math.max(1, Math.min(100, Number(e.target.value))))}
                 />
                 <p className="text-xs text-muted-foreground">How many calls can run at the same time (1–100)</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Max Attempts per Contact</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={maxAttempts}
+                  onChange={(e) => setMaxAttempts(Math.max(1, Math.min(10, Number(e.target.value))))}
+                />
+                <p className="text-xs text-muted-foreground">Total dial attempts per contact (1 = no redial)</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Redial Delay (minutes)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={redialDelay}
+                  onChange={(e) => setRedialDelay(Math.max(1, Math.min(1440, Number(e.target.value))))}
+                />
+                <p className="text-xs text-muted-foreground">Wait time between redial attempts</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Retryable Statuses</Label>
+              <p className="text-xs text-muted-foreground mb-2">Which dispositions should trigger a redial</p>
+              <div className="flex flex-wrap gap-3">
+                {[
+                  { value: "voicemail", label: "Voicemail" },
+                  { value: "no_answer", label: "No Answer" },
+                  { value: "busy", label: "Busy" },
+                  { value: "call_me_later", label: "Call Me Later" },
+                  { value: "not_available", label: "Not Available" },
+                ].map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={redialStatuses.includes(opt.value)}
+                      onCheckedChange={(checked) => {
+                        setRedialStatuses((prev) =>
+                          checked
+                            ? [...prev, opt.value]
+                            : prev.filter((s) => s !== opt.value)
+                        );
+                      }}
+                    />
+                    <span className="text-sm">{opt.label}</span>
+                  </label>
+                ))}
               </div>
             </div>
 

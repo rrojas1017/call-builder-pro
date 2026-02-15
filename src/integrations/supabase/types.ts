@@ -415,9 +415,12 @@ export type Database = {
           bland_batch_id: string | null
           created_at: string
           id: string
+          max_attempts: number
           max_concurrent_calls: number
           name: string
           project_id: string
+          redial_delay_minutes: number
+          redial_statuses: string[]
           retell_batch_id: string | null
           status: string
         }
@@ -426,9 +429,12 @@ export type Database = {
           bland_batch_id?: string | null
           created_at?: string
           id?: string
+          max_attempts?: number
           max_concurrent_calls?: number
           name: string
           project_id: string
+          redial_delay_minutes?: number
+          redial_statuses?: string[]
           retell_batch_id?: string | null
           status?: string
         }
@@ -437,9 +443,12 @@ export type Database = {
           bland_batch_id?: string | null
           created_at?: string
           id?: string
+          max_attempts?: number
           max_concurrent_calls?: number
           name?: string
           project_id?: string
+          redial_delay_minutes?: number
+          redial_statuses?: string[]
           retell_batch_id?: string | null
           status?: string
         }

@@ -41,6 +41,10 @@ serve(async (req) => {
     else if (status === "voicemail") contactStatus = "voicemail";
     else if (status === "busy") contactStatus = "busy";
     else if (status === "error" || status === "failed") contactStatus = "failed";
+    else if (status === "dnc" || status === "do_not_call") contactStatus = "dnc";
+    else if (status === "disconnected" || status === "invalid_number") contactStatus = "disconnected";
+    else if (status === "call_me_later" || status === "callback") contactStatus = "call_me_later";
+    else if (status === "not_available") contactStatus = "not_available";
 
     // Determine outcome
     let outcome = contactStatus;
@@ -220,11 +224,18 @@ serve(async (req) => {
       .single();
     if (callErr) console.error("Error upserting call:", callErr);
 
-    // Update contact status
+    // Update contact status and increment attempts
     if (metadata.contact_id) {
+      // Fetch current attempts to increment
+      const { data: currentContact } = await supabase
+        .from("contacts")
+        .select("attempts")
+        .eq("id", metadata.contact_id)
+        .single();
+      const newAttempts = ((currentContact as any)?.attempts || 0) + 1;
       await supabase
         .from("contacts")
-        .update({ status: contactStatus, bland_call_id: blandCallId })
+        .update({ status: contactStatus, bland_call_id: blandCallId, attempts: newAttempts, called_at: new Date().toISOString() })
         .eq("id", metadata.contact_id);
     }
 

@@ -80,6 +80,32 @@ serve(async (req) => {
         .from("contacts").select("id", { count: "exact", head: true })
         .eq("campaign_id", campaign_id).in("status", ["queued", "calling"]);
       if ((remaining || 0) === 0) {
+        // === REDIAL PASS ===
+        const maxAttempts = campaign.max_attempts || 1;
+        const redialDelayMin = campaign.redial_delay_minutes || 60;
+        const redialStatuses: string[] = campaign.redial_statuses || ["voicemail", "no_answer", "busy"];
+
+        if (maxAttempts > 1 && redialStatuses.length > 0) {
+          const cutoff = new Date(Date.now() - redialDelayMin * 60 * 1000).toISOString();
+          const { data: retryable } = await supabase
+            .from("contacts")
+            .select("id, attempts")
+            .eq("campaign_id", campaign_id)
+            .in("status", redialStatuses)
+            .lt("called_at", cutoff)
+            .lt("attempts", maxAttempts);
+
+          if (retryable && retryable.length > 0) {
+            const retryIds = retryable.map((r: any) => r.id);
+            await supabase.from("contacts").update({ status: "queued" }).in("id", retryIds);
+            console.log(`Re-queued ${retryIds.length} contacts for redial`);
+            // Don't mark completed — there are now queued contacts again
+            return new Response(JSON.stringify({ message: "Re-queued contacts for redial", count: retryIds.length }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
+
         await supabase.from("campaigns").update({ status: "completed" }).eq("id", campaign_id);
       }
       return new Response(JSON.stringify({ message: "No queued contacts" }), {
