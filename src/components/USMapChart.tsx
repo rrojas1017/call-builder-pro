@@ -5,9 +5,24 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BarChart3, TrendingUp, Target, Clock } from "lucide-react";
+
+export interface StateMetrics {
+  calls: number;
+  conversionRate: number;
+  avgScore: number | null;
+  avgDuration: number;
+}
+
+export type MapMetric = "calls" | "conversion" | "score" | "duration";
 
 interface USMapChartProps {
-  stateData: Record<string, number>;
+  stateData: Record<string, StateMetrics>;
+  metric: MapMetric;
+  onMetricChange: (metric: MapMetric) => void;
+  selectedState: string | null;
+  onStateClick: (abbr: string | null) => void;
 }
 
 const STATE_NAMES: Record<string, string> = {
@@ -78,93 +93,150 @@ const STATE_PATHS: Record<string, { d: string; cx: number; cy: number }> = {
   DC: { d: "M801,260 l2,2 -1,2 -2,-1z", cx: 803, cy: 262 },
 };
 
-function getColorForCount(count: number, maxCount: number): string {
-  if (count === 0) return "hsl(220 14% 14%)";
-  const intensity = Math.min(count / Math.max(maxCount, 1), 1);
-  const lightness = 18 + (1 - intensity) * 22;
-  return `hsl(172 66% ${lightness}%)`;
+const METRIC_COLORS: Record<MapMetric, { hue: number; sat: number; label: string }> = {
+  calls: { hue: 172, sat: 66, label: "Call Volume" },
+  conversion: { hue: 142, sat: 71, label: "Conversion %" },
+  score: { hue: 250, sat: 60, label: "Avg Score" },
+  duration: { hue: 38, sat: 92, label: "Avg Duration" },
+};
+
+function getMetricValue(metrics: StateMetrics, metric: MapMetric): number {
+  switch (metric) {
+    case "calls": return metrics.calls;
+    case "conversion": return metrics.conversionRate;
+    case "score": return metrics.avgScore ?? 0;
+    case "duration": return metrics.avgDuration;
+  }
 }
 
-function getDotRadius(count: number, maxCount: number): number {
-  if (count === 0) return 0;
-  const ratio = count / Math.max(maxCount, 1);
-  return 3 + ratio * 10;
+function getColorForMetric(value: number, maxValue: number, metric: MapMetric): string {
+  if (value === 0 || maxValue === 0) return "hsl(var(--muted))";
+  const { hue, sat } = METRIC_COLORS[metric];
+  const intensity = Math.min(value / maxValue, 1);
+  const lightness = 45 - intensity * 25;
+  return `hsl(${hue} ${sat}% ${lightness}%)`;
 }
 
-export default function USMapChart({ stateData }: USMapChartProps) {
+function formatMetricValue(value: number, metric: MapMetric): string {
+  switch (metric) {
+    case "calls": return `${value}`;
+    case "conversion": return `${value.toFixed(1)}%`;
+    case "score": return value > 0 ? `${value.toFixed(0)}` : "—";
+    case "duration": {
+      const m = Math.floor(value / 60);
+      const s = Math.round(value % 60);
+      return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `${s}s`;
+    }
+  }
+}
+
+export default function USMapChart({ stateData, metric, onMetricChange, selectedState, onStateClick }: USMapChartProps) {
   const [hoveredState, setHoveredState] = useState<string | null>(null);
 
-  const maxCount = useMemo(
-    () => Math.max(...Object.values(stateData), 0),
-    [stateData]
-  );
+  const maxValue = useMemo(() => {
+    const values = Object.values(stateData).map((m) => getMetricValue(m, metric));
+    return Math.max(...values, 0);
+  }, [stateData, metric]);
 
-  const totalCalls = useMemo(
-    () => Object.values(stateData).reduce((a, b) => a + b, 0),
-    [stateData]
-  );
+  const statesWithData = useMemo(() => Object.keys(stateData).filter(k => stateData[k].calls > 0).length, [stateData]);
+
+  const metricTabs: { value: MapMetric; label: string; icon: typeof BarChart3 }[] = [
+    { value: "calls", label: "Volume", icon: BarChart3 },
+    { value: "conversion", label: "Conversion", icon: Target },
+    { value: "score", label: "Score", icon: TrendingUp },
+    { value: "duration", label: "Duration", icon: Clock },
+  ];
 
   return (
     <TooltipProvider delayDuration={0}>
       <div className="surface-elevated rounded-lg p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-sm font-semibold text-foreground">
-              Call Distribution by Region
-            </h3>
+            <h3 className="text-sm font-semibold text-foreground">Call Distribution by Region</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {totalCalls} calls across {Object.keys(stateData).length} states
+              {statesWithData} states with call data
             </p>
           </div>
+          <Tabs value={metric} onValueChange={(v) => onMetricChange(v as MapMetric)}>
+            <TabsList className="h-8">
+              {metricTabs.map((t) => (
+                <TabsTrigger key={t.value} value={t.value} className="text-xs gap-1 px-2 py-1">
+                  <t.icon className="h-3 w-3" />
+                  {t.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
         </div>
-        <svg
-          viewBox="0 0 960 620"
-          className="w-full h-auto"
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {Object.entries(STATE_PATHS).map(([abbr, { d, cx, cy }]) => {
-            const count = stateData[abbr] || 0;
-            const fill = getColorForCount(count, maxCount);
-            const isHovered = hoveredState === abbr;
 
-            return (
-              <Tooltip key={abbr}>
-                <TooltipTrigger asChild>
-                  <g
-                    onMouseEnter={() => setHoveredState(abbr)}
-                    onMouseLeave={() => setHoveredState(null)}
-                    className="cursor-pointer"
-                  >
-                    <path
-                      d={d}
-                      fill={fill}
-                      stroke="hsl(220 10% 22%)"
-                      strokeWidth={isHovered ? 1.5 : 0.5}
-                      opacity={isHovered ? 1 : 0.9}
-                      className="transition-all duration-150"
-                    />
-                    {count > 0 && (
-                      <circle
-                        cx={cx}
-                        cy={cy}
-                        r={getDotRadius(count, maxCount)}
-                        fill="hsl(172 66% 50%)"
-                        opacity={0.7}
+        {statesWithData < 3 ? (
+          <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+            Map populates as campaign calls increase
+          </div>
+        ) : (
+          <svg viewBox="0 0 960 620" className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
+            {Object.entries(STATE_PATHS).map(([abbr, { d, cx, cy }]) => {
+              const metrics = stateData[abbr] || { calls: 0, conversionRate: 0, avgScore: null, avgDuration: 0 };
+              const value = getMetricValue(metrics, metric);
+              const fill = getColorForMetric(value, maxValue, metric);
+              const isHovered = hoveredState === abbr;
+              const isSelected = selectedState === abbr;
+
+              return (
+                <Tooltip key={abbr}>
+                  <TooltipTrigger asChild>
+                    <g
+                      onMouseEnter={() => setHoveredState(abbr)}
+                      onMouseLeave={() => setHoveredState(null)}
+                      onClick={() => onStateClick(isSelected ? null : abbr)}
+                      className="cursor-pointer"
+                    >
+                      <path
+                        d={d}
+                        fill={fill}
+                        stroke={isSelected ? "hsl(var(--primary))" : "hsl(var(--border))"}
+                        strokeWidth={isSelected ? 2.5 : isHovered ? 1.5 : 0.5}
+                        opacity={isHovered || isSelected ? 1 : 0.9}
                         className="transition-all duration-150"
                       />
-                    )}
-                  </g>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs">
-                  <p className="font-medium">{STATE_NAMES[abbr] || abbr}</p>
-                  <p className="text-muted-foreground">
-                    {count} {count === 1 ? "call" : "calls"}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </svg>
+                      {metrics.calls > 0 && (
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={3 + (value / Math.max(maxValue, 1)) * 8}
+                          fill={`hsl(${METRIC_COLORS[metric].hue} ${METRIC_COLORS[metric].sat}% 50%)`}
+                          opacity={0.6}
+                          className="transition-all duration-150 pointer-events-none"
+                        />
+                      )}
+                    </g>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs space-y-1">
+                    <p className="font-semibold">{STATE_NAMES[abbr] || abbr}</p>
+                    <p>{metrics.calls} calls</p>
+                    <p>Conversion: {metrics.conversionRate.toFixed(1)}%</p>
+                    <p>Avg Score: {metrics.avgScore != null ? `${metrics.avgScore.toFixed(0)}` : "—"}</p>
+                    <p>Avg Duration: {formatMetricValue(metrics.avgDuration, "duration")}</p>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </svg>
+        )}
+
+        {/* Legend */}
+        {statesWithData >= 3 && (
+          <div className="flex items-center justify-center gap-2 mt-3">
+            <span className="text-[10px] text-muted-foreground">Low</span>
+            <div
+              className="h-2 w-32 rounded-full"
+              style={{
+                background: `linear-gradient(to right, hsl(${METRIC_COLORS[metric].hue} ${METRIC_COLORS[metric].sat}% 45%), hsl(${METRIC_COLORS[metric].hue} ${METRIC_COLORS[metric].sat}% 20%))`,
+              }}
+            />
+            <span className="text-[10px] text-muted-foreground">High</span>
+          </div>
+        )}
       </div>
     </TooltipProvider>
   );
