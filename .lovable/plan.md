@@ -1,51 +1,75 @@
 
 
-## Voicemail Detection + Live Call Control on Campaign Dashboard
+## Add Concurrent Call Limits to Campaigns
 
-### Part 1: Voicemail Detection (Auto-Disconnect)
+### Current State
+- The `campaigns` table already has a `max_concurrent_calls` column (integer, default 1)
+- **Problem**: `tick-campaign` ignores this value entirely -- it fetches ALL queued contacts and dispatches them in a single batch
+- The campaign creation UI never lets users set this value
 
-Bland AI already reports voicemail status in webhooks, and your webhook handler already maps it to `"voicemail"` status. The missing piece is telling Bland AI to **detect answering machines and hang up automatically** instead of leaving a message.
+### Changes
+
+#### 1. Enforce concurrency in `tick-campaign` edge function
 
 **File:** `supabase/functions/tick-campaign/index.ts`
 
-Add `answering_machine_detection: true` to the Bland batch API `globalSettings`. This tells Bland to detect voicemails/answering machines and end the call immediately, which then triggers the webhook with `status: "voicemail"`.
+Before fetching queued contacts, count how many contacts are currently in `calling` status. Then only dispatch enough contacts to fill the remaining slots.
 
-### Part 2: Live Call Visibility + Stop Button on Campaign Dashboard
+```text
+// Count currently active calls
+const { count: activeCalls } = await supabase
+  .from("contacts").select("id", { count: "exact", head: true })
+  .eq("campaign_id", campaign_id).eq("status", "calling");
 
-Currently the campaign detail page shows contacts in a table but has no way to see which calls are live or stop them. We need to:
+const slotsAvailable = campaign.max_concurrent_calls - (activeCalls || 0);
+if (slotsAvailable <= 0) {
+  return "All concurrent slots busy";
+}
+
+// Fetch only as many queued contacts as we have slots for
+const { data: contacts } = await supabase
+  .from("contacts").select("*")
+  .eq("campaign_id", campaign_id).eq("status", "queued")
+  .order("created_at", { ascending: true })
+  .limit(slotsAvailable);
+```
+
+This applies to both the Bland and Retell branches since the contact fetching happens before the provider split.
+
+#### 2. Add concurrency input to campaign creation UI
+
+**File:** `src/pages/CampaignsPage.tsx`
+
+- Add a `maxConcurrent` state variable (default 5)
+- Add a number input field labeled "Max Concurrent Calls" in the create campaign form
+- Pass the value when inserting the campaign: `max_concurrent_calls: maxConcurrent`
+
+#### 3. Add concurrency display + edit on campaign detail page
 
 **File:** `src/pages/CampaignDetailPage.tsx`
 
-1. **Add a "Live Calls" section** that filters contacts with `status === "calling"` and a non-null `bland_call_id`
-2. **Add a "Stop" button** per live call that invokes the existing `stop-call` edge function (already built and working)
-3. **Add a "Stop All" button** to terminate all active calls at once
-4. **Add `cancelled` and `voicemail` to the status badges** so these new statuses display properly
-5. **Increase the realtime refresh rate** from 15s to 5s while the campaign is running, so live calls appear/disappear faster
+- Show the current `max_concurrent_calls` value near the campaign header
+- Allow editing it (with a save button) so users can throttle up/down while a campaign is running
 
-### Technical Details
+### How It Works After This Change
+
+```text
+Campaign has 100 contacts, max_concurrent_calls = 10
+
+Tick 1: 0 active -> dispatch 10
+Tick 2: 8 still calling -> dispatch 2
+Tick 3: 10 still calling -> dispatch 0 (all slots busy)
+Tick 4: 3 still calling -> dispatch 7
+... until all contacts are processed
+```
+
+The campaign will need to be "ticked" repeatedly (either manually or via a scheduler) to process all contacts in waves. Each tick respects the concurrency limit.
+
+### Technical Summary
 
 | File | Change |
 |---|---|
-| `supabase/functions/tick-campaign/index.ts` | Add `answering_machine_detection: true` to Bland `globalSettings` (one line, ~line 200) |
-| `src/pages/CampaignDetailPage.tsx` | Add "Live Calls" card with stop buttons above the contacts table. Add `voicemail`/`cancelled` status badges. Speed up polling to 5s. Import `PhoneOff` icon. |
-
-**Bland `globalSettings` addition:**
-```text
-globalSettings.answering_machine_detection = true;
-```
-
-**Live Calls section (new card between KPIs and charts):**
-- Filters contacts where `status === "calling"` and `bland_call_id` is set
-- Each row shows name, phone, and a red "Stop" button
-- "Stop All Active Calls" button at the top
-- Stop action calls `supabase.functions.invoke("stop-call", { body: { call_id, contact_id } })`
-- Section only appears when there are active calls
-
-**New status badges:**
-```text
-cancelled: { label: "Cancelled", variant: "outline" }
-voicemail: { label: "Voicemail", variant: "secondary" }
-no_answer: { label: "No Answer", variant: "secondary" }
-busy:      { label: "Busy", variant: "secondary" }
-```
+| `supabase/functions/tick-campaign/index.ts` | Count active calls, calculate available slots, limit queued contact fetch to available slots |
+| `src/pages/CampaignsPage.tsx` | Add `maxConcurrent` state and number input in create form, pass to insert |
+| `src/pages/CampaignDetailPage.tsx` | Display and allow editing of `max_concurrent_calls` |
 
