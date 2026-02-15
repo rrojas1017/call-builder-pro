@@ -227,7 +227,11 @@ export default function CampaignDetailPage() {
   const inProgress = contacts.filter((c) => c.status === "calling").length;
   const completed = contacts.filter((c) => c.status === "completed").length;
   const failed = contacts.filter((c) => c.status === "failed").length;
-  const processed = completed + failed;
+  const voicemail = contacts.filter((c) => c.status === "voicemail").length;
+  const noAnswer = contacts.filter((c) => c.status === "no_answer").length;
+  const busy = contacts.filter((c) => c.status === "busy").length;
+  const nonConnect = voicemail + noAnswer + busy;
+  const processed = completed + failed + nonConnect;
   const successRate = processed > 0 ? Math.round((completed / processed) * 100) : 0;
   const progressPct = total > 0 ? Math.round((processed / total) * 100) : 0;
 
@@ -285,6 +289,8 @@ export default function CampaignDetailPage() {
     { label: "In Progress", value: inProgress },
     { label: "Completed", value: completed },
     { label: "Failed", value: failed },
+    { label: "Voicemail", value: voicemail },
+    { label: "Non-Connect", value: nonConnect },
     { label: "Success Rate", value: `${successRate}%` },
     { label: "Avg Duration", value: avgDuration > 0 ? `${Math.floor(avgDuration / 60)}m ${avgDuration % 60}s` : "—" },
     { label: "Avg Score", value: avgScore > 0 ? `${avgScore}/100` : "—" },
@@ -399,7 +405,7 @@ export default function CampaignDetailPage() {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-9 gap-3">
         {kpis.map((k) => (
           <Card key={k.label}>
             <CardContent className="p-4 text-center">
