@@ -990,6 +990,27 @@ export type Database = {
           },
         ]
       }
+      sidebar_config: {
+        Row: {
+          id: string
+          sections: Json
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          sections: Json
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          sections?: Json
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       sms_conversations: {
         Row: {
           created_at: string
