@@ -17,7 +17,7 @@ import ListsPage from "./pages/ListsPage";
 import CallsPage from "./pages/CallsPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import SettingsPage from "./pages/SettingsPage";
-import GymPage from "./pages/GymPage";
+import UniversityPage from "./pages/UniversityPage";
 import InboundNumbersPage from "./pages/InboundNumbersPage";
 import TeamPage from "./pages/TeamPage";
 import BillingPage from "./pages/BillingPage";
@@ -45,7 +45,7 @@ const App = () => (
             <Route path="/agents/:id/knowledge" element={<AgentKnowledgePage />} />
             <Route path="/agents/:id/edit" element={<EditAgentPage />} />
             <Route path="/create-agent" element={<CreateAgentPage />} />
-            <Route path="/test" element={<GymPage />} />
+            <Route path="/test" element={<UniversityPage />} />
             <Route path="/lists" element={<ListsPage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/campaigns/:id" element={<CampaignDetailPage />} />

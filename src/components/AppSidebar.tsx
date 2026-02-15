@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { 
   LayoutDashboard, Bot, PlusCircle, Megaphone, Phone, PhoneIncoming,
-  BookOpen, Settings, LogOut, Dumbbell, FileSpreadsheet, Users, CreditCard,
+  BookOpen, Settings, LogOut, GraduationCap, FileSpreadsheet, Users, CreditCard,
   Building2, ScrollText, X
 } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
@@ -33,7 +33,7 @@ const navSections = [
     label: "MONITOR",
     items: [
       { label: "Calls", icon: Phone, path: "/calls" },
-      { label: "Gym", icon: Dumbbell, path: "/test" },
+      { label: "University", icon: GraduationCap, path: "/test" },
     ],
   },
   {

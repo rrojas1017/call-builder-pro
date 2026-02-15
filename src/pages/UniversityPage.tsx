@@ -64,7 +64,7 @@ function normalizePhone(raw: string): string {
   return `+${digits}`;
 }
 
-export default function GymPage() {
+export default function UniversityPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -303,9 +303,9 @@ export default function GymPage() {
       const { data: createData, error: createErr } = await supabase.functions.invoke("create-test-run", {
         body: {
           project_id: agentId,
-          name: "Gym Test",
+          name: "University Test",
           concurrency: 1,
-          contacts: [{ name: "Gym Test", phone: normalized }],
+          contacts: [{ name: "University Test", phone: normalized }],
         },
       });
       if (createErr) {
@@ -373,8 +373,8 @@ export default function GymPage() {
   return (
     <div className="p-8 max-w-2xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Gym</h1>
-        <p className="text-muted-foreground mt-1">Train and test your agents one-on-one to measure humanness and refine performance.</p>
+        <h1 className="text-2xl font-bold text-foreground">University</h1>
+        <p className="text-muted-foreground mt-1">Train, test, and graduate your agents — measure humanness and refine performance until they're production-ready.</p>
       </div>
 
       {/* Form */}
