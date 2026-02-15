@@ -24,6 +24,7 @@ import BillingPage from "./pages/BillingPage";
 import AdminCompaniesPage from "./pages/AdminCompaniesPage";
 import AdminCompanyDetailPage from "./pages/AdminCompanyDetailPage";
 import AuditLogPage from "./pages/AuditLogPage";
+import TrainingAuditPage from "./pages/TrainingAuditPage";
 import NotFound from "./pages/NotFound";
 import { ThemeProvider } from "./components/ThemeProvider";
 
@@ -58,6 +59,7 @@ const App = () => (
             <Route path="/admin/companies" element={<AdminCompaniesPage />} />
             <Route path="/admin/companies/:orgId" element={<AdminCompanyDetailPage />} />
             <Route path="/admin/audit" element={<AuditLogPage />} />
+            <Route path="/training-audit" element={<TrainingAuditPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
