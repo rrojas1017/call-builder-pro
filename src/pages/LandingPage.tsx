@@ -30,6 +30,7 @@ import {
 import { useTheme } from "next-themes";
 import appendifyLogo from "@/assets/appendify-logo.png";
 import { useCountUp } from "@/hooks/useCountUp";
+import AgentDemoAnimation from "@/components/AgentDemoAnimation";
 
 function MetricNumber({ value, delay }: { value: string; delay: number }) {
   const { ref, display } = useCountUp(value, 1.5, delay);
@@ -391,32 +392,7 @@ export default function LandingPage() {
             </motion.p>
           </div>
 
-          <div className="relative grid md:grid-cols-3 gap-8">
-            {/* Connecting line */}
-            <div className="hidden md:block absolute top-16 left-[20%] right-[20%] h-px bg-gradient-to-r from-primary/20 via-primary/40 to-primary/20" />
-
-            {steps.map((s, i) => (
-              <motion.div
-                key={s.title}
-                custom={i}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, margin: "-50px" }}
-                variants={fadeUp}
-                className="glass-card rounded-2xl p-10 text-center relative"
-              >
-                {/* Step number */}
-                <div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold mb-6">
-                  {i + 1}
-                </div>
-                <div className="inline-flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-primary mb-5">
-                  <s.icon className="h-7 w-7" />
-                </div>
-                <h3 className="text-lg font-semibold mb-3">{s.title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{s.desc}</p>
-              </motion.div>
-            ))}
-          </div>
+          <AgentDemoAnimation />
         </div>
       </section>
 
