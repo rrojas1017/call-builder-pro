@@ -24,7 +24,7 @@ serve(async (req) => {
     // Get campaign
     const { data: campaign, error: campErr } = await supabase
       .from("campaigns")
-      .select("*, agent_projects!inner(id, org_id)")
+      .select("*, agent_projects!campaigns_agent_project_id_fkey(id, org_id)")
       .eq("id", campaign_id)
       .single();
     if (campErr) throw campErr;

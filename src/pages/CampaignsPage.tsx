@@ -146,7 +146,26 @@ export default function CampaignsPage() {
         }
       }
 
-      toast({ title: "Campaign created", description: "Contacts loaded from selected lists." });
+      // Validate contacts were actually inserted
+      const { count: insertedCount } = await supabase
+        .from("contacts")
+        .select("id", { count: "exact", head: true })
+        .eq("campaign_id", campId);
+
+      if (!insertedCount || insertedCount === 0) {
+        // Clean up: delete campaign_lists and campaign
+        await supabase.from("campaign_lists" as any).delete().eq("campaign_id", campId);
+        await supabase.from("campaigns").delete().eq("id", campId);
+        toast({
+          title: "No valid contacts found",
+          description: "The selected lists have no rows with phone numbers. Check your lists and try again.",
+          variant: "destructive",
+        });
+        setCreating(false);
+        return;
+      }
+
+      toast({ title: "Campaign created", description: `${insertedCount} contacts loaded from selected lists.` });
       setNewName("");
       setSelectedAgent("");
       setSelectedLists([]);
