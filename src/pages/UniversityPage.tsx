@@ -88,13 +88,12 @@ export default function UniversityPage() {
   const [history, setHistory] = useState<TestContact[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
+  const [appliedRefreshKey, setAppliedRefreshKey] = useState(0);
 
   // Fetch applied improvements from DB
   const selectedProjectId = agentId;
   useEffect(() => {
-    if (!selectedProjectId || !contact?.evaluation?.recommended_improvements?.length) {
-      return;
-    }
+    if (!selectedProjectId) return;
     const fetchApplied = async () => {
       const { data } = await supabase
         .from("improvements")
@@ -111,7 +110,7 @@ export default function UniversityPage() {
       setAppliedFixes(keys);
     };
     fetchApplied();
-  }, [selectedProjectId]);
+  }, [selectedProjectId, appliedRefreshKey]);
 
   // Reset all state when agent changes
   useEffect(() => {
@@ -360,7 +359,7 @@ export default function UniversityPage() {
     setContact(item);
     setSelectedHistoryId(item.id);
     setTestRunId(item.test_run_id || null);
-    setAppliedFixes([]);
+    setAppliedRefreshKey(k => k + 1);
     if (item.test_run_id) {
       updateUrlParams({ testRunId: item.test_run_id });
     }
