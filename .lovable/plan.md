@@ -1,39 +1,42 @@
 
-
-## Fix: Pinned Voice Should Respect Active Filters
+## Add Manual Mode Override to Agent Creation Wizard
 
 ### Problem
-When a filter is active (e.g., "Male"), the currently selected voice (Maya, which is female) still appears pinned at the top under the "Selected" heading. This is confusing because it contradicts the active filter.
+The agent mode (Outbound / Inbound / Hybrid) is currently set entirely by the AI during spec generation, with no way for users to correct it if the AI misclassifies their agent.
 
 ### Solution
-Hide the pinned "Selected" voice when it does not match the active filters.
+Add a mode selector in **Step 3 (Review & Save)** that shows the AI-detected mode and lets users override it. The override will be saved to the `agent_specs` table alongside the other settings.
 
 ### Changes
 
-**File: `src/components/VoiceSelector.tsx`**
+**File: `src/pages/CreateAgentPage.tsx`**
 
-Update the `pinnedVoice` logic (around line 46) to also check whether the selected voice passes the current gender, language, and accent filters. If it doesn't match, `pinnedVoice` will be `undefined` and won't render.
+1. **Add state** for agent mode:
+   - `const [agentMode, setAgentMode] = useState<"outbound" | "inbound" | "hybrid">("outbound");`
 
-Specifically:
-1. Change the `pinnedVoice` memo to apply the same filter conditions used for the main list.
-2. If `genderFilter` is not "all" and the pinned voice's gender doesn't match, exclude it.
-3. Same for `languageFilter` and `accentFilter`.
-4. Update the memo's dependency array to include `genderFilter`, `languageFilter`, and `accentFilter`.
+2. **Initialize from spec** -- when the spec is loaded in `handleSaveAnswers` (around line 116), set `agentMode` from `data.spec.mode`.
 
-### Technical Detail
+3. **Add a Mode selector card** in Step 3, placed right after the summary cards and before the Voice Provider section (~line 302). It will use the same button-card pattern already used for Voice Provider and Call Ending:
+   - Three options: Outbound, Inbound, Hybrid
+   - Each with an icon (Phone, PhoneIncoming, PhoneForwarded) and short description
+   - Pre-selected to the AI-detected mode
 
-```typescript
-const pinnedVoice = useMemo(() => {
-  if (!selectedVoice) return undefined;
-  const match = voices.find(matchesSelected);
-  if (!match) return undefined;
-  // Respect active filters
-  if (genderFilter !== "all" && match.gender !== genderFilter) return undefined;
-  if (languageFilter !== "all" && match.language?.toLowerCase() !== languageFilter.toLowerCase()) return undefined;
-  if (accentFilter !== "all" && match.accent?.toLowerCase() !== accentFilter.toLowerCase()) return undefined;
-  return match;
-}, [voices, selectedVoice, genderFilter, languageFilter, accentFilter]);
+4. **Save the override** -- in `handleSaveAgent` (line 141), include `mode: agentMode` in the `agent_specs` update call.
+
+### UI Preview
+
+The new section will look like the existing Voice Provider selector:
+
+```text
++--------------------------------------------------+
+| Agent Mode                                       |
+| The AI detected this as [mode]. Change if needed.|
+|                                                  |
+| [Outbound]     [Inbound]      [Hybrid]          |
+|  Makes calls    Receives       Both directions   |
+|  to contacts    incoming calls                   |
++--------------------------------------------------+
 ```
 
-No other files need changes. The voice count display already accounts for `pinnedVoice` being undefined, so it will adjust automatically.
-
+### No backend or database changes needed
+The `mode` column already exists on `agent_specs` and accepts these three values.
