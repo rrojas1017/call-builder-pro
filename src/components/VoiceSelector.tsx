@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Search, Mic, Loader2, Globe } from "lucide-react";
 import { VoicePlayButton } from "@/components/VoicePlayButton";
@@ -155,10 +156,21 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
         </div>
       </div>
 
-      {/* Count */}
-      <p className="text-xs text-muted-foreground">
-        Showing {filtered.length + (pinnedVoice ? 1 : 0)} of {voices.length} voices
-      </p>
+      {/* Count + excluded note */}
+      <div className="text-xs text-muted-foreground space-y-0.5">
+        <p>Showing {filtered.length + (pinnedVoice ? 1 : 0)} of {voices.length} voices</p>
+        {(genderFilter !== "all" || accentFilter !== "all") && (() => {
+          const unclassified = voices.filter(v =>
+            (genderFilter !== "all" && !v.gender) ||
+            (accentFilter !== "all" && !v.accent)
+          ).length;
+          return unclassified > 0 ? (
+            <p className="text-muted-foreground/70">
+              {unclassified} voice{unclassified !== 1 ? "s" : ""} excluded (missing metadata)
+            </p>
+          ) : null;
+        })()}
+      </div>
 
       {/* Pinned selected voice */}
       {pinnedVoice && (
@@ -246,11 +258,12 @@ function VoiceCard({
         <p className="text-sm font-medium text-foreground">{voice.name}</p>
         <VoicePlayButton voiceId={voice.voice_id} sampleText={sampleText} />
       </div>
-      {voice.description && <p className="text-xs text-muted-foreground">{voice.description}</p>}
-      <div className="flex gap-2 mt-1 flex-wrap">
-        {voice.is_custom && <span className="text-xs text-primary">Custom clone</span>}
-        {voice.gender && <span className="text-xs text-muted-foreground capitalize">{voice.gender}</span>}
-        {voice.accent && <span className="text-xs text-muted-foreground capitalize">{voice.accent}</span>}
+      {voice.description && <p className="text-xs text-muted-foreground mt-1">{voice.description}</p>}
+      <div className="flex gap-1.5 mt-1.5 flex-wrap">
+        {voice.is_custom && <Badge variant="default" className="text-[10px] px-1.5 py-0">Clone</Badge>}
+        {voice.gender && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 capitalize">{voice.gender}</Badge>}
+        {voice.accent && <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">{voice.accent}</Badge>}
+        {voice.language && <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">{voice.language}</Badge>}
       </div>
     </button>
   );
