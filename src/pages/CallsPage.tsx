@@ -44,6 +44,29 @@ type DirFilter = "all" | "inbound" | "outbound";
 type ScoreFilter = "all" | "80+" | "50-79" | "<50";
 type DurationFilter = "all" | "30s+" | "1min+" | "5min+";
 
+// ─── Demo state data (remove when real campaign data is sufficient) ─────────
+const USE_MOCK_MAP_DATA = true;
+const DEMO_STATE_DATA: Record<string, StateMetrics> = {
+  CA: { calls: 47, conversionRate: 34, avgScore: 78, avgDuration: 185 },
+  TX: { calls: 38, conversionRate: 42, avgScore: 82, avgDuration: 210 },
+  NY: { calls: 31, conversionRate: 28, avgScore: 71, avgDuration: 155 },
+  FL: { calls: 29, conversionRate: 51, avgScore: 85, avgDuration: 240 },
+  IL: { calls: 18, conversionRate: 22, avgScore: 65, avgDuration: 120 },
+  PA: { calls: 15, conversionRate: 38, avgScore: 74, avgDuration: 175 },
+  OH: { calls: 14, conversionRate: 31, avgScore: 69, avgDuration: 140 },
+  GA: { calls: 12, conversionRate: 45, avgScore: 80, avgDuration: 195 },
+  NC: { calls: 11, conversionRate: 36, avgScore: 76, avgDuration: 160 },
+  MI: { calls: 10, conversionRate: 19, avgScore: 58, avgDuration: 95 },
+  NJ: { calls: 9, conversionRate: 55, avgScore: 88, avgDuration: 260 },
+  VA: { calls: 8, conversionRate: 40, avgScore: 73, avgDuration: 150 },
+  WA: { calls: 7, conversionRate: 48, avgScore: 81, avgDuration: 200 },
+  AZ: { calls: 6, conversionRate: 33, avgScore: 70, avgDuration: 130 },
+  CO: { calls: 5, conversionRate: 60, avgScore: 91, avgDuration: 280 },
+  MN: { calls: 4, conversionRate: 25, avgScore: 62, avgDuration: 110 },
+  MO: { calls: 3, conversionRate: 67, avgScore: 84, avgDuration: 220 },
+  TN: { calls: 3, conversionRate: 33, avgScore: 72, avgDuration: 145 },
+};
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fmtDuration(s: number | null): string {
@@ -306,6 +329,12 @@ export default function CallsPage() {
         avgDuration: d.durations.length > 0 ? d.durations.reduce((a, b) => a + b, 0) / d.durations.length : 0,
       };
     });
+    // Merge demo data for states without real calls
+    if (USE_MOCK_MAP_DATA) {
+      Object.entries(DEMO_STATE_DATA).forEach(([st, demo]) => {
+        if (!result[st]) result[st] = demo;
+      });
+    }
     return result;
   }, [filteredCalls, callStateMap]);
 
@@ -335,6 +364,12 @@ export default function CallsPage() {
           </div>
 
           {/* Map */}
+          <div className="relative">
+            {USE_MOCK_MAP_DATA && (
+              <Badge variant="secondary" className="absolute top-2 right-2 z-10 text-[10px] opacity-70">
+                Demo data
+              </Badge>
+            )}
           <USMapChart
             stateData={stateMetrics}
             metric={mapMetric}
@@ -342,6 +377,7 @@ export default function CallsPage() {
             selectedState={selectedState}
             onStateClick={setSelectedState}
           />
+          </div>
         </div>
       )}
 
