@@ -9,9 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Plus, Pencil, Trash2, Loader2, BookOpen, ExternalLink, TrendingUp, TrendingDown, Minus, Brain, Trophy, Clock, GraduationCap } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Loader2, BookOpen, ExternalLink, TrendingUp, TrendingDown, Minus, Brain, Trophy, Clock, GraduationCap, Upload } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import UploadSourcesDialog from "@/components/UploadSourcesDialog";
 
 interface KnowledgeEntry {
   id: string;
@@ -53,6 +54,8 @@ const sourceTypeBadge = (type: string) => {
   if (type === "auto_research") return <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">Auto</Badge>;
   if (type === "evaluation") return <Badge variant="outline" className="text-xs bg-yellow-500/10 text-yellow-400 border-yellow-500/20">Eval</Badge>;
   if (type === "success_learning") return <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/20">Success</Badge>;
+  if (type === "document") return <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-400 border-blue-500/20">Document</Badge>;
+  if (type === "url") return <Badge variant="outline" className="text-xs bg-violet-500/10 text-violet-400 border-violet-500/20">URL</Badge>;
   return <Badge variant="outline" className="text-xs bg-green-500/10 text-green-400 border-green-500/20">Manual</Badge>;
 };
 
@@ -252,6 +255,7 @@ export default function AgentKnowledgePage() {
   const [newCategory, setNewCategory] = useState("product_knowledge");
   const [newContent, setNewContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   const fetchData = async () => {
     if (!projectId || !user) return;
@@ -333,9 +337,14 @@ export default function AgentKnowledgePage() {
             </h1>
             {useCase && <p className="text-muted-foreground mt-1">Vertical: {useCase}</p>}
           </div>
-          <Button onClick={() => setAddOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" /> Add Knowledge
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setUploadOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" /> Upload Sources
+            </Button>
+            <Button onClick={() => setAddOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" /> Add Knowledge
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -431,6 +440,15 @@ export default function AgentKnowledgePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {projectId && (
+        <UploadSourcesDialog
+          open={uploadOpen}
+          onOpenChange={setUploadOpen}
+          projectId={projectId}
+          onIngested={fetchData}
+        />
+      )}
     </div>
   );
 }

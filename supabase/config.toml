@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.live-call-stream]
 verify_jwt = false
+
+[functions.ingest-knowledge-source]
+verify_jwt = false
