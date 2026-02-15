@@ -1,30 +1,44 @@
 
 
-## Fix: Double-Counted Attempts
+## Separate Status (Lifecycle) from Outcome (Result)
 
-### Root Cause
+Currently the "Status" column shows everything (queued, calling, completed, voicemail, no_answer, etc.) mixing lifecycle state with call results. The fix splits these into two clear columns:
 
-Two functions both write to the `attempts` column on the `contacts` table:
+### Status Column (Call Lifecycle)
+Shows where the contact is in the process:
+- **Queued** -- waiting to be dialed
+- **Dialing** -- call is currently being placed (was "In Progress")  
+- **Connected** -- call connected and conversation happened (with live indicator when active)
+- **Attempted** -- call was placed but didn't connect (no answer, voicemail, busy, etc.)
 
-1. `tick-campaign/index.ts` sets `attempts: 1` when it begins dialing a contact (line 302)
-2. `receive-bland-webhook/index.ts` reads the current attempts and adds +1 when the call finishes (line 245)
+### Outcome Column (What Happened)
+Shows the result once the call finishes:
+- For connected calls: qualified, disqualified, completed, callback, etc.
+- For non-connected: voicemail, no_answer, busy, disconnected, DNC, failed
+- Blank/dash while queued or still dialing
 
-Result: every single call shows 2 attempts instead of 1.
+### Technical Change
 
-### Fix
+**File: `src/pages/CampaignDetailPage.tsx`**
 
-Remove `attempts: 1` from `tick-campaign` in both places where it sets contact status to "calling". The webhook is the authoritative source -- it increments attempts after a call actually completes. The tick function should only update `status` and `called_at`.
+1. Add a helper function that maps the raw `contact.status` to a display status:
+   - `queued` -> "Queued"
+   - `calling` -> "Dialing" (with live pulse dot)
+   - `completed`, `qualified`, `disqualified` -> "Connected"
+   - `voicemail`, `no_answer`, `busy`, `call_me_later`, `not_available` -> "Attempted"
+   - `failed`, `disconnected`, `dnc`, `cancelled` -> "Attempted"
 
-### Changes
+2. The **Outcome** column will show:
+   - The `call.outcome` value from the calls table if available (qualified, disqualified, completed)
+   - Otherwise fall back to the contact's raw status (voicemail, no_answer, busy, dnc, etc.)
+   - Dash for queued/calling contacts
 
-**File: `supabase/functions/tick-campaign/index.ts`**
+3. Update `STATUS_BADGES` to reflect the new lifecycle labels with appropriate colors:
+   - Queued: outline
+   - Dialing: green/secondary with pulse
+   - Connected: green/default
+   - Attempted: yellow/secondary
 
-- Line ~212: Change `{ status: "calling", attempts: 1, called_at: ... }` to `{ status: "calling", called_at: ... }` (Retell path)
-- Line ~302: Change `{ status: "calling", attempts: 1, called_at: ... }` to `{ status: "calling", called_at: ... }` (Bland batch path)
+4. Outcome badges get their own color scheme based on the result value (qualified = green, DNC = red, voicemail = muted, etc.)
 
-Two small edits in one file. No other files affected.
-
-### Impact
-
-- Existing contacts already showing "2" won't auto-correct (the data is already written), but all future calls will correctly show 1 attempt per actual call
-- Redial logic in tick-campaign reads `attempts` to decide retry eligibility -- this will now be accurate, preventing contacts from hitting `max_attempts` prematurely
+No backend changes needed -- this is purely a display-layer refactor in one file.
