@@ -1,41 +1,40 @@
 
 
-## Enhance Call Data Collection: Zip Validation + Email Capture
+## Make Agent Creation Easier: Templates + Smart Defaults
 
 ### What Changes
 
-Two improvements to how the agent collects information on calls:
+Three UI improvements to Step 1, 2, and 3 of the agent creation wizard -- all in a single file (`src/pages/CreateAgentPage.tsx`). No backend changes needed.
 
-1. **Zip code validation**: Instead of just saying "must be 5 digits," the agent will be instructed to repeat the zip back to the caller for confirmation and re-ask if it doesn't sound like a valid US zip.
+### 1. Quick-Start Templates (Step 1)
 
-2. **Email address collection**: The agent will ask for the caller's email near the end of the call, framed naturally as: *"What's the best email to reach you at? That way we can send you a summary of what we discussed and any next steps."* This gives a genuine, helpful reason rather than sounding like a data grab.
+A row of clickable template cards appears above the blank form. Clicking one pre-fills the agent name and description. The user can still ignore templates and type freely.
 
-### How It Works
+**Templates:**
 
-Both `buildTaskPrompt` files (frontend preview + backend edge functions) will be updated:
+| Template | Name Pre-fill | Description Pre-fill |
+|---|---|---|
+| Health Insurance Pre-Qualifier | Health Insurance Pre-Qualifier | AI agent that calls leads who requested health insurance info, verifies eligibility, collects basic details, and transfers qualified individuals to a licensed agent. |
+| Appointment Setter | Appointment Setter | AI agent that calls to schedule or confirm appointments, collects preferred date/time, and sends a confirmation summary. |
+| Lead Qualifier | Lead Qualifier | AI agent that calls inbound leads, asks qualifying questions, collects contact info, and routes hot leads to the sales team. |
+| Survey / Feedback | Customer Feedback | AI agent that calls customers after a purchase or service to collect satisfaction ratings and open-ended feedback. |
+| Inbound Support | Inbound Support | AI agent that handles incoming calls, answers common questions from a knowledge base, and escalates complex issues to a live agent. |
 
-- **Zip validation prompt** -- Replace the current one-liner `ZIP: Must be exactly 5 digits.` with stronger instructions that tell the agent to read it back and re-ask if unclear.
-- **Email auto-injection** -- Similar to how we already auto-inject "Can I confirm your full name?", the system will auto-inject an email collection step near the end of the fields list if one isn't already present. The prompt will include the natural framing reason.
+Each card shows the template label and a one-line summary. A subtle "Or describe your own below" divider separates templates from the blank form.
+
+### 2. "Use Defaults & Continue" Button (Step 2)
+
+A secondary outlined button appears next to the existing "Confirm & Review" button on Step 2. Clicking it auto-fills any blank answers with the text "Use your best judgment based on industry standards" and advances directly to Step 3. Users who want control can still answer each question manually.
+
+### 3. Background Audio Default (Step 3)
+
+Change the initial state of `backgroundTrack` from `null` to `"office"`, so the most popular option is pre-selected. Users can still toggle it off or pick a different track.
 
 ### Technical Details
 
 | File | Change |
 |---|---|
-| `src/lib/buildTaskPrompt.ts` | Replace zip validation line with expanded instructions. Add email auto-injection logic after the name injection block. |
-| `supabase/functions/_shared/buildTaskPrompt.ts` | Same changes -- this is the backend copy used for actual calls. |
+| `src/pages/CreateAgentPage.tsx` | Add `TEMPLATES` array constant. Render template cards grid in Step 1 above the form. Add "Use Defaults" button in Step 2. Change `backgroundTrack` initial state to `"office"`. |
 
-#### Zip Validation (replaces current single line)
-```
-ZIP CODE: Must be exactly 5 digits. After caller says it, repeat it back: "Just to confirm, that's [zip], correct?" If unclear or fewer/more than 5 digits, ask again: "I want to make sure I have that right -- could you repeat your zip code?"
-```
-
-#### Email Auto-Injection Logic
-- Check if any field already mentions "email"
-- If not, insert near the end of the fields list (before the last field): `"What's the best email address to reach you at? We'll send you a quick summary of what we covered and any next steps."`
-- This keeps the flow natural -- email comes after qualification questions but before wrap-up
-
-### What This Fixes
-- Zip codes won't be mis-heard or partially captured -- the agent confirms them verbally
-- Every qualified call will capture an email for follow-up, increasing lead value
-- The reason given ("send you a summary") is genuine and non-pushy
+No new files, no new dependencies, no database changes.
 
