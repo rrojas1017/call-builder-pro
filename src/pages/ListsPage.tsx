@@ -171,7 +171,7 @@ export default function ListsPage() {
           name: listName,
           file_name: fileName,
           row_count: cleanedRows.length,
-          detected_fields: parseResult.field_map ? parseResult.field_map : parseResult.detected_fields,
+          detected_fields: parseResult.field_map && Object.keys(parseResult.field_map).length > 0 ? parseResult.field_map : parseResult.detected_fields,
         } as any)
         .select()
         .single();
