@@ -414,6 +414,7 @@ export type Database = {
           agent_project_id: string | null
           bland_batch_id: string | null
           created_at: string
+          hipaa_enabled: boolean
           id: string
           max_attempts: number
           max_concurrent_calls: number
@@ -428,6 +429,7 @@ export type Database = {
           agent_project_id?: string | null
           bland_batch_id?: string | null
           created_at?: string
+          hipaa_enabled?: boolean
           id?: string
           max_attempts?: number
           max_concurrent_calls?: number
@@ -442,6 +444,7 @@ export type Database = {
           agent_project_id?: string | null
           bland_batch_id?: string | null
           created_at?: string
+          hipaa_enabled?: boolean
           id?: string
           max_attempts?: number
           max_concurrent_calls?: number

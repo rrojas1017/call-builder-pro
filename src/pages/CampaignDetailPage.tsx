@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save, FileText, Phone, ExternalLink, AlertTriangle, Lightbulb, BookOpen } from "lucide-react";
+import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save, FileText, Phone, ExternalLink, AlertTriangle, Lightbulb, BookOpen, ShieldCheck } from "lucide-react";
 import LiveCallMonitor from "@/components/LiveCallMonitor";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
@@ -349,6 +349,11 @@ export default function CampaignDetailPage() {
               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[campaign.status] || ""}`}>
                 {campaign.status}
               </span>
+              {campaign.hipaa_enabled && (
+                <Badge variant="outline" className="gap-1 text-xs border-primary/50 text-primary">
+                  <ShieldCheck className="h-3 w-3" /> HIPAA
+                </Badge>
+              )}
               {agent && <span>Agent: {agent.name}</span>}
               <span>{new Date(campaign.created_at).toLocaleDateString()}</span>
               <span className="flex items-center gap-1.5">

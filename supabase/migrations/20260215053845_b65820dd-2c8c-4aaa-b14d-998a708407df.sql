@@ -1,0 +1,1 @@
+ALTER TABLE public.campaigns ADD COLUMN hipaa_enabled boolean NOT NULL DEFAULT false;
