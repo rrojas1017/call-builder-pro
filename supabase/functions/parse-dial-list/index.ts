@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const PHONE_HEADERS = ["phone", "phone_number", "mobile", "cell", "telephone", "phone number", "tel", "contact_number"];
-const NAME_HEADERS = ["name", "full_name", "first_name", "contact", "contact_name", "fullname", "customer"];
+const NAME_HEADERS = ["name", "full_name", "first_name", "fname", "lname", "contact", "contact_name", "fullname", "customer"];
 
 function looksLikePhone(value: string): boolean {
   const digits = value.replace(/[^\d]/g, "");
