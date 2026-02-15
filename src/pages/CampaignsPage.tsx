@@ -5,8 +5,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Play, Pause, Megaphone, Plus, Eye, ShieldCheck } from "lucide-react";
+import { Loader2, Play, Pause, Megaphone, Plus, Eye, ShieldCheck, Voicemail, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -61,6 +62,9 @@ export default function CampaignsPage() {
   const [redialStatuses, setRedialStatuses] = useState<string[]>(["voicemail", "no_answer", "busy"]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [hipaaEnabled, setHipaaEnabled] = useState(false);
+  const [voicemailEnabled, setVoicemailEnabled] = useState(false);
+  const [voicemailMessage, setVoicemailMessage] = useState("");
+  const [generatingVoicemail, setGeneratingVoicemail] = useState(false);
 
   const load = async () => {
     const [campRes, agentRes, listRes] = await Promise.all([
@@ -100,6 +104,7 @@ export default function CampaignsPage() {
           redial_delay_minutes: redialDelay,
           redial_statuses: redialStatuses,
           hipaa_enabled: hipaaEnabled,
+          voicemail_message: voicemailEnabled ? voicemailMessage || null : null,
         } as any)
         .select()
         .single();
@@ -200,6 +205,8 @@ export default function CampaignsPage() {
       setRedialDelay(60);
       setRedialStatuses(["voicemail", "no_answer", "busy"]);
       setHipaaEnabled(false);
+      setVoicemailEnabled(false);
+      setVoicemailMessage("");
       setShowCreate(false);
       load();
     } catch (err: any) {
@@ -368,6 +375,60 @@ export default function CampaignsPage() {
               </div>
               <Switch id="hipaa-toggle" checked={hipaaEnabled} onCheckedChange={setHipaaEnabled} />
             </div>
+
+            <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div className="flex items-center gap-3">
+                <Voicemail className="h-5 w-5 text-primary" />
+                <div>
+                  <Label htmlFor="voicemail-toggle" className="font-medium cursor-pointer">Leave Voicemail</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    When a call goes to voicemail, leave a recorded message instead of hanging up.
+                  </p>
+                </div>
+              </div>
+              <Switch id="voicemail-toggle" checked={voicemailEnabled} onCheckedChange={setVoicemailEnabled} />
+            </div>
+
+            {voicemailEnabled && (
+              <div className="space-y-2 pl-1">
+                <div className="flex items-center justify-between">
+                  <Label>Voicemail Message</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={generatingVoicemail || !selectedAgent}
+                    onClick={async () => {
+                      setGeneratingVoicemail(true);
+                      try {
+                        const { data, error } = await supabase.functions.invoke("generate-voicemail-message", {
+                          body: { agent_id: selectedAgent, campaign_name: newName },
+                        });
+                        if (error) throw error;
+                        if (data?.message) {
+                          setVoicemailMessage(data.message);
+                          toast({ title: "Voicemail generated", description: "Review and edit the message as needed." });
+                        }
+                      } catch (err: any) {
+                        toast({ title: "Generation failed", description: err.message, variant: "destructive" });
+                      } finally {
+                        setGeneratingVoicemail(false);
+                      }
+                    }}
+                  >
+                    {generatingVoicemail ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+                    Generate with AI
+                  </Button>
+                </div>
+                <Textarea
+                  placeholder="Hi, this is [agent name] calling about... Please call us back at..."
+                  value={voicemailMessage}
+                  onChange={(e) => setVoicemailMessage(e.target.value)}
+                  rows={3}
+                />
+                <p className="text-xs text-muted-foreground">Keep it under 30 seconds when spoken aloud (~60 words).</p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Select Lists</Label>
