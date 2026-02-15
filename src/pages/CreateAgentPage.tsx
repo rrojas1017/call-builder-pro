@@ -15,18 +15,18 @@ import { VoiceSelector } from "@/components/VoiceSelector";
 
 const STEPS = ["Build Your Agent", "Clarify Details", "Review & Save"];
 
-const TEMPLATES = [
-  { label: "Health Insurance Pre-Qualifier", name: "Health Insurance Pre-Qualifier", desc: "AI agent that calls leads who requested health insurance info, verifies eligibility, collects basic details, and transfers qualified individuals to a licensed agent." },
-  { label: "Appointment Setter", name: "Appointment Setter", desc: "AI agent that calls to schedule or confirm appointments, collects preferred date/time, and sends a confirmation summary." },
-  { label: "Lead Qualifier", name: "Lead Qualifier", desc: "AI agent that calls inbound leads, asks qualifying questions, collects contact info, and routes hot leads to the sales team." },
-  { label: "Survey / Feedback", name: "Customer Feedback", desc: "AI agent that calls customers after a purchase or service to collect satisfaction ratings and open-ended feedback." },
-  { label: "Inbound Support", name: "Inbound Support", desc: "AI agent that handles incoming calls, answers common questions from a knowledge base, and escalates complex issues to a live agent." },
+const EXAMPLE_PROMPTS = [
+  "Calls leads to verify insurance eligibility and transfer qualified ones",
+  "Schedules appointments and sends confirmations",
+  "Surveys customers after purchases for feedback",
+  "Handles inbound support calls and escalates complex issues",
 ];
 
 interface WizardQuestion {
   question: string;
   rationale: string;
   answer: string;
+  suggested_default: string;
   order_index: number;
 }
 
@@ -88,7 +88,11 @@ export default function CreateAgentPage() {
       });
       if (error) throw error;
 
-      setQuestions(data.questions || []);
+      setQuestions((data.questions || []).map((q: any) => ({
+        ...q,
+        suggested_default: q.answer || "",
+        answer: "",
+      })));
       setSpec(data.spec);
       setStep(1);
     } catch (err: any) {
@@ -178,38 +182,6 @@ export default function CreateAgentPage() {
       {/* Step 1: Build Your AI Call Agent */}
       {step === 0 && (
         <div className="space-y-5">
-          {/* Quick-Start Templates */}
-          <div className="surface-elevated rounded-xl p-6 space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">Quick-Start Templates</h2>
-              <p className="text-muted-foreground text-sm mt-1">Pick a template to pre-fill the form, or describe your own below.</p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {TEMPLATES.map((t) => (
-                <button
-                  key={t.label}
-                  onClick={() => { setAgentName(t.name); setDescription(t.desc); setSourceText(t.desc); }}
-                  className={cn(
-                    "rounded-lg border p-3 text-left transition-colors hover:border-primary hover:bg-primary/5",
-                    agentName === t.name && sourceText === t.desc
-                      ? "border-primary bg-primary/10"
-                      : "border-border"
-                  )}
-                >
-                  <p className="text-sm font-medium text-foreground">{t.label}</p>
-                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{t.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 text-muted-foreground text-xs">
-            <div className="h-px flex-1 bg-border" />
-            <span>Or describe your own below</span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-
-          {/* Blank form */}
           <div className="surface-elevated rounded-xl p-6 space-y-5">
             <div>
               <h1 className="text-2xl font-bold text-foreground">Build Your AI Call Agent</h1>
@@ -221,10 +193,21 @@ export default function CreateAgentPage() {
             </div>
             <div className="space-y-2">
               <Label>What should your agent do?</Label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {EXAMPLE_PROMPTS.map((prompt) => (
+                  <button
+                    key={prompt}
+                    onClick={() => { setSourceText(prompt); setDescription(prompt); }}
+                    className="rounded-full border border-border px-3 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-foreground hover:bg-primary/5 transition-colors"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
               <Textarea
                 value={sourceText || description}
                 onChange={(e) => { setSourceText(e.target.value); setDescription(e.target.value); }}
-                placeholder="I need an AI agent that calls people who requested health insurance information, checks qualification, and transfers qualified individuals."
+                placeholder="Describe what your agent should do — e.g. call leads, qualify them, and transfer to a live agent..."
                 rows={6}
               />
             </div>
@@ -277,13 +260,13 @@ export default function CreateAgentPage() {
               onClick={() => {
                 setQuestions((prev) => prev.map((q) => ({
                   ...q,
-                  answer: q.answer || "Use your best judgment based on industry standards",
+                  answer: q.answer || q.suggested_default || "Use your best judgment based on industry standards",
                 })));
-                setTimeout(() => handleSaveAnswers(), 0);
+                toast({ title: "Defaults applied", description: "Review and adjust if needed before continuing." });
               }}
               disabled={loading}
             >
-              Use Defaults & Continue
+              Review Defaults
             </Button>
             <Button onClick={handleSaveAnswers} disabled={loading} className="flex-1">
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />}
