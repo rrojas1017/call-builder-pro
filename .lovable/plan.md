@@ -1,60 +1,40 @@
 
 
-## Fix: Incorrect Call Duration on Campaign Dashboard
+## Fix: Contact List Truncation, Auto-Refresh, and Stuck Call Controls
 
-### Problem
+### Issue 1: Contact List Cut Off at Bottom
 
-The campaign dashboard shows calls lasting "0 seconds" or "2 seconds" when they actually lasted 16s, 38s, or 104s. This is because the webhook trusts `body.call_length` from Bland AI, which reports wildly inaccurate values.
+The contacts table uses `<ScrollArea className="max-h-[400px]">` which doesn't properly constrain the scrollable area. The last rows get clipped without a visible scrollbar.
 
-**Evidence from your campaign:**
+**Fix in `CampaignDetailPage.tsx`:**
+- Change `max-h-[400px]` to `h-[400px]` on the ScrollArea so it becomes a fixed-height scrollable container
+- This ensures all 11 contacts are accessible via scrolling
 
-| Call | Bland reported | Actual (from timestamps) |
-|------|---------------|--------------------------|
-| Ramon Rojas (407 area code) | 2s | 104s (1m 44s) |
-| Jean Rojas | 0s | 16s |
-| Bryan Contreras | 0s | 38s |
+### Issue 2: Campaign Detail Not Auto-Refreshing
 
-### Root Cause
+The periodic refresh interval (line 111) only runs when `campaign?.status === "running"`. Two problems:
+- If the campaign is in any other state (e.g. "paused" but still has active calls), it won't refresh
+- It only refreshes `calls` data, not `contacts` -- so contact status changes from webhooks may be missed if the realtime subscription drops
 
-In `supabase/functions/receive-bland-webhook/index.ts`, the duration is taken directly from the webhook payload:
+**Fix in `CampaignDetailPage.tsx`:**
+- Remove the `campaign?.status !== "running"` guard -- always poll when there are in-progress contacts
+- Also refresh contacts in the polling interval (not just calls)
+- Keep the 5-second interval
 
-```text
-const duration = body.call_length || body.duration || null;
-```
+### Issue 3: Cannot Stop Stuck "In Progress" Calls
 
-Bland AI's `call_length` field is unreliable. The correct approach is to compute duration from `body.created_at` and `body.end_at`, which Bland does report accurately (our `started_at` / `ended_at` timestamps already prove this).
+The "Live Calls" panel (with stop buttons) only appears when contacts have `status === "calling"` AND `bland_call_id` is set. If `bland_call_id` wasn't stored on the contact record, the panel won't show -- leaving no way to stop them.
 
-### Fix
-
-**File:** `supabase/functions/receive-bland-webhook/index.ts`
-
-1. After extracting `body.created_at` and `body.end_at`, compute duration as `(end - start)` in seconds
-2. Fall back to `body.call_length` only if timestamps are missing
-3. Apply this computed duration everywhere in the function (test lab flow, inbound flow, campaign flow)
-
-**Logic:**
-
-```text
-// Compute duration from timestamps (reliable) instead of trusting call_length
-const startedAt = body.created_at ? new Date(body.created_at) : null;
-const endedAt = body.end_at ? new Date(body.end_at) : null;
-let duration: number | null = null;
-if (startedAt && endedAt) {
-  duration = Math.round((endedAt.getTime() - startedAt.getTime()) / 1000);
-} else {
-  duration = body.call_length || body.duration || null;
-}
-```
-
-This is a single change at the top of the function that fixes all three flows (test lab, inbound, campaign) since they all use the same `duration` variable.
-
-### Also: Fix Existing Data
-
-After deploying, the 3 existing calls can be corrected with a one-time database update that recalculates `duration_seconds` from `started_at` / `ended_at` for this campaign's calls.
+**Fix in `CampaignDetailPage.tsx`:**
+- Relax the live calls filter: show contacts with `status === "calling"` even without `bland_call_id`
+- For contacts without a `bland_call_id`, provide a "Force Cancel" button that sets the contact status to `cancelled` directly in the database (since there's no Bland call to terminate)
+- This covers edge cases where the call record exists but the contact wasn't properly linked
 
 ### Technical Summary
 
 | File | Change |
 |---|---|
-| `supabase/functions/receive-bland-webhook/index.ts` | Replace `body.call_length` with computed duration from timestamps. ~5 lines changed at the top of the function. |
+| `src/pages/CampaignDetailPage.tsx` | Fix ScrollArea height from `max-h-[400px]` to `h-[400px]` |
+| `src/pages/CampaignDetailPage.tsx` | Remove status guard on polling interval; also refresh contacts in the poll |
+| `src/pages/CampaignDetailPage.tsx` | Show "calling" contacts in Live Calls even without `bland_call_id`; add Force Cancel option |
 
