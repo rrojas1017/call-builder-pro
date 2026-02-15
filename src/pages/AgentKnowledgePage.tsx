@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Plus, Pencil, Trash2, Loader2, BookOpen, ExternalLink, TrendingUp, TrendingDown, Minus, Brain, Trophy, Clock } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Loader2, BookOpen, ExternalLink, TrendingUp, TrendingDown, Minus, Brain, Trophy, Clock, GraduationCap } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 
 interface KnowledgeEntry {
@@ -55,9 +56,19 @@ const sourceTypeBadge = (type: string) => {
   return <Badge variant="outline" className="text-xs bg-green-500/10 text-green-400 border-green-500/20">Manual</Badge>;
 };
 
+const MATURITY_LEVELS = [
+  { key: "training", label: "Training", color: "text-muted-foreground", bg: "bg-muted", minCalls: 0, minScore: 0 },
+  { key: "developing", label: "Developing", color: "text-blue-400", bg: "bg-blue-500/10", minCalls: 5, minScore: 50 },
+  { key: "competent", label: "Competent", color: "text-amber-400", bg: "bg-amber-500/10", minCalls: 10, minScore: 70 },
+  { key: "expert", label: "Expert", color: "text-emerald-400", bg: "bg-emerald-500/10", minCalls: 20, minScore: 85 },
+  { key: "graduated", label: "Graduated", color: "text-purple-400", bg: "bg-purple-500/10", minCalls: 30, minScore: 90 },
+];
+
 function LearningProgressBar({ entries, projectId }: { entries: KnowledgeEntry[]; projectId: string }) {
   const [snapshots, setSnapshots] = useState<ScoreSnapshot[]>([]);
   const [improvements, setImprovements] = useState<Improvement[]>([]);
+  const [maturityLevel, setMaturityLevel] = useState("training");
+  const [totalCalls, setTotalCalls] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -67,9 +78,13 @@ function LearningProgressBar({ entries, projectId }: { entries: KnowledgeEntry[]
         .eq("project_id", projectId).order("created_at", { ascending: false }).limit(5),
       supabase.from("improvements").select("change_summary, created_at, from_version, to_version")
         .eq("project_id", projectId).order("created_at", { ascending: false }).limit(5),
-    ]).then(([snapRes, impRes]) => {
+      supabase.from("agent_projects").select("maturity_level").eq("id", projectId).single(),
+      supabase.from("calls").select("id", { count: "exact", head: true }).eq("project_id", projectId),
+    ]).then(([snapRes, impRes, projRes, callsRes]) => {
       setSnapshots((snapRes.data || []) as ScoreSnapshot[]);
       setImprovements((impRes.data || []) as Improvement[]);
+      setMaturityLevel((projRes.data as any)?.maturity_level || "training");
+      setTotalCalls(callsRes.count || 0);
       setLoading(false);
     });
   }, [projectId]);
@@ -103,83 +118,122 @@ function LearningProgressBar({ entries, projectId }: { entries: KnowledgeEntry[]
     return `${Math.floor(hrs / 24)}d ago`;
   };
 
+  // Graduation progress
+  const currentIdx = MATURITY_LEVELS.findIndex(l => l.key === maturityLevel);
+  const current = MATURITY_LEVELS[currentIdx] || MATURITY_LEVELS[0];
+  const next = currentIdx < MATURITY_LEVELS.length - 1 ? MATURITY_LEVELS[currentIdx + 1] : null;
+
+  let progressPercent = 100;
+  let progressLabel = "Fully graduated!";
+  if (next) {
+    const callProgress = Math.min(totalCalls / next.minCalls, 1);
+    const scoreProgress = latestScore != null ? Math.min(latestScore / next.minScore, 1) : 0;
+    progressPercent = Math.round(((callProgress + scoreProgress) / 2) * 100);
+    progressLabel = `${totalCalls}/${next.minCalls} calls, avg ${latestScore?.toFixed(0) ?? "?"}/${next.minScore} needed`;
+  }
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="space-y-3">
+      {/* Graduation Progress */}
       <Card>
-        <CardContent className="p-4 flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Brain className="h-4.5 w-4.5 text-primary" />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Total Lessons</p>
-            <p className="text-lg font-semibold text-foreground">{entries.length}</p>
-            <div className="flex gap-1.5 mt-0.5 flex-wrap">
-              {autoCount > 0 && <span className="text-[10px] text-muted-foreground">Auto:{autoCount}</span>}
-              {evalCount > 0 && <span className="text-[10px] text-muted-foreground">Eval:{evalCount}</span>}
-              {successCount > 0 && <span className="text-[10px] text-muted-foreground">Win:{successCount}</span>}
-              {manualCount > 0 && <span className="text-[10px] text-muted-foreground">Manual:{manualCount}</span>}
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <GraduationCap className={`h-5 w-5 ${current.color}`} />
+              <span className="font-semibold text-foreground">{current.label}</span>
+              {next && (
+                <span className="text-xs text-muted-foreground">→ {next.label}</span>
+              )}
             </div>
+            <span className="text-xs text-muted-foreground">{progressLabel}</span>
+          </div>
+          <Progress value={progressPercent} className="h-2" />
+          <div className="flex gap-1">
+            {MATURITY_LEVELS.map((l, i) => (
+              <div key={l.key} className={`flex-1 h-1 rounded-full ${i <= currentIdx ? l.bg.replace("/10", "/40") : "bg-muted"}`} />
+            ))}
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-4 flex items-center gap-3">
-          <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${
-            scoreDelta != null && scoreDelta > 0 ? "bg-emerald-500/10" : scoreDelta != null && scoreDelta < 0 ? "bg-destructive/10" : "bg-muted"
-          }`}>
-            {scoreDelta != null && scoreDelta > 0 ? <TrendingUp className="h-4.5 w-4.5 text-emerald-500" /> :
-             scoreDelta != null && scoreDelta < 0 ? <TrendingDown className="h-4.5 w-4.5 text-destructive" /> :
-             <Minus className="h-4.5 w-4.5 text-muted-foreground" />}
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Score Trend</p>
-            {latestScore != null ? (
-              <>
-                <p className="text-lg font-semibold text-foreground">{latestScore.toFixed(0)}</p>
-                {scoreDelta != null && (
-                  <span className={`text-[10px] ${scoreDelta > 0 ? "text-emerald-500" : scoreDelta < 0 ? "text-destructive" : "text-muted-foreground"}`}>
-                    {scoreDelta > 0 ? "+" : ""}{scoreDelta.toFixed(1)} vs prev
-                  </span>
-                )}
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">No data</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Stats cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Brain className="h-4.5 w-4.5 text-primary" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Total Lessons</p>
+              <p className="text-lg font-semibold text-foreground">{entries.length}</p>
+              <div className="flex gap-1.5 mt-0.5 flex-wrap">
+                {autoCount > 0 && <span className="text-[10px] text-muted-foreground">Auto:{autoCount}</span>}
+                {evalCount > 0 && <span className="text-[10px] text-muted-foreground">Eval:{evalCount}</span>}
+                {successCount > 0 && <span className="text-[10px] text-muted-foreground">Win:{successCount}</span>}
+                {manualCount > 0 && <span className="text-[10px] text-muted-foreground">Manual:{manualCount}</span>}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardContent className="p-4 flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-yellow-500/10 flex items-center justify-center">
-            <Trophy className="h-4.5 w-4.5 text-yellow-500" />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Improvements</p>
-            <p className="text-lg font-semibold text-foreground">{improvements.length > 0 ? improvements.length : 0}</p>
-            {improvements[0]?.change_summary && (
-              <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">{improvements[0].change_summary}</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${
+              scoreDelta != null && scoreDelta > 0 ? "bg-emerald-500/10" : scoreDelta != null && scoreDelta < 0 ? "bg-destructive/10" : "bg-muted"
+            }`}>
+              {scoreDelta != null && scoreDelta > 0 ? <TrendingUp className="h-4.5 w-4.5 text-emerald-500" /> :
+               scoreDelta != null && scoreDelta < 0 ? <TrendingDown className="h-4.5 w-4.5 text-destructive" /> :
+               <Minus className="h-4.5 w-4.5 text-muted-foreground" />}
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Score Trend</p>
+              {latestScore != null ? (
+                <>
+                  <p className="text-lg font-semibold text-foreground">{latestScore.toFixed(0)}</p>
+                  {scoreDelta != null && (
+                    <span className={`text-[10px] ${scoreDelta > 0 ? "text-emerald-500" : scoreDelta < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                      {scoreDelta > 0 ? "+" : ""}{scoreDelta.toFixed(1)} vs prev
+                    </span>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No data</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardContent className="p-4 flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center">
-            <Clock className="h-4.5 w-4.5 text-muted-foreground" />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Last Activity</p>
-            {lastActivity ? (
-              <p className="text-lg font-semibold text-foreground">{formatAgo(lastActivity)}</p>
-            ) : (
-              <p className="text-sm text-muted-foreground">None</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+              <Trophy className="h-4.5 w-4.5 text-yellow-500" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Improvements</p>
+              <p className="text-lg font-semibold text-foreground">{improvements.length > 0 ? improvements.length : 0}</p>
+              {improvements[0]?.change_summary && (
+                <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">{improvements[0].change_summary}</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center">
+              <Clock className="h-4.5 w-4.5 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Last Activity</p>
+              {lastActivity ? (
+                <p className="text-lg font-semibold text-foreground">{formatAgo(lastActivity)}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">None</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
