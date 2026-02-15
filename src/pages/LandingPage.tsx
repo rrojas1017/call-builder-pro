@@ -65,7 +65,7 @@ const features = [
   {
     icon: FlaskConical,
     title: "Test Before You Launch",
-    desc: "Run simulated calls in the Gym. AI evaluates every conversation and scores agent performance before going live.",
+    desc: "Run simulated calls in the University. AI evaluates every conversation and scores agent performance before going live.",
   },
   {
     icon: BookOpen,
@@ -111,8 +111,8 @@ const faqs = [
     a: "Yes. You can purchase inbound numbers directly through Appendify Voz and assign them to any agent. For outbound campaigns, we handle the telephony infrastructure for you.",
   },
   {
-    q: "How does the testing gym work?",
-    a: "The Gym lets you run simulated test calls against your agent. Each call is evaluated by AI on criteria like tone, accuracy, and goal completion — so you can iterate before going live.",
+    q: "How does the University work?",
+    a: "The University lets you run simulated test calls against your agent. Each call is evaluated by AI on criteria like tone, accuracy, and goal completion — so you can iterate and graduate your agent before going live.",
   },
   {
     q: "What voices are available?",
@@ -312,7 +312,7 @@ export default function LandingPage() {
               </AccordionTrigger>
               <AccordionContent className="text-xs text-muted-foreground space-y-2">
                 <ul className="list-disc pl-5 space-y-1.5">
-                  <li>"Fully functional" means the agent can hold a natural conversation, follow your script, and handle basic objections as demonstrated in a test call via the Gym.</li>
+                  <li>"Fully functional" means the agent can hold a natural conversation, follow your script, and handle basic objections as demonstrated in a test call via the University.</li>
                   <li>The 10-minute clock starts when you begin the agent creation wizard and stops when you run your first successful test call.</li>
                   <li>Credit is applied to your Appendify Voz account and can be used toward calling minutes.</li>
                   <li>To claim, contact support with your account email and a screenshot of your wizard start time.</li>
