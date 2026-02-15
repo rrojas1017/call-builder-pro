@@ -110,11 +110,12 @@ function getMetricValue(metrics: StateMetrics, metric: MapMetric): number {
 }
 
 function getColorForMetric(value: number, maxValue: number, metric: MapMetric): string {
-  if (value === 0 || maxValue === 0) return "hsl(var(--muted))";
+  if (value === 0 || maxValue === 0) return "hsl(220 10% 92% / 0.5)";
   const { hue, sat } = METRIC_COLORS[metric];
   const intensity = Math.min(value / maxValue, 1);
-  const lightness = 45 - intensity * 25;
-  return `hsl(${hue} ${sat}% ${lightness}%)`;
+  const lightness = 75 - intensity * 50;
+  const saturation = sat * (0.5 + intensity * 0.5);
+  return `hsl(${hue} ${saturation}% ${lightness}%)`;
 }
 
 function formatMetricValue(value: number, metric: MapMetric): string {
@@ -194,8 +195,8 @@ export default function USMapChart({ stateData, metric, onMetricChange, selected
                       <path
                         d={d}
                         fill={fill}
-                        stroke={isSelected ? "hsl(var(--primary))" : "hsl(var(--border))"}
-                        strokeWidth={isSelected ? 2.5 : isHovered ? 1.5 : 0.5}
+                        stroke={isSelected ? "hsl(var(--primary))" : metrics.calls > 0 ? "hsl(var(--foreground) / 0.2)" : "hsl(var(--border))"}
+                        strokeWidth={isSelected ? 2.5 : isHovered ? 1.5 : 0.8}
                         opacity={isHovered || isSelected ? 1 : 0.9}
                         className="transition-all duration-150"
                       />
@@ -205,7 +206,9 @@ export default function USMapChart({ stateData, metric, onMetricChange, selected
                           cy={cy}
                           r={3 + (value / Math.max(maxValue, 1)) * 8}
                           fill={`hsl(${METRIC_COLORS[metric].hue} ${METRIC_COLORS[metric].sat}% 50%)`}
-                          opacity={0.6}
+                          opacity={0.75}
+                          stroke="hsl(var(--background) / 0.6)"
+                          strokeWidth={1}
                           className="transition-all duration-150 pointer-events-none"
                         />
                       )}
@@ -231,7 +234,7 @@ export default function USMapChart({ stateData, metric, onMetricChange, selected
             <div
               className="h-2 w-32 rounded-full"
               style={{
-                background: `linear-gradient(to right, hsl(${METRIC_COLORS[metric].hue} ${METRIC_COLORS[metric].sat}% 45%), hsl(${METRIC_COLORS[metric].hue} ${METRIC_COLORS[metric].sat}% 20%))`,
+                background: `linear-gradient(to right, hsl(${METRIC_COLORS[metric].hue} ${METRIC_COLORS[metric].sat * 0.5}% 75%), hsl(${METRIC_COLORS[metric].hue} ${METRIC_COLORS[metric].sat}% 25%))`,
               }}
             />
             <span className="text-[10px] text-muted-foreground">High</span>
