@@ -3,8 +3,10 @@ import {
   LayoutDashboard, Bot, PlusCircle, Megaphone, Phone, PhoneIncoming,
   BookOpen, Settings, LogOut, GraduationCap, FileSpreadsheet, Users, CreditCard,
   Building2, ScrollText, X, Pencil, Save, RotateCcw, GripVertical,
-  Brain, LucideIcon
+  Brain, Shield, LucideIcon
 } from "lucide-react";
+import { useUserRole, AppRole } from "@/hooks/useUserRole";
+import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "./ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -38,6 +40,7 @@ export default function AppSidebar() {
   const navigate = useNavigate();
   const { isSuperAdmin, isImpersonating, orgName, resetOrg } = useOrgContext();
   const { sections, adminSection, saveConfig } = useSidebarConfig();
+  const { role } = useUserRole();
 
   const [editMode, setEditMode] = useState(false);
   const [editSections, setEditSections] = useState<SidebarSection[]>([]);
@@ -236,6 +239,18 @@ export default function AppSidebar() {
       </nav>
 
       <div className="border-t border-sidebar-border p-3 space-y-1">
+        {role && (
+          <div className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground">
+            <Shield className="h-4 w-4" />
+            <Badge variant={
+              role === "super_admin" ? "destructive" :
+              role === "admin" ? "default" :
+              role === "analyst" ? "secondary" : "outline"
+            }>
+              {role.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
+            </Badge>
+          </div>
+        )}
         <ThemeToggle />
         <button
           onClick={handleLogout}
