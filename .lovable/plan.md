@@ -1,42 +1,24 @@
 
-## Add Manual Mode Override to Agent Creation Wizard
+## Fix: Applied Fixes Reset When Selecting Prior Call History
 
 ### Problem
-The agent mode (Outbound / Inbound / Hybrid) is currently set entirely by the AI during spec generation, with no way for users to correct it if the AI misclassifies their agent.
+When you click on a prior call in the history list, the "Applied" badges disappear and all improvements show "Apply Fix" buttons again, even though they were already applied.
 
-### Solution
-Add a mode selector in **Step 3 (Review & Save)** that shows the AI-detected mode and lets users override it. The override will be saved to the `agent_specs` table alongside the other settings.
+### Root Cause
+In `UniversityPage.tsx`, when a history item is selected (`handleSelectHistory`, line 363), the code calls `setAppliedFixes([])` to clear the list. The `useEffect` that re-fetches applied fixes from the database (line 94) only has `selectedProjectId` in its dependency array. Since `selectedProjectId` (the agent ID) doesn't change when switching between calls, the effect never re-runs, and the applied fixes stay empty.
 
-### Changes
+### Fix
 
-**File: `src/pages/CreateAgentPage.tsx`**
+**File: `src/pages/UniversityPage.tsx`**
 
-1. **Add state** for agent mode:
-   - `const [agentMode, setAgentMode] = useState<"outbound" | "inbound" | "hybrid">("outbound");`
+Two changes:
 
-2. **Initialize from spec** -- when the spec is loaded in `handleSaveAnswers` (around line 116), set `agentMode` from `data.spec.mode`.
+1. **Remove the early return that depends on `contact`** (line 95). The applied fixes are agent-wide (not call-specific), so they should always be fetched when `selectedProjectId` is available, regardless of the current contact state.
 
-3. **Add a Mode selector card** in Step 3, placed right after the summary cards and before the Voice Provider section (~line 302). It will use the same button-card pattern already used for Voice Provider and Call Ending:
-   - Three options: Outbound, Inbound, Hybrid
-   - Each with an icon (Phone, PhoneIncoming, PhoneForwarded) and short description
-   - Pre-selected to the AI-detected mode
+2. **Add a re-fetch trigger when history is selected.** Instead of clearing `appliedFixes` to `[]` in `handleSelectHistory`, trigger a re-fetch. The simplest approach: add a counter state (e.g., `appliedRefreshKey`) that increments on history selection and is included in the useEffect dependency array.
 
-4. **Save the override** -- in `handleSaveAgent` (line 141), include `mode: agentMode` in the `agent_specs` update call.
-
-### UI Preview
-
-The new section will look like the existing Voice Provider selector:
-
-```text
-+--------------------------------------------------+
-| Agent Mode                                       |
-| The AI detected this as [mode]. Change if needed.|
-|                                                  |
-| [Outbound]     [Inbound]      [Hybrid]          |
-|  Makes calls    Receives       Both directions   |
-|  to contacts    incoming calls                   |
-+--------------------------------------------------+
-```
-
-### No backend or database changes needed
-The `mode` column already exists on `agent_specs` and accepts these three values.
+Specifically:
+- Add state: `const [appliedRefreshKey, setAppliedRefreshKey] = useState(0);`
+- In `handleSelectHistory` (line 363): replace `setAppliedFixes([])` with `setAppliedRefreshKey(k => k + 1)`
+- In the useEffect (line 94): remove the guard on `contact?.evaluation?.recommended_improvements?.length`, and add `appliedRefreshKey` to the dependency array
+- Keep the `setAppliedFixes([])` in the agent-change reset (line 123) and the new-run reset (line 296) as those are correct behaviors
