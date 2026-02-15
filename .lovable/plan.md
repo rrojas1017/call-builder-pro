@@ -1,65 +1,81 @@
 
 
-## Move Voicemail Message to Campaign Creation with AI Generate Option
+## Make the US Map Interactive and Data-Rich
 
-### What Changes
+### The Problem Today
 
-The voicemail message configuration moves from the agent settings page to the campaign creation form. Users get a toggle to enable voicemail and can either write a custom message or have AI generate one based on the agent's profile and campaign name.
+The US map currently pulls state data from `extracted_data.state`, but this field contains messy AI-extracted text like "Unknown", "Not specified", or full sentences ("zip code 32765 suggests Florida"). As a result, the map shows almost nothing useful.
 
-### Database
+### The Fix: Two-Part Approach
 
-**Add `voicemail_message` column to `campaigns` table:**
-```sql
-ALTER TABLE campaigns ADD COLUMN voicemail_message text;
+#### Part 1: Reliable State Data from Phone Numbers
+
+Instead of relying on AI-extracted state values, derive state from the contact's **phone number area code**. Area codes map reliably to US states. This means every outbound call with a phone number gets plotted on the map automatically -- no AI extraction needed.
+
+**New utility file: `src/lib/areaCodeToState.ts`**
+- A lookup map of ~300 US area codes to state abbreviations (e.g., `212 -> NY`, `310 -> CA`, `786 -> FL`)
+- A helper function `phoneToState(phone: string): string | null` that extracts the area code and returns the state
+
+**Database**: Add `to_number` column to the `calls` table so we store the dialed number (currently only in `contacts`). Alternatively, join through `contact_id` to get the phone number.
+
+#### Part 2: Interactive Map with Drill-Down and Metrics
+
+Transform the static map into a rich, clickable analytics view.
+
+**Enhanced `USMapChart` component** -- new props and features:
+
+| Feature | Description |
+|---------|-------------|
+| **Metric selector** | Toggle between: Call Volume, Conversion Rate, Avg Score, Avg Duration |
+| **Color by metric** | Heat map colors change based on selected metric (green gradient for conversion, blue for volume, etc.) |
+| **Click to filter** | Clicking a state filters the call list below to only show calls from that state |
+| **State detail panel** | Hovering shows a rich tooltip: call count, conversion rate, top outcome, avg score |
+| **Legend** | Color scale legend showing what the gradient means |
+| **Active state highlight** | Selected state gets a border highlight and a "Clear filter" option |
+
+**Changes to `CallsPage.tsx`:**
+
+1. Add `selectedState` state variable
+2. Pass an `onStateClick` callback to `USMapChart`
+3. Filter the call list when a state is selected
+4. Show a "Showing calls from [State]" banner with a clear button
+5. Derive per-state metrics (conversion rate, avg score, avg duration) and pass as enriched data to the map
+
+**Updated `USMapChart` props:**
 ```
-
-The existing `voicemail_message` column on `agent_specs` stays for backward compatibility but the campaign-level value takes priority.
-
-### Backend Changes
-
-**File: `supabase/functions/tick-campaign/index.ts`**
-- Change voicemail message resolution to check `campaign.voicemail_message` first, then fall back to `spec.voicemail_message`:
-```
-const vmMessage = campaign.voicemail_message || spec.voicemail_message;
-if (vmMessage) {
-  globalSettings.voicemail = { action: "leave_message", message: vmMessage };
-} else {
-  globalSettings.answering_machine_detection = true;
+interface USMapChartProps {
+  stateData: Record<string, {
+    calls: number;
+    conversionRate: number;
+    avgScore: number | null;
+    avgDuration: number;
+  }>;
+  metric: "calls" | "conversion" | "score" | "duration";
+  onMetricChange: (m: string) => void;
+  selectedState: string | null;
+  onStateClick: (abbr: string | null) => void;
 }
 ```
-- Ensure the campaign query includes the `voicemail_message` column.
 
-**New edge function: `supabase/functions/generate-voicemail-message/index.ts`**
-- Accepts `{ agent_id, campaign_name }` in the body
-- Fetches the agent's name, description, opening line, and tone style from `agent_specs` / `agent_projects`
-- Calls Lovable AI (Gemini Flash) with a prompt like: "Write a concise, professional voicemail message (under 30 seconds when spoken) for an AI agent named [name] calling about [campaign]. Match the tone: [tone]. Include a callback prompt."
-- Returns `{ message: "..." }`
+**Color logic by metric:**
+- **Call Volume**: Teal gradient (current style, but richer)
+- **Conversion Rate**: Green gradient (0% = gray, 100% = bright green)
+- **Avg Score**: Blue-to-purple gradient
+- **Avg Duration**: Amber gradient
 
-### Frontend Changes
-
-**File: `src/pages/CampaignsPage.tsx`**
-
-1. Add state variables:
-   - `voicemailEnabled` (boolean toggle, default false)
-   - `voicemailMessage` (string)
-   - `generatingVoicemail` (boolean for loading state)
-
-2. Add a toggle section after the HIPAA toggle (same visual pattern):
-   - Toggle: "Leave Voicemail" with description text
-   - When enabled, show a textarea for the message
-   - Next to the textarea label, add a "Generate with AI" button that calls the new edge function
-   - The button shows a spinner while generating and populates the textarea with the result
-
-3. Pass `voicemail_message: voicemailEnabled ? voicemailMessage : null` in the campaign insert.
-
-4. Reset `voicemailEnabled` and `voicemailMessage` after successful creation.
-
-### Summary
+### Technical Summary
 
 | Change | File | What |
 |--------|------|------|
-| DB migration | SQL | Add `voicemail_message` to `campaigns` |
-| Campaign priority | `tick-campaign/index.ts` | Check campaign VM message before agent-level |
-| AI generation | New edge function | Generate voicemail message via Lovable AI |
-| Campaign form | `CampaignsPage.tsx` | Toggle + textarea + AI generate button |
+| Area code map | New `src/lib/areaCodeToState.ts` | ~300 area code to state mappings |
+| DB migration | SQL | Query contacts table for phone numbers via `contact_id` join |
+| Map component | `src/components/USMapChart.tsx` | Multi-metric support, click handler, enriched tooltips, legend |
+| Calls page | `src/pages/CallsPage.tsx` | State click filtering, metric selector, per-state metric derivation, phone-to-state resolution |
+
+### What This Unlocks
+
+- **See where your calls convert best** -- click "Conversion Rate" and instantly spot which states perform well
+- **Drill into a state** -- click Texas, and the call list filters to only TX calls
+- **Compare performance geographically** -- toggle between score, duration, and volume to understand regional patterns
+- **Works automatically** -- no need for AI to extract state data; area codes handle it reliably
 
