@@ -6,6 +6,78 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+/** Fields that are expected to be JSON arrays (not objects) */
+const ARRAY_FIELDS = ["must_collect_fields", "humanization_notes", "research_sources"];
+
+/**
+ * Coerce a value into a proper array.
+ * - If already an array, return it.
+ * - If a JSON string that parses to an array, return that.
+ * - If a prose string, split by newlines/sentences into items.
+ * - Otherwise wrap as single-element array.
+ */
+function coerceToArray(value: any, fieldName: string): string[] {
+  if (Array.isArray(value)) return value;
+
+  if (typeof value === "string") {
+    // Try JSON parse first
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed;
+    } catch { /* not JSON */ }
+
+    // Split by newlines, numbered items, or bullet points
+    const lines = value
+      .split(/\n|(?:^|\s)(?:\d+[\.\)]\s)|\s*[-•]\s/gm)
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length > 5); // skip tiny fragments
+
+    if (lines.length > 1) {
+      console.warn(`[apply-improvement] Coerced prose to ${lines.length}-item array for "${fieldName}"`);
+      return lines;
+    }
+
+    // Can't split meaningfully — wrap as single item
+    console.warn(`[apply-improvement] Wrapped prose as single-element array for "${fieldName}"`);
+    return [value.trim()];
+  }
+
+  // For anything else, wrap
+  return [String(value)];
+}
+
+/**
+ * Merge new array items into existing array, deduplicating by normalized substring match.
+ */
+function mergeArrays(existing: string[], incoming: string[]): string[] {
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+  const existingNorms = existing.map(normalize);
+
+  const merged = [...existing];
+  for (const item of incoming) {
+    const norm = normalize(item);
+    // Skip if a substantially similar item already exists
+    const isDuplicate = existingNorms.some(en =>
+      en.includes(norm) || norm.includes(en) ||
+      (norm.length > 10 && en.length > 10 && levenshteinSimilarity(en, norm) > 0.75)
+    );
+    if (!isDuplicate) {
+      merged.push(item);
+      existingNorms.push(norm);
+    }
+  }
+  return merged;
+}
+
+/** Simple similarity check (Jaccard on words) */
+function levenshteinSimilarity(a: string, b: string): number {
+  const wordsA = new Set(a.split(" "));
+  const wordsB = new Set(b.split(" "));
+  const intersection = [...wordsA].filter(w => wordsB.has(w)).length;
+  const union = new Set([...wordsA, ...wordsB]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -28,7 +100,7 @@ serve(async (req) => {
     const fromVersion = spec.version;
     const toVersion = fromVersion + 1;
 
-    // ── Deduplication caution: check if same field was changed recently without improvement ──
+    // ── Deduplication caution ──
     let caution: string | null = null;
     try {
       const rawField = (improvement.field as string).trim();
@@ -47,7 +119,6 @@ serve(async (req) => {
       });
 
       if (recentFieldChanges.length >= 2) {
-        // Check if scores improved between the last two changes
         const { data: snapshots } = await supabase
           .from("score_snapshots")
           .select("spec_version, avg_overall")
@@ -68,19 +139,18 @@ serve(async (req) => {
       console.error("Dedup check failed:", e);
     }
 
-    // Build patch — strip parenthetical descriptions from field names
+    // Build patch
     const rawField = (improvement.field as string).trim();
     const field = rawField.replace(/\s*\(.*\)$/, "").replace(/\//g, ".").trim();
     const patch: Record<string, any> = {};
 
-    // Known columns on agent_specs that are safe to update directly
     const TEXT_FIELDS = ["tone_style", "opening_line", "disclosure_text", "success_definition", "transfer_phone_number", "language", "use_case", "mode", "voice_id", "background_track", "from_number", "voice_provider", "retell_agent_id"];
     const JSON_FIELDS = ["must_collect_fields", "qualification_logic", "disqualification_logic", "escalation_rules", "business_rules", "retry_policy", "qualification_rules", "disqualification_rules", "humanization_notes", "research_sources", "business_hours", "pronunciation_guide"];
     const BOOL_FIELDS = ["consent_required", "disclosure_required", "transfer_required", "sms_enabled"];
     const NUM_FIELDS = ["temperature", "interruption_threshold", "speaking_speed"];
     const ALL_KNOWN = [...TEXT_FIELDS, ...JSON_FIELDS, ...BOOL_FIELDS, ...NUM_FIELDS];
 
-    // Handle dot-notation fields (e.g. "qualification_rules.income_range")
+    // Handle dot-notation fields
     if (field.includes(".")) {
       const [parentCol, ...rest] = field.split(".");
       if (!ALL_KNOWN.includes(parentCol)) {
@@ -100,12 +170,28 @@ serve(async (req) => {
     } else if (TEXT_FIELDS.includes(field)) {
       patch[field] = improvement.suggested_value;
     } else if (JSON_FIELDS.includes(field)) {
+      let parsedValue: any;
       try {
-        patch[field] = typeof improvement.suggested_value === "string"
+        parsedValue = typeof improvement.suggested_value === "string"
           ? JSON.parse(improvement.suggested_value)
           : improvement.suggested_value;
       } catch {
-        patch[field] = improvement.suggested_value;
+        parsedValue = improvement.suggested_value;
+      }
+
+      // ── Array field validation & merge ──
+      if (ARRAY_FIELDS.includes(field)) {
+        const incomingArray = coerceToArray(parsedValue, field);
+        const existingValue = spec[field];
+        const existingArray = Array.isArray(existingValue)
+          ? existingValue
+          : (typeof existingValue === "string" ? coerceToArray(existingValue, field) : []);
+
+        // Merge instead of replace
+        patch[field] = mergeArrays(existingArray, incomingArray);
+        console.log(`[apply-improvement] Merged ${field}: ${existingArray.length} existing + ${incomingArray.length} incoming → ${patch[field].length} total`);
+      } else {
+        patch[field] = parsedValue;
       }
     } else if (BOOL_FIELDS.includes(field)) {
       patch[field] = improvement.suggested_value === "true" || improvement.suggested_value === true;
@@ -121,13 +207,12 @@ serve(async (req) => {
 
     patch.version = toVersion;
 
-    // ── Domain-relevance guard for business_rules and humanization_notes ──
+    // ── Domain-relevance guard ──
     const guardedFields = ["business_rules", "humanization_notes"];
     const patchKeys = Object.keys(patch).filter(k => k !== "version");
     const useCase = (spec.use_case || "").toLowerCase();
 
     if (useCase && patchKeys.some(k => guardedFields.includes(k))) {
-      // Define cross-domain keyword sets that signal wrong vertical
       const DOMAIN_KEYWORDS: Record<string, string[]> = {
         travel: ["hotel", "flight", "resort", "vacation", "itinerary", "luggage", "boarding pass", "cruise", "tourist", "sightseeing"],
         insurance: ["premium", "deductible", "copay", "enrollment", "medicaid", "medicare", "aca", "marketplace", "fpl", "coverage"],
@@ -135,7 +220,6 @@ serve(async (req) => {
         real_estate: ["listing", "open house", "mortgage rate", "escrow", "appraisal", "closing cost"],
       };
 
-      // Find which domain the agent belongs to
       let agentDomain: string | null = null;
       for (const [domain, keywords] of Object.entries(DOMAIN_KEYWORDS)) {
         if (keywords.some(kw => useCase.includes(kw) || useCase.includes(domain))) {

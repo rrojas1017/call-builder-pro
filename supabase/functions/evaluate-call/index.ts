@@ -144,9 +144,17 @@ List specific delivery problems in "delivery_issues".
 Each recommended_improvement should be an object with:
 - "field": the agent_spec field to change
 - "current_value": what it is now
-- "suggested_value": what it should be
+- "suggested_value": what it should be — FORMAT RULES BELOW
 - "reason": why this change would help
 - "severity": one of "critical" (blocking agent success), "important" (noticeably hurts performance), or "minor" (polish)
+
+CRITICAL FORMAT RULES FOR suggested_value:
+- For "must_collect_fields": suggested_value MUST be a JSON array of question strings, e.g. ["What is your zip code?", "Do you currently have Medicaid?"]
+- For "humanization_notes": suggested_value MUST be a JSON array of technique strings, e.g. ["React to personal details the caller shares", "Use their name after they share something personal"]
+- For "research_sources": suggested_value MUST be a JSON array of source strings
+- For other JSON fields (qualification_rules, disqualification_rules, etc.): suggested_value must be valid JSON matching the field's expected schema
+- For text fields (tone_style, opening_line, etc.): suggested_value should be a plain string
+- NEVER return prose paragraphs for array fields. Always return a JSON array.
 
 SEVERITY GUIDELINES:
 - "critical": Issues that directly cause call failures, hang-ups, or compliance violations
@@ -194,7 +202,7 @@ VOICE TUNING RECOMMENDATIONS:
                   properties: {
                     field: { type: "string" },
                     current_value: { type: "string" },
-                    suggested_value: { type: "string" },
+                    suggested_value: { type: "string", description: "For array fields (must_collect_fields, humanization_notes, research_sources), this MUST be a valid JSON array string e.g. [\"item1\", \"item2\"]. For text fields, a plain string. NEVER prose paragraphs for array fields." },
                     reason: { type: "string" },
                     severity: { type: "string", enum: ["critical", "important", "minor"], description: "How impactful this fix is" },
                   },
