@@ -92,7 +92,8 @@ serve(async (req) => {
       }
 
       const data = await res.json();
-      return new Response(JSON.stringify({ websocket_url: data.url || data.websocket_url }), {
+      const wsUrl = data?.data?.url || data?.url || data?.websocket_url;
+      return new Response(JSON.stringify({ websocket_url: wsUrl }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
