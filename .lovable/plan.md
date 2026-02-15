@@ -1,50 +1,41 @@
 
 
-## Fix Voicemail Override Incorrectly Overwriting Successful Calls
+## Fix "contacts_status_check" Constraint Error on Force Cancel
 
-### The bug
+### Problem
 
-When answering machine detection is enabled, Bland sends an `answered_by` field. For calls where it can't determine who picked up, it sends `answered_by: "unknown"`. Our webhook treats `"unknown"` as voicemail, which overwrites legitimate completed calls (like Ramon Rojas's successful qualification and transfer) with a "voicemail" status.
+The `contacts` table has a database CHECK constraint that only allows these status values:
+`queued`, `calling`, `completed`, `failed`, `no_answer`, `voicemail`, `busy`
 
-### The fix
+But the application uses several additional statuses:
+- `cancelled` (force cancel feature)
+- `dnc` (do not call)
+- `disconnected`
+- `call_me_later`
+- `not_available`
 
-Only apply the `answered_by` override when there is NO meaningful conversation. If the transcript contains a real back-and-forth conversation (both assistant and user turns), the call was clearly answered by a human -- `answered_by: "unknown"` should be ignored.
+When you click "Force Cancel", it tries to set `status = 'cancelled'` which violates the constraint.
 
-### Changes
+### Fix
 
-**File: `supabase/functions/receive-bland-webhook/index.ts`**
+**Database migration:** Drop the old CHECK constraint and replace it with one that includes all statuses the system uses:
 
-Replace the blanket `answered_by` override (lines 49-53) with smart logic:
-
+```sql
+ALTER TABLE contacts DROP CONSTRAINT contacts_status_check;
+ALTER TABLE contacts ADD CONSTRAINT contacts_status_check 
+  CHECK (status = ANY (ARRAY[
+    'queued', 'calling', 'completed', 'failed', 
+    'no_answer', 'voicemail', 'busy',
+    'cancelled', 'dnc', 'disconnected', 
+    'call_me_later', 'not_available'
+  ]));
 ```
-const answeredBy = body.answered_by || null;
-const hasRealConversation = transcript && transcript.includes("user:") && transcript.length > 200;
 
-if ((answeredBy === "voicemail" || answeredBy === "machine") && !hasRealConversation) {
-  contactStatus = "voicemail";
-}
-// "unknown" only overrides if there's no real conversation
-if (answeredBy === "unknown" && !hasRealConversation) {
-  contactStatus = "voicemail";
-}
-```
-
-This ensures:
-- Calls with `answered_by: "voicemail"` or `"machine"` AND no real transcript -> correctly marked as voicemail
-- Calls with `answered_by: "unknown"` but a full conversation transcript -> stay as "completed"
-- Calls with no `answered_by` field -> unchanged behavior
-
-**File: `supabase/functions/receive-retell-webhook/index.ts`**
-
-Apply the same transcript-aware logic to the Retell webhook for consistency.
-
-**Data fix:** Update Ramon Rojas's contact record to correct status from "voicemail" to "completed".
+No code changes needed -- the UI and webhooks already handle all these statuses correctly. The constraint is the only thing blocking them.
 
 ### Files changed
 
-| File | Change |
+| Change | Detail |
 |---|---|
-| `supabase/functions/receive-bland-webhook/index.ts` | Make voicemail override transcript-aware |
-| `supabase/functions/receive-retell-webhook/index.ts` | Same fix for Retell provider |
-| Database | Fix Ramon Rojas's contact status |
+| Database migration | Update `contacts_status_check` to include all valid statuses |
 
