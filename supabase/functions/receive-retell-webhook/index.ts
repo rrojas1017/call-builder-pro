@@ -48,9 +48,13 @@ serve(async (req) => {
     else if (disconnectReason === "call_me_later" || disconnectReason === "callback") contactStatus = "call_me_later";
     else if (disconnectReason === "not_available") contactStatus = "not_available";
 
-    // Override with answering machine detection result
+    // Override with answering machine detection result (transcript-aware)
     const answeredBy = callData.answered_by || null;
-    if (answeredBy === "voicemail" || answeredBy === "machine" || answeredBy === "unknown") {
+    const hasRealConversation = transcript && transcript.includes("user:") && transcript.length > 200;
+    if ((answeredBy === "voicemail" || answeredBy === "machine") && !hasRealConversation) {
+      contactStatus = "voicemail";
+    }
+    if (answeredBy === "unknown" && !hasRealConversation) {
       contactStatus = "voicemail";
     }
 
