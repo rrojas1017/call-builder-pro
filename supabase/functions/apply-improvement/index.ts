@@ -262,6 +262,7 @@ serve(async (req) => {
       to_version: toVersion,
       change_summary: improvement.reason || `Updated ${field}`,
       patch,
+      source_recommendation: improvement.original_key || null,
     });
     if (impErr) console.error("Error recording improvement:", impErr);
 
