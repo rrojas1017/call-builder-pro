@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -28,6 +28,7 @@ interface TestContact {
   outcome: string | null;
   error: string | null;
   extracted_data: any;
+  recording_url?: string | null;
   created_at?: string;
   test_run_id?: string;
   bland_call_id?: string | null;
@@ -179,6 +180,7 @@ export default function UniversityPage() {
       outcome: r.outcome,
       error: r.error,
       extracted_data: r.extracted_data,
+      recording_url: r.recording_url,
       created_at: r.created_at,
       test_run_id: r.test_run_id,
     }));
@@ -620,6 +622,10 @@ function ResultCard({
         </div>
       )}
 
+      {contact.recording_url && (
+        <RecordingPlayer url={contact.recording_url} />
+      )}
+
       {contact.status === "completed" && !contact.evaluation && (
         <GradingProgress hasTranscript={!!contact.transcript} />
       )}
@@ -783,6 +789,50 @@ function SeverityBadge({ severity }: { severity?: string }) {
     <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${styles[severity] || styles.minor}`}>
       {severity}
     </span>
+  );
+}
+
+function RecordingPlayer({ url }: { url: string }) {
+  const [speed, setSpeed] = useState(1);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const speeds = [1, 1.25, 1.5, 2];
+
+  const handleSpeedChange = (s: number) => {
+    setSpeed(s);
+    if (audioRef.current) audioRef.current.playbackRate = s;
+  };
+
+  return (
+    <div className="space-y-2">
+      <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+        🎧 Call Recording
+      </h5>
+      <div className="rounded-lg bg-muted/30 border border-border p-3 space-y-2">
+        <audio
+          ref={audioRef}
+          src={url}
+          controls
+          className="w-full h-8"
+          onPlay={() => { if (audioRef.current) audioRef.current.playbackRate = speed; }}
+        />
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground mr-1">Speed:</span>
+          {speeds.map((s) => (
+            <button
+              key={s}
+              onClick={() => handleSpeedChange(s)}
+              className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                speed === s
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              {s}x
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
