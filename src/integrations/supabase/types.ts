@@ -1229,29 +1229,35 @@ export type Database = {
         Row: {
           claude_results: Json | null
           created_at: string | null
+          cross_agent_context: Json | null
           gpt_results: Json | null
           id: string
           merged_score: number | null
           org_id: string
           project_id: string
+          unified_results: Json | null
         }
         Insert: {
           claude_results?: Json | null
           created_at?: string | null
+          cross_agent_context?: Json | null
           gpt_results?: Json | null
           id?: string
           merged_score?: number | null
           org_id: string
           project_id: string
+          unified_results?: Json | null
         }
         Update: {
           claude_results?: Json | null
           created_at?: string | null
+          cross_agent_context?: Json | null
           gpt_results?: Json | null
           id?: string
           merged_score?: number | null
           org_id?: string
           project_id?: string
+          unified_results?: Json | null
         }
         Relationships: [
           {
