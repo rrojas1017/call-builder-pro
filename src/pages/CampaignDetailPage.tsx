@@ -269,7 +269,9 @@ export default function CampaignDetailPage() {
   const retryable = contacts.filter((c) => retryableStatuses.includes(c.status)).length;
   const terminal = contacts.filter((c) => terminalStatuses.includes(c.status)).length;
   const processed = terminal + retryable;
-  const successRate = processed > 0 ? Math.round((completed / processed) * 100) : 0;
+  const qualified = calls.filter((c) => c.outcome === "qualified").length;
+  const called = contacts.filter((c) => c.status !== "queued").length;
+  const conversionRate = called > 0 ? Math.round((qualified / called) * 100) : 0;
   const progressPct = total > 0 ? Math.round((processed / total) * 100) : 0;
 
   // Call-level stats
@@ -324,11 +326,11 @@ export default function CampaignDetailPage() {
   const kpis = [
     { label: "Total Contacts", value: total },
     { label: "In Progress", value: inProgress },
-    { label: "Completed", value: completed },
+    { label: "Qualified", value: qualified },
     { label: "Terminal", value: terminal },
     { label: "Retryable", value: retryable },
     { label: "Failed", value: failed },
-    { label: "Success Rate", value: `${successRate}%` },
+    { label: "Conversion Rate", value: `${conversionRate}%` },
     { label: "Avg Duration", value: avgDuration > 0 ? `${Math.floor(avgDuration / 60)}m ${avgDuration % 60}s` : "—" },
     { label: "Avg Score", value: avgScore > 0 ? `${avgScore}/100` : "—" },
   ];
