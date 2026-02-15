@@ -43,6 +43,8 @@ function buildCompactKnowledge(entries: KnowledgeEntry[]): string {
     objection_handling: "OBJECTION HANDLING",
     industry_insight: "INDUSTRY INSIGHTS",
     competitor_info: "COMPETITOR AWARENESS",
+    winning_pattern: "WINNING PATTERNS",
+    conversation_technique: "CONVERSATION TIPS",
   };
   const parts: string[] = [];
   for (const [cat, items] of Object.entries(grouped)) {
