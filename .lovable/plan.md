@@ -1,23 +1,39 @@
 
 
-## Add Call Recording Playback to University Call History
+## Fix: Taladiga Campaign Not Dialing
 
 ### Problem
-When a call is selected from the Call History in the University page, there is no way to listen to the recording. The `recording_url` column exists in the database but is neither fetched nor displayed.
+The campaign is stuck in "running" with 8 queued contacts but no calls are being made. The Bland Batch API is returning this error:
 
-### Changes
+```
+BATCH_V2_CREATE_VALIDATION_ERROR: Either one of a `task`, `pathway_id`, or `persona_id`
+property must be provided in the global object as a fallback
+```
 
-**File: `src/pages/UniversityPage.tsx`**
+### Root Cause
+In `supabase/functions/tick-campaign/index.ts`, the `task` prompt is only included inside each individual `call_object` (line 235), but Bland's V2 batch API **requires** a `task` in the `global` settings object as a fallback -- even if every call object already has one.
 
-1. **Add `recording_url` to the `TestContact` interface** (around line 30) -- add `recording_url?: string | null;`
+The `globalSettings` object (line 250) is missing the `task` field entirely.
 
-2. **Include `recording_url` in the `loadHistory` mapping** (around line 171-184) -- add `recording_url: r.recording_url` to the mapped object.
+### Fix
 
-3. **Add an audio player in the Result section** (after the transcript block, around line 621). Display an HTML5 audio player with playback speed controls (1x, 1.25x, 1.5x, 2x) when `contact.recording_url` is available. This follows the same pattern already used on the Calls page.
+**File: `supabase/functions/tick-campaign/index.ts`**
 
-4. **Also include `recording_url` in the real-time contact updates** -- ensure when a contact is loaded from the active test run (not just history), the recording URL is also available once the call completes.
+Add the base `task` prompt to the `globalSettings` object (around line 253), right alongside the other global properties:
 
-### What Users Get
-- Full recording playback directly in the University result view
-- Playback speed controls (1x to 2x) so they can quickly scrub through to the relevant section
-- Works for both new test calls and historical calls loaded from the history list
+```typescript
+const globalSettings: any = {
+  task: task,   // <-- add this line
+  record: true, webhook: webhookUrl,
+  summary_prompt: "...",
+  model: "base", language: spec.language || "en",
+};
+```
+
+Also add `first_sentence` to globalSettings for the same reason:
+
+```typescript
+globalSettings.first_sentence = spec.opening_line || "Hey there, you got a quick minute?";
+```
+
+This is a one-line fix in the edge function. Once deployed, the campaign will start dialing on the next tick. You can re-trigger it by calling `start-campaign` again or waiting for the next automatic tick.
