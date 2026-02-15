@@ -115,23 +115,32 @@ export default function CampaignsPage() {
             .single();
 
           const rawFields = (listMeta as any)?.detected_fields;
-          const fields: string[] = Array.isArray(rawFields) ? rawFields : (rawFields && typeof rawFields === "object" ? Object.keys(rawFields) : []);
+          let fields: string[] = Array.isArray(rawFields) ? rawFields : (rawFields && typeof rawFields === "object" ? Object.keys(rawFields) : []);
+          // Fallback: if no fields detected, infer from actual row data keys
+          if (fields.length === 0 && rows.length > 0) {
+            fields = Object.keys((rows[0] as any).row_data || {});
+          }
           // Simple heuristic: find phone and name columns
           const phoneCols = ["phone", "phone_number", "mobile", "cell", "telephone"];
-          const nameCols = ["name", "full_name", "first_name", "contact"];
+          const nameCols = ["name", "full_name", "first_name", "fname", "contact"];
           const phoneField = fields.find((f) => phoneCols.includes(f.toLowerCase())) || fields[1] || "";
           const nameField = fields.find((f) => nameCols.includes(f.toLowerCase())) || fields[0] || "";
+          const lnameField = fields.find((f) => f.toLowerCase() === "lname" || f.toLowerCase() === "last_name");
 
           const contacts = (rows as any[]).map((r: any) => {
             const rd = r.row_data;
             const extraFields: Record<string, any> = {};
+            const skipFields = [phoneField, nameField, lnameField].filter(Boolean);
             fields.forEach((f) => {
-              if (f !== phoneField && f !== nameField) extraFields[f] = rd[f];
+              if (!skipFields.includes(f)) extraFields[f] = rd[f];
             });
+            const contactName = lnameField && rd[lnameField]
+              ? `${rd[nameField] || ""} ${rd[lnameField]}`.trim()
+              : rd[nameField] || "Unknown";
             return {
               campaign_id: campId,
               list_id: listId,
-              name: rd[nameField] || "Unknown",
+              name: contactName || "Unknown",
               phone: rd[phoneField] || "",
               extra_data: Object.keys(extraFields).length > 0 ? extraFields : null,
             };
