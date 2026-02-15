@@ -652,7 +652,7 @@ export default function CampaignDetailPage() {
                   </div>
                 </SheetHeader>
 
-                {contact.status === "calling" && (contact.bland_call_id || (call?.retell_call_id)) && (
+                {contact.status === "calling" && (
                   <LiveCallMonitor
                     blandCallId={contact.bland_call_id}
                     retellCallId={call?.retell_call_id}
