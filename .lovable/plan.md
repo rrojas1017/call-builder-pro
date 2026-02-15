@@ -1,33 +1,39 @@
 
 
-## Apply Pending Fixes for ACA Qualifier
+## Fix: Pinned Voice Should Respect Active Filters
 
-### Current State
+### Problem
+When a filter is active (e.g., "Male"), the currently selected voice (Maya, which is female) still appears pinned at the top under the "Selected" heading. This is confusing because it contradicts the active filter.
 
-The ACA Qualifier agent (version 46) already has both recommended values in its spec:
-- **interruption_threshold**: already set to `1000` (matching the suggestion)
-- **must_collect_fields**: already includes "What is your life event?" and "Are you currently on Medicaid?" (covering the suggestion)
+### Solution
+Hide the pinned "Selected" voice when it does not match the active filters.
 
-However, the UI still shows "Apply Fix" buttons because no improvement record with the exact composite key exists in the `improvements` table for these specific recommendations.
+### Changes
 
-### Plan
+**File: `src/components/VoiceSelector.tsx`**
 
-**Apply both fixes via the existing `apply-improvement` edge function** so they are recorded in the `improvements` table and the UI reflects them as "Applied":
+Update the `pinnedVoice` logic (around line 46) to also check whether the selected voice passes the current gender, language, and accent filters. If it doesn't match, `pinnedVoice` will be `undefined` and won't render.
 
-1. **Call `apply-improvement`** for `must_collect_fields` with the suggested value from the evaluation. Since the edge function uses merge-instead-of-replace for array fields, this will safely deduplicate and not corrupt existing fields.
+Specifically:
+1. Change the `pinnedVoice` memo to apply the same filter conditions used for the main list.
+2. If `genderFilter` is not "all" and the pinned voice's gender doesn't match, exclude it.
+3. Same for `languageFilter` and `accentFilter`.
+4. Update the memo's dependency array to include `genderFilter`, `languageFilter`, and `accentFilter`.
 
-2. **Call `apply-improvement`** for `interruption_threshold` with value `1000`. Since it is already 1000, the only effect is a version bump and the improvement being recorded.
+### Technical Detail
 
-3. After both calls succeed, the `TestResultsModal` / `UniversityPage` will automatically detect the matching keys in the `improvements` table and render green "Applied" badges instead of "Apply Fix" buttons.
+```typescript
+const pinnedVoice = useMemo(() => {
+  if (!selectedVoice) return undefined;
+  const match = voices.find(matchesSelected);
+  if (!match) return undefined;
+  // Respect active filters
+  if (genderFilter !== "all" && match.gender !== genderFilter) return undefined;
+  if (languageFilter !== "all" && match.language?.toLowerCase() !== languageFilter.toLowerCase()) return undefined;
+  if (accentFilter !== "all" && match.accent?.toLowerCase() !== accentFilter.toLowerCase()) return undefined;
+  return match;
+}, [voices, selectedVoice, genderFilter, languageFilter, accentFilter]);
+```
 
-### Technical Details
-
-- No code changes needed -- the existing `handleApplyFix` and `handleApplyAllFixes` functions in `TestResultsModal.tsx` already handle this correctly.
-- The edge function `apply-improvement` handles array merging and deduplication, so calling it for `must_collect_fields` is safe.
-- The version will bump from 46 to 48 (one bump per fix), which is expected behavior.
-- The `improvementKey` function (`normalizeField(field) + "::" + JSON.stringify(suggested_value)`) is used to track applied status -- once improvements are recorded, the UI will match them.
-
-### Implementation
-
-I will invoke the `apply-improvement` edge function twice in sequence with the exact field/value pairs from the evaluation's `recommended_improvements`, then verify the spec version and improvement records are correct.
+No other files need changes. The voice count display already accounts for `pinnedVoice` being undefined, so it will adjust automatically.
 
