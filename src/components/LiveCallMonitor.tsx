@@ -28,7 +28,7 @@ export default function LiveCallMonitor({ blandCallId, retellCallId, contactId, 
   const scrollRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const seenIdsRef = useRef<Set<string>>(new Set());
+  const prevIsActiveRef = useRef(isActive);
 
   const isBland = !!blandCallId;
   const isRetell = !!retellCallId && !blandCallId;
@@ -45,30 +45,22 @@ export default function LiveCallMonitor({ blandCallId, retellCallId, contactId, 
         });
         if (error || !data?.transcripts) return;
 
-        const newLines: TranscriptLine[] = [];
-        for (const t of data.transcripts) {
-          if (!t.text?.trim()) continue;
-          const id = String(t.id);
-          if (seenIdsRef.current.has(id)) continue;
-          seenIdsRef.current.add(id);
-          newLines.push({
-            id,
+        const allLines: TranscriptLine[] = data.transcripts
+          .filter((t: any) => t.text?.trim())
+          .map((t: any) => ({
+            id: String(t.id),
             role: t.role as "agent" | "caller",
             text: t.text,
             timestamp: t.created_at ? new Date(t.created_at).getTime() : undefined,
-          });
-        }
-
-        if (newLines.length > 0) {
-          setLines((prev) => [...prev, ...newLines]);
-        }
+          }));
+        setLines(allLines);
       } catch {
         // silently retry on next poll
       }
     };
 
     fetchTranscript();
-    const interval = setInterval(fetchTranscript, 2500);
+    const interval = setInterval(fetchTranscript, 1500);
     return () => clearInterval(interval);
   }, [isActive, isBland, blandCallId]);
 
@@ -91,9 +83,6 @@ export default function LiveCallMonitor({ blandCallId, retellCallId, contactId, 
         const segments = data.transcript.split("\n").filter((s: string) => s.trim());
         for (let i = 0; i < segments.length; i++) {
           const seg = segments[i];
-          const id = `retell-${i}`;
-          if (seenIdsRef.current.has(id)) continue;
-
           const colonIdx = seg.indexOf(":");
           if (colonIdx === -1) continue;
 
@@ -101,16 +90,15 @@ export default function LiveCallMonitor({ blandCallId, retellCallId, contactId, 
           const text = seg.slice(colonIdx + 1).trim();
           if (!text) continue;
 
-          seenIdsRef.current.add(id);
           parsed.push({
-            id,
+            id: `retell-${i}`,
             role: speaker === "agent" || speaker === "assistant" ? "agent" : "caller",
             text,
           });
         }
 
         if (parsed.length > 0) {
-          setLines(parsed); // Replace all for Retell since we re-parse each time
+          setLines(parsed);
         }
       } catch {
         // silently retry
@@ -127,16 +115,35 @@ export default function LiveCallMonitor({ blandCallId, retellCallId, contactId, 
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [lines]);
 
-  // Clean up WebSocket + AudioContext when call ends
+  // Final fetch when call ends + clean up WebSocket/AudioContext
   useEffect(() => {
-    if (!isActive) {
+    if (prevIsActiveRef.current && !isActive) {
+      // Call just ended — do one final transcript fetch
+      if (isBland && blandCallId) {
+        supabase.functions.invoke("live-call-stream", {
+          body: { call_id: blandCallId, action: "transcript" },
+        }).then(({ data }) => {
+          if (data?.transcripts) {
+            const allLines: TranscriptLine[] = data.transcripts
+              .filter((t: any) => t.text?.trim())
+              .map((t: any) => ({
+                id: String(t.id),
+                role: t.role as "agent" | "caller",
+                text: t.text,
+                timestamp: t.created_at ? new Date(t.created_at).getTime() : undefined,
+              }));
+            setLines(allLines);
+          }
+        }).catch(() => {});
+      }
       wsRef.current?.close();
       wsRef.current = null;
       audioCtxRef.current?.close();
       audioCtxRef.current = null;
       setListening(false);
     }
-  }, [isActive]);
+    prevIsActiveRef.current = isActive;
+  }, [isActive, isBland, blandCallId]);
 
   // Clean up on unmount
   useEffect(() => {
