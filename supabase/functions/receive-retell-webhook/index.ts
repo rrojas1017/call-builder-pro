@@ -116,7 +116,7 @@ serve(async (req) => {
       if (callErr) console.error("Error upserting Retell call:", callErr);
 
       // Trigger evaluate-call
-      if (upsertedCall?.id && transcript && contactStatus === "completed") {
+      if (upsertedCall?.id && transcript) {
         fetch(`${supabaseUrl}/functions/v1/evaluate-call`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
@@ -180,7 +180,7 @@ serve(async (req) => {
     }
 
     // Trigger evaluate-call
-    if (upsertedCall?.id && transcript && contactStatus === "completed") {
+    if (upsertedCall?.id && transcript) {
       fetch(`${supabaseUrl}/functions/v1/evaluate-call`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
