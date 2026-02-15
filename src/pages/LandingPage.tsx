@@ -24,7 +24,10 @@ import {
   Zap,
   ArrowRight,
   Sparkles,
+  Sun,
+  Moon,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import appendifyLogo from "@/assets/appendify-logo.png";
 import { useCountUp } from "@/hooks/useCountUp";
 
@@ -132,6 +135,7 @@ const navLinks = ["Guarantee", "Features", "How It Works", "FAQ"];
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -172,6 +176,14 @@ export default function LandingPage() {
           </div>
 
           <div className="hidden md:flex items-center gap-3">
+            <button
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="relative p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              title="Toggle theme"
+            >
+              <Sun className="h-4 w-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute inset-0 m-auto h-4 w-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" />
+            </button>
             <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
               <Link to="/auth">Sign In</Link>
             </Button>
@@ -193,6 +205,17 @@ export default function LandingPage() {
 
         {mobileMenuOpen && (
           <div className="md:hidden glass-card border-t border-border/50 px-4 pb-5 pt-2 space-y-1">
+            <button
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="flex w-full items-center gap-3 text-sm text-muted-foreground py-2.5 px-3 rounded-lg hover:bg-muted/50 transition-colors"
+            >
+              <span className="relative h-4 w-4">
+                <Sun className="h-4 w-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0 absolute inset-0" />
+                <Moon className="h-4 w-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100 absolute inset-0" />
+              </span>
+              <span className="dark:hidden">Light Mode</span>
+              <span className="hidden dark:inline">Dark Mode</span>
+            </button>
             {navLinks.map((link) => (
               <a
                 key={link}
