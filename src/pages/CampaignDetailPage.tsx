@@ -211,7 +211,11 @@ export default function CampaignDetailPage() {
 
   const handleStopAll = async () => {
     for (const c of liveCalls) {
-      handleStopCall(c.bland_call_id, c.id);
+      if (c.bland_call_id) {
+        handleStopCall(c.bland_call_id, c.id);
+      } else {
+        handleForceCancel(c.id);
+      }
     }
   };
 
