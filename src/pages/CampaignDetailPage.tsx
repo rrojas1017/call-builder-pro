@@ -588,6 +588,7 @@ export default function CampaignDetailPage() {
                    <TableHead>Attempts</TableHead>
                   <TableHead>Duration</TableHead>
                   <TableHead>Outcome</TableHead>
+                  {campaign.hipaa_enabled && <TableHead>Compliance</TableHead>}
                   <TableHead>Called At</TableHead>
                 </TableRow>
               </TableHeader>
@@ -617,6 +618,27 @@ export default function CampaignDetailPage() {
                           : "—"}
                       </TableCell>
                       <TableCell className="text-xs">{call?.outcome || "—"}</TableCell>
+                      {campaign.hipaa_enabled && (
+                        <TableCell>
+                          {(() => {
+                            const score = call?.evaluation?.compliance_score;
+                            if (score == null) return (
+                              <div className="flex items-center gap-1 text-muted-foreground">
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                                <span className="text-xs">—</span>
+                              </div>
+                            );
+                            const color = score >= 80 ? "text-green-600 dark:text-green-400" : score >= 50 ? "text-yellow-600 dark:text-yellow-400" : "text-red-600 dark:text-red-400";
+                            const label = score >= 80 ? "Pass" : score >= 50 ? "Partial" : "Fail";
+                            return (
+                              <div className="flex items-center gap-1">
+                                <ShieldCheck className={`h-3.5 w-3.5 ${color}`} />
+                                <span className={`text-xs font-medium ${color}`}>{label}</span>
+                              </div>
+                            );
+                          })()}
+                        </TableCell>
+                      )}
                       <TableCell className="text-xs text-muted-foreground">
                         {c.called_at ? new Date(c.called_at).toLocaleString() : "—"}
                       </TableCell>
@@ -625,7 +647,7 @@ export default function CampaignDetailPage() {
                 })}
                 {contacts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={campaign.hipaa_enabled ? 8 : 7} className="text-center text-muted-foreground py-8">
                       No contacts yet.
                     </TableCell>
                   </TableRow>
@@ -658,6 +680,26 @@ export default function CampaignDetailPage() {
                     <Badge variant={badge.variant}>{badge.label}</Badge>
                   </div>
                 </SheetHeader>
+
+                {campaign.hipaa_enabled && (
+                  (() => {
+                    const score = call?.evaluation?.compliance_score;
+                    const color = score == null ? "border-muted-foreground/30 bg-muted/30" : score >= 80 ? "border-green-500/30 bg-green-500/10" : score >= 50 ? "border-yellow-500/30 bg-yellow-500/10" : "border-red-500/30 bg-red-500/10";
+                    const textColor = score == null ? "text-muted-foreground" : score >= 80 ? "text-green-600 dark:text-green-400" : score >= 50 ? "text-yellow-600 dark:text-yellow-400" : "text-red-600 dark:text-red-400";
+                    const label = score == null ? "Pending Review" : score >= 80 ? "HIPAA Compliant" : score >= 50 ? "Partially Compliant" : "Non-Compliant";
+                    return (
+                      <div className={`flex items-center gap-2 rounded-md border p-3 ${color}`}>
+                        <ShieldCheck className={`h-5 w-5 ${textColor}`} />
+                        <div>
+                          <p className={`text-sm font-semibold ${textColor}`}>{label}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {score != null ? `Compliance Score: ${score}/100` : "No evaluation yet"}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()
+                )}
 
                 {contact.status === "calling" && (
                   <LiveCallMonitor
