@@ -1,9 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Play, Pause, RefreshCw } from "lucide-react";
+import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2 } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +36,7 @@ const STATUS_BADGES: Record<string, { label: string; variant: "default" | "secon
 export default function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [campaign, setCampaign] = useState<any>(null);
@@ -135,6 +141,20 @@ export default function CampaignDetailPage() {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleDelete = async () => {
+    setActionLoading(true);
+    try {
+      const { error } = await supabase.from("campaigns").delete().eq("id", id);
+      if (error) throw error;
+      toast({ title: "Campaign deleted" });
+      navigate("/campaigns");
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+      setActionLoading(false);
+    }
+  };
   };
 
   if (loading) {
@@ -246,6 +266,29 @@ export default function CampaignDetailPage() {
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Pause className="h-4 w-4 mr-1" />}
               Pause
             </Button>
+          )}
+          {campaign.status !== "running" && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="destructive" disabled={actionLoading}>
+                  <Trash2 className="h-4 w-4 mr-1" /> Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Campaign</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete this campaign and all its contact data. Call records will be preserved. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
         </div>
       </div>
