@@ -1,95 +1,58 @@
 
 
-## Add HIPAA Compliance Toggle to Campaign Builder
+## Redesign Agent Profile Card: Compact Bar + Click-to-Expand
 
-### What it does
+### Current problem
+The profile card dumps all details inline -- maturity badge, voice, mode, description, and a 6-column stats grid. For mature agents with lots of data, it's too tall and cluttered for a form context.
 
-Adds a prominent HIPAA compliance toggle to the campaign creation form. When enabled, the campaign is stored and visually labeled as HIPAA-compliant everywhere it appears -- in the campaign list, detail page, and the agent's prompt gets additional HIPAA-specific instructions injected automatically.
+### New design
 
-### What HIPAA mode activates
+The card becomes two compact rows:
 
-When the toggle is ON, the system will:
+```text
++------------------------------------------------------------+
+| [Training ====>                          ] Developing  40%  |
++------------------------------------------------------------+
+|  54         6        45.9/100    323       v37       36     |
+|  Total    Qualified  Avg Score  Knowledge  Version  Improv. |
++------------------------------------------------------------+
+```
 
-1. **Visual labeling** -- A shield badge ("HIPAA") appears on the campaign card in the list and on the detail page header, so it's always clear this campaign operates under compliance rules.
+**Row 1 -- Maturity Bar**: A slim, color-coded progress bar showing the agent's maturity level. The bar fill and color change per level (gray for Training, blue for Developing, amber for Competent, green for Expert, purple for Graduated). The level label and percentage sit to the right.
 
-2. **Call recording disclosure** -- Injects a mandatory recording disclosure line into the agent's opening prompt (e.g., "This call may be recorded for quality and compliance purposes").
+**Row 2 -- Stats Row**: The same 6 stats (Total Calls, Qualified, Avg Score, Knowledge, Version, Improvements) displayed in a single compact row with small icons above each value -- matching the reference image style exactly.
 
-3. **PHI minimization instructions** -- Adds prompt-level guardrails telling the agent to:
-   - Never read back full SSN, DOB, or policy numbers
-   - Only confirm last 4 digits of sensitive identifiers
-   - Not store or repeat medical diagnoses verbatim in conversation
+**Click to expand**: Clicking anywhere on the card (or the bar specifically) opens a Popover showing the full details:
+- Description text
+- Voice name and mode
+- All stats with more context
+- Maturity level explanation
 
-4. **Consent-first enforcement** -- Adds a prompt instruction requiring the agent to obtain explicit verbal consent before collecting any health-related information.
+### Maturity bar mapping
 
-5. **Voicemail safe mode** -- Injects instructions that voicemail messages must NOT contain any PHI -- only a callback number and generic message.
+| Level | Progress % | Bar Color |
+|---|---|---|
+| training | 10% | Gray (muted) |
+| developing | 30% | Blue |
+| competent | 55% | Amber |
+| expert | 80% | Emerald |
+| graduated | 100% | Purple |
 
 ### Technical details
 
-**1. Database migration** -- Add a `hipaa_enabled` boolean column to `campaigns`:
+**File: `src/components/AgentProfileCard.tsx`** -- Full redesign
 
-```sql
-ALTER TABLE public.campaigns
-ADD COLUMN hipaa_enabled boolean NOT NULL DEFAULT false;
-```
+1. Keep all existing data fetching logic (useEffect, queries) unchanged
+2. Replace the render with:
+   - A clickable container with `cursor-pointer`
+   - A slim progress bar (6px height, rounded, with colored fill based on maturity level)
+   - Maturity label + percentage to the right of the bar
+   - Stats row below with icons, values, and labels in a horizontal grid
+3. Add a `Popover` (using existing Radix popover) that opens on click, showing:
+   - Description
+   - Voice + Mode badges
+   - Full stats with larger formatting
+   - Maturity level with explanation text
+4. Simplify the loading skeleton to match the new compact height (one thin bar + one row)
 
-**2. File: `src/pages/CampaignsPage.tsx`**
-
-- Add `hipaaEnabled` state (default `false`)
-- Add a Switch toggle in the campaign creation form with a label like "HIPAA Compliance Mode" and a brief explanation
-- Pass `hipaa_enabled: hipaaEnabled` in the insert payload
-- Update the `Campaign` interface to include `hipaa_enabled: boolean`
-- In the campaign list cards, show a shield badge next to the status when `hipaa_enabled` is true
-
-**3. File: `src/pages/CampaignDetailPage.tsx`**
-
-- Read `hipaa_enabled` from the campaign data
-- Display a prominent "HIPAA" shield badge in the campaign header when enabled
-
-**4. File: `supabase/functions/tick-campaign/index.ts`**
-
-- Read `campaign.hipaa_enabled` (already fetched via `select("*")`)
-- When true, append HIPAA guardrail instructions to the task prompt before sending to the call API:
-
-```typescript
-if (campaign.hipaa_enabled) {
-  task += `\n\n=== HIPAA COMPLIANCE RULES ===
-- This call is recorded. You MUST disclose this at the start: "This call may be recorded for quality and compliance purposes."
-- NEVER read back full SSN, date of birth, or policy/member ID numbers. Only confirm last 4 digits.
-- Do NOT repeat or store specific medical diagnoses, conditions, or medication names in conversation summaries.
-- You MUST obtain explicit verbal consent before collecting any health-related information.
-- If leaving a voicemail: leave ONLY a callback number and a generic message. Do NOT include any health information, names of conditions, or reason for calling.
-- Minimize collection of Protected Health Information (PHI) to only what is strictly necessary for the conversation objective.`;
-}
-```
-
-### UI Layout
-
-The HIPAA toggle sits in the campaign creation form between the redial settings and the list selector:
-
-```text
-+-------------------------------------------+
-| HIPAA Compliance Mode          [  Toggle ] |
-| Shield icon  Enable HIPAA-compliant call   |
-|              handling for this campaign.    |
-|              Adds recording disclosure,     |
-|              PHI minimization, and consent  |
-|              requirements to agent prompts. |
-+-------------------------------------------+
-```
-
-When enabled, campaign cards show:
-
-```text
-| Q1 ACA Outreach                           |
-| [running] [HIPAA] Jan 15, 2026            |
-```
-
-### Summary of changes
-
-| Area | Change |
-|---|---|
-| Database | Add `hipaa_enabled` boolean column to `campaigns` |
-| Campaign builder (CampaignsPage) | Add Switch toggle, save to DB, show badge on list |
-| Campaign detail (CampaignDetailPage) | Show HIPAA shield badge in header |
-| Campaign engine (tick-campaign) | Inject HIPAA guardrail prompt rules when enabled |
-
+No new files needed. No database changes. Only `AgentProfileCard.tsx` is modified.
