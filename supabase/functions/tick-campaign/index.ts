@@ -238,8 +238,25 @@ serve(async (req) => {
         model: "base", language: spec.language || "en",
       };
 
-      if (spec.voice_id) globalSettings.voice_id = spec.voice_id;
-      if (spec.transfer_phone_number) globalSettings.transfer_phone_number = spec.transfer_phone_number;
+      // Voice + training parameters (mirror run-test-run for parity)
+      globalSettings.voice = spec.voice_id || "maya";
+      globalSettings.temperature = spec.temperature ?? 0.7;
+      globalSettings.interruption_threshold = spec.interruption_threshold ?? 100;
+      globalSettings.noise_cancellation = true;
+
+      if (spec.speaking_speed && spec.speaking_speed !== 1.0) {
+        globalSettings.voice_settings = { speed: spec.speaking_speed };
+      }
+      if (spec.pronunciation_guide && Array.isArray(spec.pronunciation_guide) && spec.pronunciation_guide.length > 0) {
+        globalSettings.pronunciation_guide = spec.pronunciation_guide;
+      }
+      if (spec.transfer_required && spec.transfer_phone_number) {
+        const digits = spec.transfer_phone_number.replace(/\D/g, "");
+        if (digits.length >= 10) {
+          globalSettings.transfer_phone_number = digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
+        }
+      }
+
       // Use spec.from_number if set, otherwise pick from trusted pool
       if (spec.from_number) {
         globalSettings.from = spec.from_number;
