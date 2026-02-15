@@ -1,65 +1,77 @@
 
 
-## Fix: Campaign Prompt Parity with University
+## Two Fixes: Toast Auto-Dismiss + Super Admin Sidebar Ordering
 
-### Root Cause Analysis
+---
 
-After tracing the prompt-building pipeline across all three call paths, I found **two significant issues** causing the behavioral gap:
+### Fix 1: Toast Stays on Screen Too Long
 
-### Issue 1: Template Variables Not Replaced in Campaign Task Prompt
+**Problem**: The `TOAST_REMOVE_DELAY` in `src/hooks/use-toast.ts` is set to `1,000,000` milliseconds (over 16 minutes). This is why every toast sticks on screen seemingly forever after campaign actions.
 
-In `run-test-run` (University), the task prompt gets template variable replacement per contact:
+The "delay" before the toast appears on start/stop actions is normal -- those invoke backend functions that take a couple seconds. But once the toast shows, it should disappear after a few seconds.
+
+**Fix**: Change `TOAST_REMOVE_DELAY` from `1000000` to `5000` (5 seconds). This is a one-line change in `src/hooks/use-toast.ts` line 6. All toasts across the entire app will now auto-dismiss after 5 seconds.
+
+---
+
+### Fix 2: Super Admin Sidebar Reordering
+
+**What it does**: Super admins get a "Customize Navigation" mode (toggle via a small edit icon in the sidebar). In this mode, sections and items within sections become draggable. Once rearranged, the super admin saves the order, and it becomes the **global default** for all users across all companies.
+
+**How it works**:
+
+1. **New database table**: `sidebar_config` -- a single-row table storing the ordered navigation structure as a JSON column. No per-user or per-org rows, just one global config row.
+
+2. **Sidebar reads from DB on load**: `AppSidebar` fetches `sidebar_config` on mount. If a config exists, it uses that order. If not (first time), it falls back to the current hardcoded default. This means existing navigation works exactly as-is until a super admin makes a change.
+
+3. **Drag-and-drop editing** (super admin only): A small pencil/edit icon appears in the sidebar header for super admins. Clicking it enters "edit mode" where:
+   - Sections can be dragged up/down to reorder
+   - Items within a section can be dragged to reorder
+   - Items can be dragged between sections
+   - A Save button persists the new order to `sidebar_config`
+   - A Cancel button discards changes
+
+4. **No routes, permissions, or logic changes**: The reordering only affects display order. All paths, icons, labels, and role-based visibility (admin section only for super admins) remain exactly as they are today. The config stores `{ sections: [{ label, items: [{ label, path }] }] }` -- just the ordering. Icons are mapped by path at render time.
+
+**Safety guarantees**:
+- The ADMIN section remains super-admin-only regardless of where it's positioned
+- All existing routes, components, and RLS policies are untouched
+- If the config row is deleted or corrupted, the sidebar falls back to the hardcoded default
+- Regular users and admins see the reordered sidebar but cannot edit it
+
+### Technical Details
+
+**Database migration**:
+```sql
+CREATE TABLE public.sidebar_config (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sections jsonb NOT NULL,
+  updated_at timestamptz DEFAULT now(),
+  updated_by uuid REFERENCES auth.users(id)
+);
+
+ALTER TABLE public.sidebar_config ENABLE ROW LEVEL SECURITY;
+
+-- Everyone can read
+CREATE POLICY "Anyone can read sidebar config"
+  ON public.sidebar_config FOR SELECT
+  TO authenticated USING (true);
+
+-- Only super_admins can modify
+CREATE POLICY "Super admins can manage sidebar config"
+  ON public.sidebar_config FOR ALL
+  TO authenticated USING (
+    EXISTS (SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role = 'super_admin')
+  );
 ```
-const contactTask = replaceTemplateVars(baseTask, contact);  // line 182
-```
 
-In `tick-campaign` (Campaigns), the task is set as a **global** setting for the batch API and `replaceTemplateVars` is only applied to the `first_sentence` in each call object -- **never to the task itself**:
-```
-let task = buildTaskPrompt(spec, [], knowledgeBriefing);  // line 148
-// ... task goes straight into globalSettings without replaceTemplateVars
-```
-
-This means campaign calls receive a prompt with literal `{{first_name}}` strings instead of the caller's actual name. The agent can't use the caller's name naturally, making it sound robotic and impersonal compared to University calls.
-
-### Issue 2: Inbound Numbers Use a Completely Separate, Outdated Prompt Builder
-
-`manage-inbound-numbers/index.ts` has its own local `buildTaskPrompt` function (lines 9-42) that is hardcoded and missing:
-- Humanization notes / style guide
-- Knowledge briefing (AI-summarized knowledge)
-- Winning patterns
-- FPL/SEP qualification logic updates
-- Email collection injection
-- Name confirmation injection
-- Qualification and disqualification rules from the spec
-- The "REAL PERSON" directive
-
-It just appends global behaviors as a numbered list at the end, with none of the iterative learning the agent has accumulated.
-
-### Fixes
-
-**File: `supabase/functions/tick-campaign/index.ts`**
-
-The batch API sends one global `task` for all contacts, so we cannot template per-contact. However, we can remove literal template references from the task prompt and instead rely on the `first_sentence` (which IS templated per contact) to establish the caller's name. No code change needed for the prompt builder itself -- the `first_sentence` already carries the name. The real fix is ensuring the prompt doesn't reference `{{first_name}}` in ways that break when un-replaced. This is already handled by `buildTaskPrompt` (it doesn't inject raw template vars into the task body). So this path is actually fine on closer inspection -- the template vars issue is minor here.
-
-**However**, a real fix is needed: move the `replaceTemplateVars` into the per-contact `call_objects` task field instead of using a single global task. This gives each contact a personalized prompt, matching exactly how University works.
-
-Concrete change: Instead of putting `task` in `globalSettings`, build the task per contact in the `callObjects` map and include it per call object. This mirrors the University approach where each call gets its own templated prompt.
-
-**File: `supabase/functions/manage-inbound-numbers/index.ts`**
-
-Replace the local `buildTaskPrompt` with the shared one from `_shared/buildTaskPrompt.ts`. Also add:
-- Knowledge briefing via `summarize-agent-knowledge` invocation
-- Merge global behaviors into `humanization_notes` (matching the campaign/university pattern)
-- Pass the full spec through the shared builder so all learning is included
-
-### Summary of Changes
+**Files changed**:
 
 | File | Change |
 |---|---|
-| `tick-campaign/index.ts` | Move task from global to per-contact in call_objects with `replaceTemplateVars` applied, so each contact gets a personalized prompt |
-| `manage-inbound-numbers/index.ts` | Delete local `buildTaskPrompt`, import shared builder, add knowledge briefing + global behaviors merge (matching university/campaign pattern) |
+| `src/hooks/use-toast.ts` | Change `TOAST_REMOVE_DELAY` from `1000000` to `5000` |
+| `src/hooks/useSidebarConfig.ts` | New hook -- fetches sidebar config from DB, falls back to hardcoded default, provides save function |
+| `src/components/AppSidebar.tsx` | Use `useSidebarConfig` for section ordering; add edit mode toggle for super admins with drag-and-drop using HTML5 drag API (no new dependencies); map stored paths back to icons at render time |
 
-### Result
-
-All three call paths (University, Campaign, Inbound) will produce identical prompts from the same shared builder, with the same knowledge, humanization, winning patterns, and template variable handling. The agent will behave consistently everywhere.
+**Icon mapping strategy**: The hardcoded `navSections` array becomes a lookup map `{ "/dashboard": { icon: LayoutDashboard, label: "Dashboard" }, ... }`. The DB config stores only `[{ label: "BUILD", items: [{ path: "/dashboard" }, ...] }]`. At render time, each path is resolved against the icon map. If a path isn't found (edge case), it's skipped gracefully.
 
