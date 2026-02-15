@@ -229,22 +229,26 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     } else {
       // ===== BLAND AI BRANCH =====
-      const callObjects = contacts.map((contact: any) => ({
-        phone_number: contact.phone,
-        first_sentence: replaceTemplateVars(
-          spec.opening_line || "Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at.",
-          contact
-        ),
-        metadata: {
-          org_id: campaign.agent_projects.org_id,
-          project_id: campaign.project_id,
-          campaign_id, contact_id: contact.id,
-          version: spec.version,
-        },
-      }));
+      const callObjects = contacts.map((contact: any) => {
+        const contactTask = replaceTemplateVars(task, contact);
+        return {
+          phone_number: contact.phone,
+          task: contactTask,
+          first_sentence: replaceTemplateVars(
+            spec.opening_line || "Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at.",
+            contact
+          ),
+          metadata: {
+            org_id: campaign.agent_projects.org_id,
+            project_id: campaign.project_id,
+            campaign_id, contact_id: contact.id,
+            version: spec.version,
+          },
+        };
+      });
 
       const globalSettings: any = {
-        task, record: true, webhook: webhookUrl,
+        record: true, webhook: webhookUrl,
         summary_prompt: "Return JSON with: consent (bool), caller_name, state, age (int), household_size (int), income_est_annual (int), coverage_type, qualified (bool), disqual_reason, transfer_attempted (bool), transfer_completed (bool)",
         model: "base", language: spec.language || "en",
       };
