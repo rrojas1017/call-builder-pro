@@ -3,7 +3,8 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save } from "lucide-react";
+import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save, FileText, Phone, ExternalLink, AlertTriangle, Lightbulb, BookOpen } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -53,6 +54,7 @@ export default function CampaignDetailPage() {
   const [stoppingCalls, setStoppingCalls] = useState<Set<string>>(new Set());
   const [editConcurrency, setEditConcurrency] = useState<number | null>(null);
   const [savingConcurrency, setSavingConcurrency] = useState(false);
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const recentlyCancelledRef = useRef<Map<string, number>>(new Map());
 
   const fetchData = useCallback(async () => {
@@ -62,7 +64,7 @@ export default function CampaignDetailPage() {
       supabase.from("campaigns").select("*").eq("id", id).single(),
       supabase.from("contacts").select("*").eq("campaign_id", id).order("called_at", { ascending: false, nullsFirst: false }),
       supabase.from("campaign_lists" as any).select("*, dial_lists(*)").eq("campaign_id", id),
-      supabase.from("calls").select("id, contact_id, duration_seconds, outcome, evaluation, started_at").eq("campaign_id", id),
+      supabase.from("calls").select("*").eq("campaign_id", id),
     ]);
 
     setCampaign(campRes.data);
@@ -112,7 +114,7 @@ export default function CampaignDetailPage() {
     if (!id) return;
     const interval = setInterval(async () => {
       const [callsRes, contactsRes, campRes] = await Promise.all([
-        supabase.from("calls").select("id, contact_id, duration_seconds, outcome, evaluation, started_at").eq("campaign_id", id),
+        supabase.from("calls").select("*").eq("campaign_id", id),
         supabase.from("contacts").select("*").eq("campaign_id", id).order("called_at", { ascending: false, nullsFirst: false }),
         supabase.from("campaigns").select("status").eq("id", id).single(),
       ]);
@@ -579,7 +581,7 @@ export default function CampaignDetailPage() {
                   const call = callByContact[c.id];
                   const badge = STATUS_BADGES[c.status] || { label: c.status, variant: "outline" as const };
                   return (
-                    <TableRow key={c.id}>
+                    <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedContactId(c.id)}>
                       <TableCell>{c.name}</TableCell>
                       <TableCell className="font-mono text-xs">{c.phone}</TableCell>
                       <TableCell>
@@ -609,6 +611,161 @@ export default function CampaignDetailPage() {
           </ScrollArea>
         </CardContent>
       </Card>
+
+      {/* Contact Detail Drawer */}
+      <Sheet open={!!selectedContactId} onOpenChange={(open) => !open && setSelectedContactId(null)}>
+        <SheetContent className="sm:max-w-xl overflow-y-auto">
+          {selectedContactId && (() => {
+            const contact = contacts.find((c) => c.id === selectedContactId);
+            const call = callByContact[selectedContactId];
+            if (!contact) return <p className="text-muted-foreground">Contact not found.</p>;
+            const evaluation = call?.evaluation as any;
+            const badge = STATUS_BADGES[contact.status] || { label: contact.status, variant: "outline" as const };
+
+            return (
+              <>
+                <SheetHeader>
+                  <SheetTitle className="flex items-center gap-2">
+                    {contact.name}
+                  </SheetTitle>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Phone className="h-3.5 w-3.5" />
+                    <span className="font-mono">{contact.phone}</span>
+                    <Badge variant={badge.variant}>{badge.label}</Badge>
+                  </div>
+                </SheetHeader>
+
+                <div className="space-y-5 mt-4">
+                  {/* Call metadata */}
+                  {call && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-md border p-3">
+                        <p className="text-xs text-muted-foreground">Duration</p>
+                        <p className="font-medium">
+                          {call.duration_seconds != null
+                            ? `${Math.floor(call.duration_seconds / 60)}m ${call.duration_seconds % 60}s`
+                            : "—"}
+                        </p>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <p className="text-xs text-muted-foreground">Outcome</p>
+                        <p className="font-medium">{call.outcome || "—"}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recording */}
+                  {call?.recording_url && (
+                    <a
+                      href={call.recording_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Listen to Recording
+                    </a>
+                  )}
+
+                  {/* Evaluation scores */}
+                  {evaluation && (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-2">Evaluation Scores</h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {[
+                          { label: "Overall", value: evaluation.overall_score },
+                          { label: "Compliance", value: evaluation.compliance_score },
+                          { label: "Objective", value: evaluation.objective_score },
+                          { label: "Humanness", value: evaluation.humanness_score },
+                          { label: "Naturalness", value: evaluation.naturalness_score },
+                        ].map((s) => (
+                          <div key={s.label} className="rounded-md border p-2 text-center">
+                            <p className="text-lg font-bold text-foreground">{s.value ?? "—"}</p>
+                            <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Issues */}
+                  {evaluation?.issues && (evaluation.issues as any[]).length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                        <AlertTriangle className="h-4 w-4 text-destructive" /> Issues Detected
+                      </h4>
+                      <ul className="space-y-1.5">
+                        {(evaluation.issues as any[]).map((issue: any, i: number) => (
+                          <li key={i} className="text-sm rounded-md border border-destructive/20 bg-destructive/5 p-2">
+                            {typeof issue === "string" ? issue : issue.description || JSON.stringify(issue)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Humanness suggestions */}
+                  {evaluation?.humanness_suggestions && (evaluation.humanness_suggestions as any[]).length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                        <Lightbulb className="h-4 w-4 text-yellow-500" /> Humanness Suggestions
+                      </h4>
+                      <ul className="space-y-1.5">
+                        {(evaluation.humanness_suggestions as any[]).map((s: any, i: number) => (
+                          <li key={i} className="text-sm rounded-md border p-2 bg-muted/30">
+                            {typeof s === "string" ? s : s.suggestion || JSON.stringify(s)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Knowledge gaps */}
+                  {evaluation?.knowledge_gaps && (evaluation.knowledge_gaps as any[]).length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                        <BookOpen className="h-4 w-4 text-primary" /> Knowledge Gaps
+                      </h4>
+                      <ul className="space-y-1.5">
+                        {(evaluation.knowledge_gaps as any[]).map((g: any, i: number) => (
+                          <li key={i} className="text-sm rounded-md border p-2 bg-muted/30">
+                            {typeof g === "string" ? g : g.description || JSON.stringify(g)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Transcript */}
+                  {call?.transcript && (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                        <FileText className="h-4 w-4" /> Transcript
+                      </h4>
+                      <ScrollArea className="h-[300px] rounded-md border p-3">
+                        <pre className="text-xs whitespace-pre-wrap font-mono text-muted-foreground leading-relaxed">
+                          {call.transcript}
+                        </pre>
+                      </ScrollArea>
+                    </div>
+                  )}
+
+                  {/* Extracted data */}
+                  {call?.extracted_data && Object.keys(call.extracted_data).length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold mb-2">Extracted Data</h4>
+                      <ScrollArea className="h-[200px] rounded-md border p-3">
+                        <pre className="text-xs whitespace-pre-wrap font-mono text-muted-foreground">
+                          {JSON.stringify(call.extracted_data, null, 2)}
+                        </pre>
+                      </ScrollArea>
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
