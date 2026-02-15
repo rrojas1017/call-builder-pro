@@ -1,35 +1,70 @@
 
 
-## Show Live Conversation in Contact Detail Drawer
+## Pulsing Live Indicator + Fix Voicemail/Machine Detection
 
-When you click on a contact that has an active call (status "calling"), the detail drawer will show the LiveCallMonitor component -- the same live transcript feed and "Listen Live" button used in University.
+### Problem 1: No visual cue for live calls
+Contact rows with active calls look the same as every other row. Users can't tell which ones have live conversations to click into.
 
-### What changes
+### Problem 2: Voicemail detection not working
+The Bland webhook currently only checks `body.status` to determine contact status. But when `answering_machine_detection` is enabled, Bland sends `status: "completed"` with a separate `answered_by: "voicemail"` field. The system ignores this field, so voicemail calls are incorrectly marked as "completed" instead of "voicemail". The same applies to calls blocked by call-screening systems.
+
+---
+
+### Changes
 
 **File: `src/pages/CampaignDetailPage.tsx`**
 
-1. **Import `LiveCallMonitor`** from `@/components/LiveCallMonitor`.
+1. Add a pulsing green dot next to the status badge when `contact.status === "calling"`:
+   - A small animated circle (`animate-pulse`) with a green background
+   - Applied inline next to the badge in the Status column
+   - Makes it immediately obvious which contacts have live calls
 
-2. **Add LiveCallMonitor to the drawer** -- inside the Sheet content, right after the header and before the call metadata section, render the LiveCallMonitor when the contact's status is `calling` and it has a `bland_call_id` or `retell_call_id`:
+**File: `supabase/functions/receive-bland-webhook/index.ts`**
 
-```
-{contact.status === "calling" && (contact.bland_call_id || contact.retell_call_id) && (
-  <LiveCallMonitor
-    blandCallId={contact.bland_call_id}
-    retellCallId={contact.retell_call_id}
-    contactId={contact.id}
-    isActive={true}
-  />
-)}
-```
+2. After extracting `status`, check `body.answered_by`:
+   - If `answered_by === "voicemail"` -> override `contactStatus` to `"voicemail"` regardless of the `status` field
+   - If `answered_by === "machine"` or `answered_by === "unknown"` -> set `contactStatus` to `"voicemail"` (machine/IVR systems are functionally voicemail)
+   - Only keep `contactStatus = "completed"` when `answered_by === "human"` or `answered_by` is null (detection not enabled)
 
-3. The existing evaluation/transcript/metadata sections remain and will show once the call completes (they render conditionally based on `call` data existing).
+**File: `supabase/functions/receive-retell-webhook/index.ts`**
+
+3. Same pattern for Retell: check `callData.answered_by` or `callData.call_analysis?.user_sentiment` for machine detection signals and map accordingly.
 
 ### Technical detail
 
-| Area | Change |
-|---|---|
-| Import (line 6) | Add `LiveCallMonitor` import |
-| Sheet content (~line 646) | Insert `LiveCallMonitor` component before call metadata |
+**Bland webhook fix (critical):**
+```
+// After line 26 (status extraction):
+const answeredBy = body.answered_by || null;
 
-This is a 2-line addition (1 import + 1 component render block) in a single file. The `LiveCallMonitor` component already handles transcript polling, live audio WebSocket, and cleanup -- no other changes needed.
+// After status mapping block (line 47), add override:
+if (answeredBy === "voicemail" || answeredBy === "machine" || answeredBy === "unknown") {
+  contactStatus = "voicemail";
+}
+```
+
+This ensures that even when Bland reports `status: "completed"`, a call answered by a voicemail system gets the correct `voicemail` status and becomes eligible for auto-redial.
+
+**Pulsing indicator (UI):**
+```tsx
+<TableCell>
+  <div className="flex items-center gap-2">
+    {c.status === "calling" && (
+      <span className="relative flex h-2.5 w-2.5">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+      </span>
+    )}
+    <Badge variant={badge.variant}>{badge.label}</Badge>
+  </div>
+</TableCell>
+```
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `src/pages/CampaignDetailPage.tsx` | Add pulsing green dot on "calling" rows |
+| `supabase/functions/receive-bland-webhook/index.ts` | Check `answered_by` field to correctly detect voicemails |
+| `supabase/functions/receive-retell-webhook/index.ts` | Check for machine detection signals |
+
