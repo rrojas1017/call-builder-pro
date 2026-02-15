@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Pencil, Trash2, Loader2, BookOpen, ExternalLink } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { ArrowLeft, Plus, Pencil, Trash2, Loader2, BookOpen, ExternalLink, TrendingUp, TrendingDown, Minus, Brain, Trophy, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface KnowledgeEntry {
@@ -22,12 +22,27 @@ interface KnowledgeEntry {
   created_at: string;
 }
 
+interface ScoreSnapshot {
+  avg_overall: number | null;
+  spec_version: number;
+  created_at: string;
+  call_count: number;
+}
+
+interface Improvement {
+  change_summary: string | null;
+  created_at: string;
+  from_version: number;
+  to_version: number;
+}
+
 const CATEGORIES = [
   { value: "conversation_technique", label: "Conversation", icon: "💬" },
   { value: "product_knowledge", label: "Product", icon: "📦" },
   { value: "objection_handling", label: "Objections", icon: "🛡️" },
   { value: "industry_insight", label: "Industry", icon: "📊" },
   { value: "competitor_info", label: "Competitors", icon: "🏢" },
+  { value: "winning_pattern", label: "Winning Patterns", icon: "🏆" },
 ];
 
 const categoryLabel = (cat: string) => CATEGORIES.find(c => c.value === cat)?.label || cat;
@@ -36,8 +51,138 @@ const categoryIcon = (cat: string) => CATEGORIES.find(c => c.value === cat)?.ico
 const sourceTypeBadge = (type: string) => {
   if (type === "auto_research") return <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">Auto</Badge>;
   if (type === "evaluation") return <Badge variant="outline" className="text-xs bg-yellow-500/10 text-yellow-400 border-yellow-500/20">Eval</Badge>;
+  if (type === "success_learning") return <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/20">Success</Badge>;
   return <Badge variant="outline" className="text-xs bg-green-500/10 text-green-400 border-green-500/20">Manual</Badge>;
 };
+
+function LearningProgressBar({ entries, projectId }: { entries: KnowledgeEntry[]; projectId: string }) {
+  const [snapshots, setSnapshots] = useState<ScoreSnapshot[]>([]);
+  const [improvements, setImprovements] = useState<Improvement[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!projectId) return;
+    Promise.all([
+      supabase.from("score_snapshots").select("avg_overall, spec_version, created_at, call_count")
+        .eq("project_id", projectId).order("created_at", { ascending: false }).limit(5),
+      supabase.from("improvements").select("change_summary, created_at, from_version, to_version")
+        .eq("project_id", projectId).order("created_at", { ascending: false }).limit(5),
+    ]).then(([snapRes, impRes]) => {
+      setSnapshots((snapRes.data || []) as ScoreSnapshot[]);
+      setImprovements((impRes.data || []) as Improvement[]);
+      setLoading(false);
+    });
+  }, [projectId]);
+
+  if (loading) return null;
+
+  const autoCount = entries.filter(e => e.source_type === "auto_research").length;
+  const evalCount = entries.filter(e => e.source_type === "evaluation").length;
+  const successCount = entries.filter(e => e.source_type === "success_learning" || e.category === "winning_pattern").length;
+  const manualCount = entries.filter(e => e.source_type === "manual").length;
+
+  // Score trend
+  const validScores = snapshots.filter(s => s.avg_overall != null).map(s => s.avg_overall!);
+  const latestScore = validScores[0] ?? null;
+  const previousScore = validScores[1] ?? null;
+  const scoreDelta = latestScore != null && previousScore != null ? latestScore - previousScore : null;
+
+  // Last activity
+  const lastTimes = [
+    ...entries.map(e => e.created_at),
+    ...improvements.map(i => i.created_at),
+    ...snapshots.map(s => s.created_at),
+  ].filter(Boolean).sort().reverse();
+  const lastActivity = lastTimes[0] ? new Date(lastTimes[0]) : null;
+
+  const formatAgo = (d: Date) => {
+    const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  };
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <Card>
+        <CardContent className="p-4 flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Brain className="h-4.5 w-4.5 text-primary" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Total Lessons</p>
+            <p className="text-lg font-semibold text-foreground">{entries.length}</p>
+            <div className="flex gap-1.5 mt-0.5 flex-wrap">
+              {autoCount > 0 && <span className="text-[10px] text-muted-foreground">Auto:{autoCount}</span>}
+              {evalCount > 0 && <span className="text-[10px] text-muted-foreground">Eval:{evalCount}</span>}
+              {successCount > 0 && <span className="text-[10px] text-muted-foreground">Win:{successCount}</span>}
+              {manualCount > 0 && <span className="text-[10px] text-muted-foreground">Manual:{manualCount}</span>}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-4 flex items-center gap-3">
+          <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${
+            scoreDelta != null && scoreDelta > 0 ? "bg-emerald-500/10" : scoreDelta != null && scoreDelta < 0 ? "bg-destructive/10" : "bg-muted"
+          }`}>
+            {scoreDelta != null && scoreDelta > 0 ? <TrendingUp className="h-4.5 w-4.5 text-emerald-500" /> :
+             scoreDelta != null && scoreDelta < 0 ? <TrendingDown className="h-4.5 w-4.5 text-destructive" /> :
+             <Minus className="h-4.5 w-4.5 text-muted-foreground" />}
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Score Trend</p>
+            {latestScore != null ? (
+              <>
+                <p className="text-lg font-semibold text-foreground">{latestScore.toFixed(0)}</p>
+                {scoreDelta != null && (
+                  <span className={`text-[10px] ${scoreDelta > 0 ? "text-emerald-500" : scoreDelta < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                    {scoreDelta > 0 ? "+" : ""}{scoreDelta.toFixed(1)} vs prev
+                  </span>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">No data</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-4 flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+            <Trophy className="h-4.5 w-4.5 text-yellow-500" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Improvements</p>
+            <p className="text-lg font-semibold text-foreground">{improvements.length > 0 ? improvements.length : 0}</p>
+            {improvements[0]?.change_summary && (
+              <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">{improvements[0].change_summary}</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-4 flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center">
+            <Clock className="h-4.5 w-4.5 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Last Activity</p>
+            {lastActivity ? (
+              <p className="text-lg font-semibold text-foreground">{formatAgo(lastActivity)}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">None</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default function AgentKnowledgePage() {
   const { id: projectId } = useParams<{ id: string }>();
@@ -139,6 +284,8 @@ export default function AgentKnowledgePage() {
           </Button>
         </div>
       </div>
+
+      {projectId && <LearningProgressBar entries={entries} projectId={projectId} />}
 
       <Tabs defaultValue="all">
         <TabsList>
