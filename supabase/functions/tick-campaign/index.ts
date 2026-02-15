@@ -248,6 +248,8 @@ serve(async (req) => {
       });
 
       const globalSettings: any = {
+        task: task,
+        first_sentence: spec.opening_line || "Hey there, you got a quick minute?",
         record: true, webhook: webhookUrl,
         summary_prompt: "Return JSON with: consent (bool), caller_name, state, age (int), household_size (int), income_est_annual (int), coverage_type, qualified (bool), disqual_reason, transfer_attempted (bool), transfer_completed (bool)",
         model: "base", language: spec.language || "en",
