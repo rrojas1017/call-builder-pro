@@ -10,7 +10,7 @@ const corsHeaders = {
 // ── Field classification (mirrors apply-improvement) ──
 
 const TEXT_FIELDS = ["tone_style", "opening_line", "disclosure_text", "success_definition", "transfer_phone_number", "language", "use_case", "mode", "voice_id", "background_track", "from_number", "voice_provider", "retell_agent_id"];
-const JSON_FIELDS = ["must_collect_fields", "qualification_logic", "disqualification_logic", "escalation_rules", "business_rules", "retry_policy", "qualification_rules", "disqualification_rules", "humanization_notes", "research_sources", "business_hours", "pronunciation_guide"];
+const JSON_FIELDS = ["must_collect_fields", "qualification_rules", "disqualification_rules", "escalation_rules", "business_rules", "retry_policy", "humanization_notes", "research_sources", "business_hours", "pronunciation_guide"];
 const BOOL_FIELDS = ["consent_required", "disclosure_required", "transfer_required", "sms_enabled"];
 const NUM_FIELDS = ["temperature", "interruption_threshold", "speaking_speed"];
 const ARRAY_FIELDS = ["must_collect_fields", "humanization_notes", "research_sources"];
