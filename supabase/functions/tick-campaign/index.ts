@@ -270,6 +270,34 @@ serve(async (req) => {
         status: "calling", attempts: 1, called_at: new Date().toISOString(),
       }).in("id", contactIds);
 
+      // Best-effort: resolve individual call IDs from batch so LiveCallMonitor works
+      try {
+        await new Promise(r => setTimeout(r, 3000));
+        const batchDetailResp = await fetch(
+          `https://api.bland.ai/v2/batches/${batchId}`,
+          { headers: { Authorization: BLAND_API_KEY } }
+        );
+        if (batchDetailResp.ok) {
+          const batchDetail = await batchDetailResp.json();
+          const batchCalls = batchDetail.call_data || batchDetail.calls || [];
+          for (const bc of batchCalls) {
+            const callId = bc.call_id || bc.id;
+            const phone = bc.phone_number || bc.to;
+            if (callId && phone) {
+              const match = contacts.find((c: any) => c.phone === phone);
+              if (match) {
+                await supabase.from("contacts")
+                  .update({ bland_call_id: callId })
+                  .eq("id", match.id);
+              }
+            }
+          }
+          console.log(`Resolved ${batchCalls.length} call IDs from batch ${batchId}`);
+        }
+      } catch (e) {
+        console.error("Failed to resolve batch call IDs (non-fatal):", e);
+      }
+
       return new Response(JSON.stringify({
         batch_id: batchId, contacts_dispatched: contacts.length,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
