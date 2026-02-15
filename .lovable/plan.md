@@ -1,48 +1,65 @@
 
 
-## Add HIPAA Compliance Badge per Call in Campaign Detail
+## Fix: Campaign Prompt Parity with University
 
-### Context
+### Root Cause Analysis
 
-HIPAA (Health Insurance Portability and Accountability Act) is the correct compliance framework for healthcare campaigns. The system already has a `hipaa_enabled` toggle on campaigns and the AI evaluator already produces a `compliance_score` for every call. This feature connects the two: when a campaign has HIPAA enabled, each call row in the contacts table shows a visual compliance badge based on the evaluation results.
+After tracing the prompt-building pipeline across all three call paths, I found **two significant issues** causing the behavioral gap:
 
-### What it does
+### Issue 1: Template Variables Not Replaced in Campaign Task Prompt
 
-For HIPAA-enabled campaigns, every contact row in the campaign detail table gets a small shield badge indicating whether the agent handled the call in a HIPAA-compliant manner:
-
-- **Green shield + "Compliant"**: compliance_score >= 80
-- **Yellow shield + "Partial"**: compliance_score between 50-79
-- **Red shield + "Non-Compliant"**: compliance_score below 50
-- **Gray shield + "Pending"**: no evaluation yet
-
-This gives campaign managers an at-a-glance compliance audit view without clicking into each contact.
-
-### Layout in the contacts table
-
-```text
-| Name  | Phone | Status | Attempts | Duration | Outcome | Compliance    | Called At |
-|-------|-------|--------|----------|----------|---------|---------------|----------|
-| Alice | ...   | Done   | 1        | 2m 30s   | qual.   | [shield] Pass | Jan 15   |
-| Bob   | ...   | Done   | 2        | 1m 45s   | qual.   | [shield] Fail | Jan 15   |
-| Carol | ...   | Queued | 0        | --       | --      | [shield] --   | --       |
+In `run-test-run` (University), the task prompt gets template variable replacement per contact:
+```
+const contactTask = replaceTemplateVars(baseTask, contact);  // line 182
 ```
 
-### Technical details
+In `tick-campaign` (Campaigns), the task is set as a **global** setting for the batch API and `replaceTemplateVars` is only applied to the `first_sentence` in each call object -- **never to the task itself**:
+```
+let task = buildTaskPrompt(spec, [], knowledgeBriefing);  // line 148
+// ... task goes straight into globalSettings without replaceTemplateVars
+```
 
-**File: `src/pages/CampaignDetailPage.tsx`**
+This means campaign calls receive a prompt with literal `{{first_name}}` strings instead of the caller's actual name. The agent can't use the caller's name naturally, making it sound robotic and impersonal compared to University calls.
 
-1. **Contacts table** (around line 582-636): Add a "Compliance" column header and cell, only rendered when `campaign.hipaa_enabled` is true
-2. The cell reads `call?.evaluation?.compliance_score` and renders:
-   - A `ShieldCheck` icon colored green/yellow/red based on score thresholds
-   - A short text label ("Pass", "Partial", "Fail", or "--" for no evaluation)
-3. **Contact detail drawer** (around line 640+): Add a prominent HIPAA compliance status banner at the top of the drawer when the campaign is HIPAA-enabled, showing the compliance score with the same color coding
+### Issue 2: Inbound Numbers Use a Completely Separate, Outdated Prompt Builder
 
-No database changes needed -- `hipaa_enabled` already exists on campaigns, and `compliance_score` already exists in the call evaluation JSON.
+`manage-inbound-numbers/index.ts` has its own local `buildTaskPrompt` function (lines 9-42) that is hardcoded and missing:
+- Humanization notes / style guide
+- Knowledge briefing (AI-summarized knowledge)
+- Winning patterns
+- FPL/SEP qualification logic updates
+- Email collection injection
+- Name confirmation injection
+- Qualification and disqualification rules from the spec
+- The "REAL PERSON" directive
 
-### Summary of changes
+It just appends global behaviors as a numbered list at the end, with none of the iterative learning the agent has accumulated.
 
-| Area | Change |
+### Fixes
+
+**File: `supabase/functions/tick-campaign/index.ts`**
+
+The batch API sends one global `task` for all contacts, so we cannot template per-contact. However, we can remove literal template references from the task prompt and instead rely on the `first_sentence` (which IS templated per contact) to establish the caller's name. No code change needed for the prompt builder itself -- the `first_sentence` already carries the name. The real fix is ensuring the prompt doesn't reference `{{first_name}}` in ways that break when un-replaced. This is already handled by `buildTaskPrompt` (it doesn't inject raw template vars into the task body). So this path is actually fine on closer inspection -- the template vars issue is minor here.
+
+**However**, a real fix is needed: move the `replaceTemplateVars` into the per-contact `call_objects` task field instead of using a single global task. This gives each contact a personalized prompt, matching exactly how University works.
+
+Concrete change: Instead of putting `task` in `globalSettings`, build the task per contact in the `callObjects` map and include it per call object. This mirrors the University approach where each call gets its own templated prompt.
+
+**File: `supabase/functions/manage-inbound-numbers/index.ts`**
+
+Replace the local `buildTaskPrompt` with the shared one from `_shared/buildTaskPrompt.ts`. Also add:
+- Knowledge briefing via `summarize-agent-knowledge` invocation
+- Merge global behaviors into `humanization_notes` (matching the campaign/university pattern)
+- Pass the full spec through the shared builder so all learning is included
+
+### Summary of Changes
+
+| File | Change |
 |---|---|
-| CampaignDetailPage contacts table | Add conditional "Compliance" column with shield badge when HIPAA enabled |
-| CampaignDetailPage contact drawer | Add HIPAA compliance status banner at top of drawer |
+| `tick-campaign/index.ts` | Move task from global to per-contact in call_objects with `replaceTemplateVars` applied, so each contact gets a personalized prompt |
+| `manage-inbound-numbers/index.ts` | Delete local `buildTaskPrompt`, import shared builder, add knowledge briefing + global behaviors merge (matching university/campaign pattern) |
+
+### Result
+
+All three call paths (University, Campaign, Inbound) will produce identical prompts from the same shared builder, with the same knowledge, humanization, winning patterns, and template variable handling. The agent will behave consistently everywhere.
 
