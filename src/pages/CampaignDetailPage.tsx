@@ -1,64 +1,171 @@
-import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
+import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Loader2, ArrowLeft } from "lucide-react";
-import { Link } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2, ArrowLeft, Play, Pause, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 
-const COLORS = ["hsl(var(--primary))", "hsl(var(--destructive))", "hsl(var(--warning))", "hsl(var(--muted))", "hsl(142 76% 36%)", "hsl(280 67% 55%)"];
+const COLORS = [
+  "hsl(var(--primary))",
+  "hsl(var(--destructive))",
+  "hsl(142 76% 36%)",
+  "hsl(38 92% 50%)",
+  "hsl(280 67% 55%)",
+  "hsl(var(--muted))",
+];
+
+const STATUS_BADGES: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  queued: { label: "Queued", variant: "outline" },
+  calling: { label: "In Progress", variant: "secondary" },
+  completed: { label: "Completed", variant: "default" },
+  failed: { label: "Failed", variant: "destructive" },
+};
 
 export default function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [campaign, setCampaign] = useState<any>(null);
   const [contacts, setContacts] = useState<any[]>([]);
   const [lists, setLists] = useState<any[]>([]);
   const [agent, setAgent] = useState<any>(null);
+  const [calls, setCalls] = useState<any[]>([]);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (!user || !id) return;
-    const load = async () => {
-      const [campRes, contactsRes, clRes] = await Promise.all([
-        supabase.from("campaigns").select("*").eq("id", id).single(),
-        supabase.from("contacts").select("*").eq("campaign_id", id).order("created_at"),
-        supabase.from("campaign_lists" as any).select("*, dial_lists(*)").eq("campaign_id", id),
-      ]);
 
-      setCampaign(campRes.data);
-      setContacts(contactsRes.data || []);
-      setLists((clRes.data as any[])?.map((cl: any) => cl.dial_lists) || []);
+    const [campRes, contactsRes, clRes, callsRes] = await Promise.all([
+      supabase.from("campaigns").select("*").eq("id", id).single(),
+      supabase.from("contacts").select("*").eq("campaign_id", id).order("called_at", { ascending: false, nullsFirst: false }),
+      supabase.from("campaign_lists" as any).select("*, dial_lists(*)").eq("campaign_id", id),
+      supabase.from("calls").select("id, contact_id, duration_seconds, outcome, evaluation, started_at").eq("campaign_id", id),
+    ]);
 
-      if (campRes.data?.agent_project_id) {
-        const { data: ag } = await supabase
-          .from("agent_projects")
-          .select("name")
-          .eq("id", campRes.data.agent_project_id)
-          .single();
-        setAgent(ag);
-      }
-      setLoading(false);
-    };
-    load();
+    setCampaign(campRes.data);
+    setContacts(contactsRes.data || []);
+    setLists((clRes.data as any[])?.map((cl: any) => cl.dial_lists) || []);
+    setCalls(callsRes.data || []);
+
+    if (campRes.data?.agent_project_id) {
+      const { data: ag } = await supabase
+        .from("agent_projects")
+        .select("name")
+        .eq("id", campRes.data.agent_project_id)
+        .single();
+      setAgent(ag);
+    }
+    setLoading(false);
   }, [user, id]);
+
+  // Initial load
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Realtime subscription for contacts
+  useEffect(() => {
+    if (!id) return;
+    const channel = supabase
+      .channel(`campaign-contacts-${id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "contacts", filter: `campaign_id=eq.${id}` },
+        (payload) => {
+          setContacts((prev) =>
+            prev.map((c) => (c.id === payload.new.id ? { ...c, ...payload.new } : c))
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
+
+  // Periodic refresh for calls data (every 15s when running)
+  useEffect(() => {
+    if (!id || campaign?.status !== "running") return;
+    const interval = setInterval(async () => {
+      const [callsRes, campRes] = await Promise.all([
+        supabase.from("calls").select("id, contact_id, duration_seconds, outcome, evaluation, started_at").eq("campaign_id", id),
+        supabase.from("campaigns").select("status").eq("id", id).single(),
+      ]);
+      setCalls(callsRes.data || []);
+      if (campRes.data && campRes.data.status !== campaign?.status) {
+        setCampaign((prev: any) => ({ ...prev, status: campRes.data!.status }));
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [id, campaign?.status]);
+
+  const handleStart = async () => {
+    setActionLoading(true);
+    try {
+      const { error } = await supabase.functions.invoke("start-campaign", {
+        body: { campaign_id: id },
+      });
+      if (error) throw error;
+      setCampaign((prev: any) => ({ ...prev, status: "running" }));
+      toast({ title: "Campaign started!" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePause = async () => {
+    setActionLoading(true);
+    try {
+      await supabase.from("campaigns").update({ status: "paused" }).eq("id", id);
+      setCampaign((prev: any) => ({ ...prev, status: "paused" }));
+      toast({ title: "Campaign paused" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   if (loading) {
     return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
-
   if (!campaign) {
     return <div className="p-8 text-muted-foreground">Campaign not found.</div>;
   }
 
+  // Compute stats
   const total = contacts.length;
-  const called = contacts.filter((c) => c.status !== "queued").length;
+  const inProgress = contacts.filter((c) => c.status === "calling").length;
   const completed = contacts.filter((c) => c.status === "completed").length;
   const failed = contacts.filter((c) => c.status === "failed").length;
+  const processed = completed + failed;
+  const successRate = processed > 0 ? Math.round((completed / processed) * 100) : 0;
+  const progressPct = total > 0 ? Math.round((processed / total) * 100) : 0;
+
+  // Call-level stats
+  const callsWithDuration = calls.filter((c) => c.duration_seconds != null);
+  const avgDuration = callsWithDuration.length > 0
+    ? Math.round(callsWithDuration.reduce((sum, c) => sum + c.duration_seconds, 0) / callsWithDuration.length)
+    : 0;
+  const callsWithScore = calls.filter((c) => c.evaluation?.overall_score != null);
+  const avgScore = callsWithScore.length > 0
+    ? Math.round(callsWithScore.reduce((sum, c) => sum + Number(c.evaluation.overall_score), 0) / callsWithScore.length)
+    : 0;
+
+  // Build call lookup by contact_id
+  const callByContact: Record<string, any> = {};
+  calls.forEach((c) => { if (c.contact_id) callByContact[c.contact_id] = c; });
 
   // Outcome distribution
   const outcomeCounts: Record<string, number> = {};
@@ -72,51 +179,93 @@ export default function CampaignDetailPage() {
   const listStats = lists.map((l: any) => {
     const listContacts = contacts.filter((c) => c.list_id === l.id);
     const listCompleted = listContacts.filter((c) => c.status === "completed").length;
+    const listFailed = listContacts.filter((c) => c.status === "failed").length;
+    const listProcessed = listCompleted + listFailed;
+    const listCalls = listContacts.map((c) => callByContact[c.id]).filter(Boolean);
+    const listDurations = listCalls.filter((c: any) => c.duration_seconds != null);
+    const listAvgDur = listDurations.length > 0
+      ? Math.round(listDurations.reduce((s: number, c: any) => s + c.duration_seconds, 0) / listDurations.length)
+      : 0;
     return {
       name: l.name,
       total: listContacts.length,
       completed: listCompleted,
-      rate: listContacts.length > 0 ? Math.round((listCompleted / listContacts.length) * 100) : 0,
+      rate: listProcessed > 0 ? Math.round((listCompleted / listProcessed) * 100) : 0,
+      avgDuration: listAvgDur,
     };
   });
 
   const statusColor: Record<string, string> = {
     draft: "text-muted-foreground bg-muted",
-    running: "text-green-700 bg-green-100",
-    paused: "text-yellow-700 bg-yellow-100",
+    running: "text-green-700 bg-green-100 dark:text-green-300 dark:bg-green-900/30",
+    paused: "text-yellow-700 bg-yellow-100 dark:text-yellow-300 dark:bg-yellow-900/30",
     completed: "text-primary bg-primary/10",
   };
 
+  const kpis = [
+    { label: "Total Contacts", value: total },
+    { label: "In Progress", value: inProgress },
+    { label: "Completed", value: completed },
+    { label: "Failed", value: failed },
+    { label: "Success Rate", value: `${successRate}%` },
+    { label: "Avg Duration", value: avgDuration > 0 ? `${Math.floor(avgDuration / 60)}m ${avgDuration % 60}s` : "—" },
+    { label: "Avg Score", value: avgScore > 0 ? `${avgScore}/100` : "—" },
+  ];
+
   return (
     <div className="p-8 space-y-6">
-      <div className="flex items-center gap-3">
-        <Link to="/campaigns" className="text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{campaign.name}</h1>
-          <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[campaign.status] || ""}`}>
-              {campaign.status}
-            </span>
-            {agent && <span>Agent: {agent.name}</span>}
-            <span>{new Date(campaign.created_at).toLocaleDateString()}</span>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link to="/campaigns" className="text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">{campaign.name}</h1>
+            <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[campaign.status] || ""}`}>
+                {campaign.status}
+              </span>
+              {agent && <span>Agent: {agent.name}</span>}
+              <span>{new Date(campaign.created_at).toLocaleDateString()}</span>
+            </div>
           </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={fetchData}>
+            <RefreshCw className="h-4 w-4 mr-1" /> Refresh
+          </Button>
+          {(campaign.status === "draft" || campaign.status === "paused") && (
+            <Button size="sm" onClick={handleStart} disabled={actionLoading}>
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
+              {campaign.status === "paused" ? "Resume" : "Start"}
+            </Button>
+          )}
+          {campaign.status === "running" && (
+            <Button size="sm" variant="outline" onClick={handlePause} disabled={actionLoading}>
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Pause className="h-4 w-4 mr-1" />}
+              Pause
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* Stats cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Total Contacts", value: total },
-          { label: "Called", value: called },
-          { label: "Completed", value: completed },
-          { label: "Failed", value: failed },
-        ].map((s) => (
-          <Card key={s.label}>
-            <CardContent className="p-5 text-center">
-              <p className="text-2xl font-bold text-foreground">{s.value}</p>
-              <p className="text-xs text-muted-foreground mt-1">{s.label}</p>
+      {/* Progress bar */}
+      <div className="space-y-1">
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>{processed} of {total} contacts processed</span>
+          <span>{progressPct}%</span>
+        </div>
+        <Progress value={progressPct} className="h-2" />
+      </div>
+
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        {kpis.map((k) => (
+          <Card key={k.label}>
+            <CardContent className="p-4 text-center">
+              <p className="text-xl font-bold text-foreground">{k.value}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{k.label}</p>
             </CardContent>
           </Card>
         ))}
@@ -155,6 +304,7 @@ export default function CampaignDetailPage() {
                     <TableHead className="text-right">Contacts</TableHead>
                     <TableHead className="text-right">Completed</TableHead>
                     <TableHead className="text-right">Rate</TableHead>
+                    <TableHead className="text-right">Avg Dur</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -164,6 +314,9 @@ export default function CampaignDetailPage() {
                       <TableCell className="text-right">{ls.total}</TableCell>
                       <TableCell className="text-right">{ls.completed}</TableCell>
                       <TableCell className="text-right">{ls.rate}%</TableCell>
+                      <TableCell className="text-right text-xs">
+                        {ls.avgDuration > 0 ? `${Math.floor(ls.avgDuration / 60)}m ${ls.avgDuration % 60}s` : "—"}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -175,7 +328,9 @@ export default function CampaignDetailPage() {
 
       {/* Contact table */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Contacts</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base">Contacts ({total})</CardTitle>
+        </CardHeader>
         <CardContent>
           <ScrollArea className="max-h-[400px]">
             <Table>
@@ -184,25 +339,37 @@ export default function CampaignDetailPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Phone</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Attempts</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Outcome</TableHead>
                   <TableHead>Called At</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {contacts.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell>{c.name}</TableCell>
-                    <TableCell className="font-mono text-xs">{c.phone}</TableCell>
-                    <TableCell><Badge variant="outline">{c.status}</Badge></TableCell>
-                    <TableCell>{c.attempts}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {c.called_at ? new Date(c.called_at).toLocaleString() : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {contacts.map((c) => {
+                  const call = callByContact[c.id];
+                  const badge = STATUS_BADGES[c.status] || { label: c.status, variant: "outline" as const };
+                  return (
+                    <TableRow key={c.id}>
+                      <TableCell>{c.name}</TableCell>
+                      <TableCell className="font-mono text-xs">{c.phone}</TableCell>
+                      <TableCell>
+                        <Badge variant={badge.variant}>{badge.label}</Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {call?.duration_seconds != null
+                          ? `${Math.floor(call.duration_seconds / 60)}m ${call.duration_seconds % 60}s`
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs">{call?.outcome || "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {c.called_at ? new Date(c.called_at).toLocaleString() : "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
                 {contacts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                       No contacts yet.
                     </TableCell>
                   </TableRow>
