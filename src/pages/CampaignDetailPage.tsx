@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -53,6 +53,7 @@ export default function CampaignDetailPage() {
   const [stoppingCalls, setStoppingCalls] = useState<Set<string>>(new Set());
   const [editConcurrency, setEditConcurrency] = useState<number | null>(null);
   const [savingConcurrency, setSavingConcurrency] = useState(false);
+  const recentlyCancelledRef = useRef<Map<string, number>>(new Map());
 
   const fetchData = useCallback(async () => {
     if (!user || !id) return;
@@ -116,7 +117,20 @@ export default function CampaignDetailPage() {
         supabase.from("campaigns").select("status").eq("id", id).single(),
       ]);
       setCalls(callsRes.data || []);
-      setContacts(contactsRes.data || []);
+      // Merge recently-cancelled overrides to prevent flicker
+      const now = Date.now();
+      const merged = (contactsRes.data || []).map((c: any) => {
+        const cancelledAt = recentlyCancelledRef.current.get(c.id);
+        if (cancelledAt && now - cancelledAt < 10000) {
+          return { ...c, status: "cancelled" };
+        }
+        return c;
+      });
+      // Clean up expired entries
+      recentlyCancelledRef.current.forEach((ts, key) => {
+        if (now - ts > 10000) recentlyCancelledRef.current.delete(key);
+      });
+      setContacts(merged);
       if (campRes.data && campRes.data.status !== campaign?.status) {
         setCampaign((prev: any) => ({ ...prev, status: campRes.data!.status }));
       }
@@ -193,7 +207,17 @@ export default function CampaignDetailPage() {
   const handleForceCancel = async (contactId: string) => {
     setStoppingCalls((prev) => new Set(prev).add(contactId));
     try {
-      await supabase.from("contacts").update({ status: "cancelled" }).eq("id", contactId);
+      const { data, error } = await supabase
+        .from("contacts")
+        .update({ status: "cancelled" })
+        .eq("id", contactId)
+        .select();
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        toast({ title: "Could not cancel", description: "Permission denied — no rows updated", variant: "destructive" });
+        return;
+      }
+      recentlyCancelledRef.current.set(contactId, Date.now());
       setContacts((prev) =>
         prev.map((c) => (c.id === contactId ? { ...c, status: "cancelled" } : c))
       );
