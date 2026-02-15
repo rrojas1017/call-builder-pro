@@ -116,7 +116,7 @@ export default function AppSidebar() {
 
   const displaySections = editMode ? editSections : sections;
   const allSections = isSuperAdmin
-    ? [adminSection, ...displaySections]
+    ? [...displaySections, adminSection]
     : displaySections;
 
   return (
