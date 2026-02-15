@@ -1,33 +1,33 @@
 
 
-## Show User Role in Sidebar
+## Apply Pending Fixes for ACA Qualifier
 
-Add a role badge to the bottom of the sidebar so every logged-in user can see their current role (e.g., super_admin, admin, analyst, viewer).
+### Current State
 
-### What changes
+The ACA Qualifier agent (version 46) already has both recommended values in its spec:
+- **interruption_threshold**: already set to `1000` (matching the suggestion)
+- **must_collect_fields**: already includes "What is your life event?" and "Are you currently on Medicaid?" (covering the suggestion)
 
-**File: `src/components/AppSidebar.tsx`**
+However, the UI still shows "Apply Fix" buttons because no improvement record with the exact composite key exists in the `improvements` table for these specific recommendations.
 
-1. Import `useUserRole` from `@/hooks/useUserRole` and import the `Badge` component from `@/components/ui/badge`.
-2. Inside the component, call `const { role } = useUserRole();`.
-3. In the bottom footer section (lines 238-247), add a role display row above the ThemeToggle, showing:
-   - A `Shield` icon (from lucide-react)
-   - The role as a styled Badge with a human-friendly label (e.g., "Super Admin", "Admin", "Analyst", "Viewer")
-   - A subtle, non-interactive row matching the existing sidebar style
+### Plan
 
-### Visual result
+**Apply both fixes via the existing `apply-improvement` edge function** so they are recorded in the `improvements` table and the UI reflects them as "Applied":
 
-```text
----------------------
-| Shield  Super Admin |   <-- new row with badge
-| Theme Toggle        |
-| Sign Out            |
----------------------
-```
+1. **Call `apply-improvement`** for `must_collect_fields` with the suggested value from the evaluation. Since the edge function uses merge-instead-of-replace for array fields, this will safely deduplicate and not corrupt existing fields.
 
-### Technical details
+2. **Call `apply-improvement`** for `interruption_threshold` with value `1000`. Since it is already 1000, the only effect is a version bump and the improvement being recorded.
 
-- Use a small helper to format the role string: `super_admin` becomes "Super Admin", `admin` becomes "Admin", etc.
-- Badge variant mirrors the logic already in `TeamPage.tsx`: destructive for super_admin, default for admin, secondary for analyst, outline for viewer.
-- The `useUserRole` hook already exists and fetches from the `user_roles` table, so no new queries or backend changes are needed.
+3. After both calls succeed, the `TestResultsModal` / `UniversityPage` will automatically detect the matching keys in the `improvements` table and render green "Applied" badges instead of "Apply Fix" buttons.
+
+### Technical Details
+
+- No code changes needed -- the existing `handleApplyFix` and `handleApplyAllFixes` functions in `TestResultsModal.tsx` already handle this correctly.
+- The edge function `apply-improvement` handles array merging and deduplication, so calling it for `must_collect_fields` is safe.
+- The version will bump from 46 to 48 (one bump per fix), which is expected behavior.
+- The `improvementKey` function (`normalizeField(field) + "::" + JSON.stringify(suggested_value)`) is used to track applied status -- once improvements are recorded, the UI will match them.
+
+### Implementation
+
+I will invoke the `apply-improvement` edge function twice in sequence with the exact field/value pairs from the evaluation's `recommended_improvements`, then verify the spec version and improvement records are correct.
 
