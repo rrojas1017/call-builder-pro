@@ -43,10 +43,15 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
   const matchesSelected = (v: BlandVoice) =>
     v.voice_id === selectedVoice || v.name.toLowerCase() === selectedVoice.toLowerCase();
 
-  const pinnedVoice = useMemo(
-    () => (selectedVoice ? voices.find(matchesSelected) : undefined),
-    [voices, selectedVoice]
-  );
+  const pinnedVoice = useMemo(() => {
+    if (!selectedVoice) return undefined;
+    const match = voices.find(matchesSelected);
+    if (!match) return undefined;
+    if (genderFilter !== "all" && match.gender !== genderFilter) return undefined;
+    if (languageFilter !== "all" && match.language?.toLowerCase() !== languageFilter.toLowerCase()) return undefined;
+    if (accentFilter !== "all" && match.accent?.toLowerCase() !== accentFilter.toLowerCase()) return undefined;
+    return match;
+  }, [voices, selectedVoice, genderFilter, languageFilter, accentFilter]);
 
   const filtered = useMemo(() => {
     let result = voices;
