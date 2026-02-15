@@ -121,6 +121,49 @@ serve(async (req) => {
 
     patch.version = toVersion;
 
+    // ── Domain-relevance guard for business_rules and humanization_notes ──
+    const guardedFields = ["business_rules", "humanization_notes"];
+    const patchKeys = Object.keys(patch).filter(k => k !== "version");
+    const useCase = (spec.use_case || "").toLowerCase();
+
+    if (useCase && patchKeys.some(k => guardedFields.includes(k))) {
+      // Define cross-domain keyword sets that signal wrong vertical
+      const DOMAIN_KEYWORDS: Record<string, string[]> = {
+        travel: ["hotel", "flight", "resort", "vacation", "itinerary", "luggage", "boarding pass", "cruise", "tourist", "sightseeing"],
+        insurance: ["premium", "deductible", "copay", "enrollment", "medicaid", "medicare", "aca", "marketplace", "fpl", "coverage"],
+        solar: ["solar panel", "net metering", "kwh", "inverter", "roof assessment", "photovoltaic"],
+        real_estate: ["listing", "open house", "mortgage rate", "escrow", "appraisal", "closing cost"],
+      };
+
+      // Find which domain the agent belongs to
+      let agentDomain: string | null = null;
+      for (const [domain, keywords] of Object.entries(DOMAIN_KEYWORDS)) {
+        if (keywords.some(kw => useCase.includes(kw) || useCase.includes(domain))) {
+          agentDomain = domain;
+          break;
+        }
+      }
+
+      if (agentDomain) {
+        const otherDomains = Object.entries(DOMAIN_KEYWORDS).filter(([d]) => d !== agentDomain);
+        const patchStr = JSON.stringify(patch).toLowerCase();
+
+        for (const [foreignDomain, foreignKeywords] of otherDomains) {
+          const matches = foreignKeywords.filter(kw => patchStr.includes(kw));
+          if (matches.length >= 2) {
+            console.warn(`Domain mismatch: agent is "${useCase}" (${agentDomain}) but improvement contains ${foreignDomain} keywords: ${matches.join(", ")}. Skipping.`);
+            return new Response(JSON.stringify({
+              success: false,
+              skipped: true,
+              reason: `Domain mismatch: improvement contains ${foreignDomain}-related content (${matches.join(", ")}) but agent use case is "${spec.use_case}".`,
+            }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
+      }
+    }
+
     // Update spec
     const { error: updateErr } = await supabase
       .from("agent_specs")

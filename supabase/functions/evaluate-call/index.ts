@@ -95,6 +95,12 @@ Before assigning each numeric score, write a brief internal rationale (2-3 sente
 ANTI-REPETITION DIRECTIVE:
 Check your suggested improvements against the RECENT CHANGE HISTORY below. If a similar suggestion was already applied without score improvement, you MUST suggest a fundamentally different approach — not a variation of the same fix. For example, if lowering temperature didn't help, don't suggest lowering it further; suggest changing tone_style or opening_line instead.
 
+DOMAIN CONSTRAINT: This agent's use case is "${spec.use_case || 'general'}".
+ALL suggested improvements MUST be directly relevant to this domain.
+Do NOT suggest examples, rapport-building lines, or business rules from
+unrelated industries (e.g., travel examples for a health insurance agent).
+Every suggested_value must make sense in the context of "${spec.use_case}".
+
 Evaluate the following call transcript against the Agent Specification provided.
 
 HUMANNESS SCORING (0-100) -- THIS IS THE MOST IMPORTANT METRIC:
