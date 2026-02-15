@@ -120,7 +120,7 @@ serve(async (req) => {
       if (callErr) console.error("Error upserting call:", callErr);
 
       // Trigger evaluate-call for completed calls
-      if (upsertedCall?.id && transcript && contactStatus === "completed") {
+      if (upsertedCall?.id && transcript) {
         const evalUrl = `${supabaseUrl}/functions/v1/evaluate-call`;
         fetch(evalUrl, {
           method: "POST",
@@ -191,7 +191,7 @@ serve(async (req) => {
         if (inboundErr) console.error("Error upserting inbound call:", inboundErr);
 
         // Trigger evaluate-call for completed inbound calls
-        if (upsertedInbound?.id && transcript && contactStatus === "completed") {
+        if (upsertedInbound?.id && transcript) {
           fetch(`${supabaseUrl}/functions/v1/evaluate-call`, {
             method: "POST",
             headers: {
@@ -250,7 +250,7 @@ serve(async (req) => {
     }
 
     // Trigger evaluate-call for completed calls with transcripts
-    if (upsertedCall?.id && transcript && contactStatus === "completed") {
+    if (upsertedCall?.id && transcript) {
       const evalUrl = `${supabaseUrl}/functions/v1/evaluate-call`;
       fetch(evalUrl, {
         method: "POST",
