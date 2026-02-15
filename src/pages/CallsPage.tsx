@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDistanceToNow } from "date-fns";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -37,7 +38,14 @@ interface Call {
   project_id: string;
   recording_url: string | null;
   contact_id: string | null;
+  campaign_id: string | null;
   contacts?: { phone: string } | null;
+}
+
+interface Campaign {
+  id: string;
+  name: string;
+  status: string;
 }
 
 type DirFilter = "all" | "inbound" | "outbound";
@@ -118,11 +126,12 @@ function parseTranscript(raw: string | null): ChatLine[] {
 
 // ─── CSV Export ──────────────────────────────────────────────────────────────
 
-function exportCSV(calls: Call[], agentMap: Record<string, string>) {
-  const headers = ["ID", "Agent", "Direction", "Outcome", "Duration (s)", "Score", "Provider", "Created At"];
+function exportCSV(calls: Call[], agentMap: Record<string, string>, campaignMap: Record<string, string>) {
+  const headers = ["ID", "Agent", "Campaign", "Direction", "Outcome", "Duration (s)", "Score", "Provider", "Created At"];
   const rows = calls.map(c => [
     c.id,
     agentMap[c.project_id] || "Unknown",
+    c.campaign_id ? (campaignMap[c.campaign_id] || "") : "",
     c.direction,
     c.outcome || "",
     c.duration_seconds ?? "",
@@ -166,6 +175,8 @@ export default function CallsPage() {
   const [durationFilter, setDurationFilter] = useState<DurationFilter>("all");
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [mapMetric, setMapMetric] = useState<MapMetric>("calls");
+  const [campaignFilter, setCampaignFilter] = useState("all");
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
 
   // Audio
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -205,13 +216,14 @@ export default function CallsPage() {
   useEffect(() => {
     if (!user) return;
     const load = async () => {
-      const [callsRes, agentsRes] = await Promise.all([
+      const [callsRes, agentsRes, campaignsRes] = await Promise.all([
         supabase
           .from("calls")
           .select("*, contacts(phone)")
           .order("created_at", { ascending: false })
           .range(0, PAGE_SIZE - 1),
         supabase.from("agent_projects").select("id, name"),
+        supabase.from("campaigns").select("id, name, status").order("created_at", { ascending: false }),
       ]);
 
       const callData = (callsRes.data as Call[]) || [];
@@ -221,6 +233,12 @@ export default function CallsPage() {
       const map: Record<string, string> = {};
       (agentsRes.data || []).forEach((a: any) => { map[a.id] = a.name; });
       setAgentMap(map);
+
+      const campaignData = (campaignsRes.data || []).filter(
+        (c: any) => c.status !== "draft"
+      ) as Campaign[];
+      setCampaigns(campaignData);
+
       setLoading(false);
     };
     load();
@@ -269,8 +287,15 @@ export default function CallsPage() {
   }, [calls]);
 
   // ─── Filtered calls ──────────────────────────────────────────────────────
+  const campaignMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    campaigns.forEach(c => { m[c.id] = c.name; });
+    return m;
+  }, [campaigns]);
+
   const filteredCalls = useMemo(() => {
     return calls.filter(c => {
+      if (campaignFilter !== "all" && c.campaign_id !== campaignFilter) return false;
       if (dirFilter !== "all" && c.direction !== dirFilter) return false;
       if (selectedState && callStateMap[c.id] !== selectedState) return false;
       if (searchQuery) {
@@ -294,7 +319,7 @@ export default function CallsPage() {
       }
       return true;
     });
-  }, [calls, dirFilter, selectedState, searchQuery, scoreFilter, durationFilter, callStateMap, agentMap]);
+  }, [calls, campaignFilter, dirFilter, selectedState, searchQuery, scoreFilter, durationFilter, callStateMap, agentMap]);
 
   // ─── Stats ────────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -401,6 +426,26 @@ export default function CallsPage() {
               className="pl-9 h-9"
             />
           </div>
+          {campaigns.length > 0 && (
+            <Select value={campaignFilter} onValueChange={setCampaignFilter}>
+              <SelectTrigger className="h-9 w-[180px] text-xs">
+                <SelectValue placeholder="All Campaigns" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Campaigns</SelectItem>
+                {campaigns.map(c => (
+                  <SelectItem key={c.id} value={c.id}>
+                    <span className="flex items-center gap-2">
+                      {c.name}
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        {c.status}
+                      </Badge>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Tabs value={dirFilter} onValueChange={(v) => setDirFilter(v as DirFilter)}>
             <TabsList className="h-9">
               <TabsTrigger value="all" className="text-xs">All</TabsTrigger>
@@ -425,7 +470,7 @@ export default function CallsPage() {
             </TabsList>
           </Tabs>
           {!selected && (
-            <Button variant="outline" size="sm" className="h-9" onClick={() => exportCSV(filteredCalls, agentMap)}>
+            <Button variant="outline" size="sm" className="h-9" onClick={() => exportCSV(filteredCalls, agentMap, campaignMap)}>
               <Download className="h-3 w-3 mr-1" /> CSV
             </Button>
           )}
