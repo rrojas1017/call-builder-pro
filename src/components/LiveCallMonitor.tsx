@@ -13,11 +13,14 @@ interface TranscriptLine {
 }
 
 interface LiveCallMonitorProps {
-  blandCallId: string;
+  blandCallId?: string | null;
+  retellCallId?: string | null;
+  /** For Retell: poll transcript from test_run_contacts */
+  contactId?: string | null;
   isActive: boolean;
 }
 
-export default function LiveCallMonitor({ blandCallId, isActive }: LiveCallMonitorProps) {
+export default function LiveCallMonitor({ blandCallId, retellCallId, contactId, isActive }: LiveCallMonitorProps) {
   const { toast } = useToast();
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [listening, setListening] = useState(false);
@@ -27,32 +30,33 @@ export default function LiveCallMonitor({ blandCallId, isActive }: LiveCallMonit
   const audioCtxRef = useRef<AudioContext | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
 
-  // Poll transcript every 2.5s
+  const isBland = !!blandCallId;
+  const isRetell = !!retellCallId && !blandCallId;
+  const activeCallId = blandCallId || retellCallId;
+
+  // Poll transcript for Bland calls via edge function
   useEffect(() => {
-    if (!isActive || !blandCallId) return;
+    if (!isActive || !isBland || !blandCallId) return;
 
     const fetchTranscript = async () => {
       try {
         const { data, error } = await supabase.functions.invoke("live-call-stream", {
           body: { call_id: blandCallId, action: "transcript" },
         });
-        if (error || !data?.events) return;
+        if (error || !data?.transcripts) return;
 
         const newLines: TranscriptLine[] = [];
-        for (const evt of data.events) {
-          const text = evt.text || evt.transcript || evt.message || "";
-          if (!text.trim()) continue;
-
-          const id = evt.id || `${evt.created_at || ""}-${text.slice(0, 20)}`;
+        for (const t of data.transcripts) {
+          if (!t.text?.trim()) continue;
+          const id = String(t.id);
           if (seenIdsRef.current.has(id)) continue;
           seenIdsRef.current.add(id);
-
-          const role: "agent" | "caller" =
-            evt.category === "agent" || evt.role === "agent" || evt.speaker === "agent"
-              ? "agent"
-              : "caller";
-
-          newLines.push({ id, role, text, timestamp: evt.created_at ? new Date(evt.created_at).getTime() : undefined });
+          newLines.push({
+            id,
+            role: t.role as "agent" | "caller",
+            text: t.text,
+            timestamp: t.created_at ? new Date(t.created_at).getTime() : undefined,
+          });
         }
 
         if (newLines.length > 0) {
@@ -66,7 +70,57 @@ export default function LiveCallMonitor({ blandCallId, isActive }: LiveCallMonit
     fetchTranscript();
     const interval = setInterval(fetchTranscript, 2500);
     return () => clearInterval(interval);
-  }, [isActive, blandCallId]);
+  }, [isActive, isBland, blandCallId]);
+
+  // Poll transcript for Retell calls from database
+  useEffect(() => {
+    if (!isActive || !isRetell || !contactId) return;
+
+    const fetchTranscript = async () => {
+      try {
+        const { data } = await supabase
+          .from("test_run_contacts")
+          .select("transcript")
+          .eq("id", contactId)
+          .single();
+
+        if (!data?.transcript) return;
+
+        // Parse concatenated transcript format: "role: text\nrole: text"
+        const parsed: TranscriptLine[] = [];
+        const segments = data.transcript.split("\n").filter((s: string) => s.trim());
+        for (let i = 0; i < segments.length; i++) {
+          const seg = segments[i];
+          const id = `retell-${i}`;
+          if (seenIdsRef.current.has(id)) continue;
+
+          const colonIdx = seg.indexOf(":");
+          if (colonIdx === -1) continue;
+
+          const speaker = seg.slice(0, colonIdx).trim().toLowerCase();
+          const text = seg.slice(colonIdx + 1).trim();
+          if (!text) continue;
+
+          seenIdsRef.current.add(id);
+          parsed.push({
+            id,
+            role: speaker === "agent" || speaker === "assistant" ? "agent" : "caller",
+            text,
+          });
+        }
+
+        if (parsed.length > 0) {
+          setLines(parsed); // Replace all for Retell since we re-parse each time
+        }
+      } catch {
+        // silently retry
+      }
+    };
+
+    fetchTranscript();
+    const interval = setInterval(fetchTranscript, 3000);
+    return () => clearInterval(interval);
+  }, [isActive, isRetell, contactId]);
 
   // Auto-scroll
   useEffect(() => {
@@ -101,6 +155,8 @@ export default function LiveCallMonitor({ blandCallId, isActive }: LiveCallMonit
       setListening(false);
       return;
     }
+
+    if (!blandCallId) return;
 
     setConnecting(true);
     try {
@@ -152,7 +208,7 @@ export default function LiveCallMonitor({ blandCallId, isActive }: LiveCallMonit
     }
   }, [blandCallId, listening, toast]);
 
-  if (!isActive || !blandCallId) return null;
+  if (!isActive || !activeCallId) return null;
 
   return (
     <div className="surface-elevated rounded-xl p-6 space-y-3 border border-primary/20">
@@ -201,17 +257,25 @@ export default function LiveCallMonitor({ blandCallId, isActive }: LiveCallMonit
         ))}
       </div>
 
-      {/* Listen button */}
-      <Button
-        variant={listening ? "destructive" : "outline"}
-        size="sm"
-        className="w-full"
-        onClick={handleListen}
-        disabled={connecting}
-      >
-        <Headphones className="mr-2 h-4 w-4" />
-        {connecting ? "Connecting..." : listening ? "Stop Listening" : "Listen Live"}
-      </Button>
+      {/* Listen button - only for Bland calls */}
+      {isBland && (
+        <Button
+          variant={listening ? "destructive" : "outline"}
+          size="sm"
+          className="w-full"
+          onClick={handleListen}
+          disabled={connecting}
+        >
+          <Headphones className="mr-2 h-4 w-4" />
+          {connecting ? "Connecting..." : listening ? "Stop Listening" : "Listen Live"}
+        </Button>
+      )}
+
+      {isRetell && (
+        <p className="text-xs text-muted-foreground text-center">
+          Live audio not available for this provider. Transcript updates from database.
+        </p>
+      )}
     </div>
   );
 }

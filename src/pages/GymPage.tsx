@@ -31,6 +31,7 @@ interface TestContact {
   created_at?: string;
   test_run_id?: string;
   bland_call_id?: string | null;
+  retell_call_id?: string | null;
 }
 
 interface TrendPoint {
@@ -404,7 +405,7 @@ export default function GymPage() {
           )}
         </Button>
 
-        {running && contact?.bland_call_id && (
+        {running && (contact?.bland_call_id || contact?.retell_call_id) && (
           <Button
             variant="destructive"
             className="w-full"
@@ -432,9 +433,11 @@ export default function GymPage() {
       </div>
 
       {/* Live Call Monitor */}
-      {running && contact?.bland_call_id && (
+      {running && (contact?.bland_call_id || contact?.retell_call_id) && (
         <LiveCallMonitor
           blandCallId={contact.bland_call_id}
+          retellCallId={contact.retell_call_id}
+          contactId={contact.id}
           isActive={running}
         />
       )}
