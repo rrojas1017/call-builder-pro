@@ -114,7 +114,8 @@ export default function CampaignsPage() {
             .eq("id", listId)
             .single();
 
-          const fields = (listMeta as any)?.detected_fields as string[] || [];
+          const rawFields = (listMeta as any)?.detected_fields;
+          const fields: string[] = Array.isArray(rawFields) ? rawFields : (rawFields && typeof rawFields === "object" ? Object.keys(rawFields) : []);
           // Simple heuristic: find phone and name columns
           const phoneCols = ["phone", "phone_number", "mobile", "cell", "telephone"];
           const nameCols = ["name", "full_name", "first_name", "contact"];
