@@ -1,40 +1,60 @@
 
 
-## Make Agent Creation Easier: Templates + Smart Defaults
+## Add Document & URL Uploads to Agent Knowledge Base
 
-### What Changes
+### What This Enables
 
-Three UI improvements to Step 1, 2, and 3 of the agent creation wizard -- all in a single file (`src/pages/CreateAgentPage.tsx`). No backend changes needed.
+Users can feed their agents with company policies, product manuals, FAQs, and any reference material by uploading documents (PDFs, spreadsheets, text files) or pasting URLs directly into the Knowledge Base page. The system extracts the text content and stores it as searchable knowledge entries the agent can reference during calls.
 
-### 1. Quick-Start Templates (Step 1)
+### How It Works
 
-A row of clickable template cards appears above the blank form. Clicking one pre-fills the agent name and description. The user can still ignore templates and type freely.
+1. **On the Agent Knowledge page**, the existing "Add Knowledge" button gets a companion: an "Upload Sources" button that opens a dialog with two options:
+   - **Upload files** -- drag-and-drop or click to upload PDFs, CSVs, Excel (.xlsx), and text files (up to 20MB each, max 5 at a time)
+   - **Paste a URL** -- enter a webpage URL and the system fetches and extracts its content
 
-**Templates:**
+2. **Files are stored in a storage bucket** (`agent_knowledge_sources`), and the extracted text is saved as knowledge entries in the existing `agent_knowledge` table with `source_type: "document"` or `source_type: "url"`.
 
-| Template | Name Pre-fill | Description Pre-fill |
-|---|---|---|
-| Health Insurance Pre-Qualifier | Health Insurance Pre-Qualifier | AI agent that calls leads who requested health insurance info, verifies eligibility, collects basic details, and transfers qualified individuals to a licensed agent. |
-| Appointment Setter | Appointment Setter | AI agent that calls to schedule or confirm appointments, collects preferred date/time, and sends a confirmation summary. |
-| Lead Qualifier | Lead Qualifier | AI agent that calls inbound leads, asks qualifying questions, collects contact info, and routes hot leads to the sales team. |
-| Survey / Feedback | Customer Feedback | AI agent that calls customers after a purchase or service to collect satisfaction ratings and open-ended feedback. |
-| Inbound Support | Inbound Support | AI agent that handles incoming calls, answers common questions from a knowledge base, and escalates complex issues to a live agent. |
+3. **A new backend function** (`ingest-knowledge-source`) handles the heavy lifting:
+   - For text/CSV files: reads the content directly
+   - For PDFs and Excel: uses Lovable AI (Gemini Flash) to summarize the document content into digestible knowledge entries
+   - For URLs: fetches the page content and extracts the main text
+   - Splits large documents into multiple knowledge entries by topic/section
 
-Each card shows the template label and a one-line summary. A subtle "Or describe your own below" divider separates templates from the blank form.
+### User Experience
 
-### 2. "Use Defaults & Continue" Button (Step 2)
-
-A secondary outlined button appears next to the existing "Confirm & Review" button on Step 2. Clicking it auto-fills any blank answers with the text "Use your best judgment based on industry standards" and advances directly to Step 3. Users who want control can still answer each question manually.
-
-### 3. Background Audio Default (Step 3)
-
-Change the initial state of `backgroundTrack` from `null` to `"office"`, so the most popular option is pre-selected. Users can still toggle it off or pick a different track.
+- Go to any agent's Knowledge page
+- Click "Upload Sources"
+- Drop a PDF of your company's return policy, or paste your FAQ page URL
+- The system processes it and creates multiple categorized knowledge entries automatically
+- Each entry shows a "Document" or "URL" badge so you know where it came from
+- You can edit or delete any auto-created entry just like manual ones
 
 ### Technical Details
 
-| File | Change |
+| Change | Details |
 |---|---|
-| `src/pages/CreateAgentPage.tsx` | Add `TEMPLATES` array constant. Render template cards grid in Step 1 above the form. Add "Use Defaults" button in Step 2. Change `backgroundTrack` initial state to `"office"`. |
+| **New storage bucket** | `agent_knowledge_sources` -- stores uploaded files, with RLS so only org members can access their agents' files |
+| **New edge function** | `ingest-knowledge-source` -- accepts file_path or url, extracts text, uses AI to split into categorized knowledge entries, saves to `agent_knowledge` |
+| **Modified file** | `src/pages/AgentKnowledgePage.tsx` -- add "Upload Sources" button and dialog with file upload zone + URL input field |
+| **Modified file** | `src/pages/AgentKnowledgePage.tsx` -- add "Document" and "URL" source type badges to the existing badge renderer |
 
-No new files, no new dependencies, no database changes.
+### Processing Pipeline
+
+For uploaded files:
+1. Frontend uploads file to `agent_knowledge_sources/{project_id}/{timestamp}_{filename}`
+2. Frontend calls `ingest-knowledge-source` with `{ project_id, file_path }`
+3. Edge function downloads file from storage, extracts raw text (plain text for .txt/.csv, best-effort for others)
+4. Sends text to Gemini Flash with instructions to split into categorized knowledge entries (product_knowledge, objection_handling, etc.)
+5. Inserts resulting entries into `agent_knowledge` table
+
+For URLs:
+1. Frontend calls `ingest-knowledge-source` with `{ project_id, url }`
+2. Edge function fetches the URL content
+3. Same AI processing as above to extract and categorize
+
+### What Stays the Same
+
+- Manual "Add Knowledge" entry still works exactly as before
+- All existing auto-research, evaluation, and success-learning entries are unaffected
+- The knowledge summarization pipeline that feeds into the agent's prompt is unchanged -- it just has more entries to work with
 
