@@ -209,7 +209,7 @@ serve(async (req) => {
           if (retellData.call_id) {
             callIds.push(retellData.call_id);
             await supabase.from("contacts").update({
-              status: "calling", attempts: 1, called_at: new Date().toISOString(),
+              status: "calling", called_at: new Date().toISOString(),
             }).eq("id", contact.id);
           } else {
             await supabase.from("contacts").update({
@@ -299,7 +299,7 @@ serve(async (req) => {
 
       const contactIds = contacts.map((c: any) => c.id);
       await supabase.from("contacts").update({
-        status: "calling", attempts: 1, called_at: new Date().toISOString(),
+        status: "calling", called_at: new Date().toISOString(),
       }).in("id", contactIds);
 
       // Best-effort: resolve individual call IDs from batch so LiveCallMonitor works
