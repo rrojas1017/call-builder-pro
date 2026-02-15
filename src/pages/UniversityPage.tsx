@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen, ArrowUp, ArrowDown, Minus, History, StopCircle } from "lucide-react";
+import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen, ArrowUp, ArrowDown, Minus, History, StopCircle, GraduationCap } from "lucide-react";
 import LiveCallMonitor from "@/components/LiveCallMonitor";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
@@ -617,6 +617,10 @@ function ResultCard({
         </div>
       )}
 
+      {contact.status === "completed" && !contact.evaluation && (
+        <GradingProgress hasTranscript={!!contact.transcript} />
+      )}
+
       {contact.evaluation && (
         <div className="space-y-3">
           <div className="grid grid-cols-5 gap-2">
@@ -776,5 +780,39 @@ function SeverityBadge({ severity }: { severity?: string }) {
     <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${styles[severity] || styles.minor}`}>
       {severity}
     </span>
+  );
+}
+
+function GradingProgress({ hasTranscript }: { hasTranscript: boolean }) {
+  const steps = [
+    { label: "Transcript received", done: hasTranscript },
+    { label: "Evaluating performance", done: false, active: hasTranscript },
+    { label: "Calculating graduation level", done: false, active: false },
+  ];
+
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <GraduationCap className="h-4 w-4 text-primary animate-pulse" />
+        <p className="text-sm font-medium text-foreground">Grading in progress…</p>
+      </div>
+      <p className="text-xs text-muted-foreground">Analyzing transcript and scoring performance</p>
+      <div className="space-y-2">
+        {steps.map((step, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            {step.done ? (
+              <CheckCircle className="h-3.5 w-3.5 text-green-400 shrink-0" />
+            ) : step.active ? (
+              <Loader2 className="h-3.5 w-3.5 text-primary animate-spin shrink-0" />
+            ) : (
+              <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />
+            )}
+            <span className={step.done ? "text-foreground" : step.active ? "text-primary font-medium" : "text-muted-foreground"}>
+              {step.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
