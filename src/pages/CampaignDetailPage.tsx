@@ -106,15 +106,17 @@ export default function CampaignDetailPage() {
     };
   }, [id]);
 
-  // Periodic refresh for calls data (every 15s when running)
+  // Periodic refresh for calls + contacts data (every 5s)
   useEffect(() => {
-    if (!id || campaign?.status !== "running") return;
+    if (!id) return;
     const interval = setInterval(async () => {
-      const [callsRes, campRes] = await Promise.all([
+      const [callsRes, contactsRes, campRes] = await Promise.all([
         supabase.from("calls").select("id, contact_id, duration_seconds, outcome, evaluation, started_at").eq("campaign_id", id),
+        supabase.from("contacts").select("*").eq("campaign_id", id).order("called_at", { ascending: false, nullsFirst: false }),
         supabase.from("campaigns").select("status").eq("id", id).single(),
       ]);
       setCalls(callsRes.data || []);
+      setContacts(contactsRes.data || []);
       if (campRes.data && campRes.data.status !== campaign?.status) {
         setCampaign((prev: any) => ({ ...prev, status: campRes.data!.status }));
       }
@@ -164,7 +166,7 @@ export default function CampaignDetailPage() {
     }
   };
 
-  const liveCalls = contacts.filter((c) => c.status === "calling" && c.bland_call_id);
+  const liveCalls = contacts.filter((c) => c.status === "calling");
 
   const handleStopCall = async (callId: string, contactId: string) => {
     setStoppingCalls((prev) => new Set(prev).add(contactId));
@@ -179,6 +181,25 @@ export default function CampaignDetailPage() {
       toast({ title: "Call stopped" });
     } catch (err: any) {
       toast({ title: "Error stopping call", description: err.message, variant: "destructive" });
+    } finally {
+      setStoppingCalls((prev) => {
+        const next = new Set(prev);
+        next.delete(contactId);
+        return next;
+      });
+    }
+  };
+
+  const handleForceCancel = async (contactId: string) => {
+    setStoppingCalls((prev) => new Set(prev).add(contactId));
+    try {
+      await supabase.from("contacts").update({ status: "cancelled" }).eq("id", contactId);
+      setContacts((prev) =>
+        prev.map((c) => (c.id === contactId ? { ...c, status: "cancelled" } : c))
+      );
+      toast({ title: "Call force-cancelled" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setStoppingCalls((prev) => {
         const next = new Set(prev);
@@ -412,18 +433,33 @@ export default function CampaignDetailPage() {
                     <span className="font-medium text-sm">{c.name}</span>
                     <span className="font-mono text-xs text-muted-foreground">{c.phone}</span>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    disabled={stoppingCalls.has(c.id)}
-                    onClick={() => handleStopCall(c.bland_call_id, c.id)}
-                  >
-                    {stoppingCalls.has(c.id) ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <><PhoneOff className="h-3 w-3 mr-1" /> Stop</>
-                    )}
-                  </Button>
+                  {c.bland_call_id ? (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={stoppingCalls.has(c.id)}
+                      onClick={() => handleStopCall(c.bland_call_id, c.id)}
+                    >
+                      {stoppingCalls.has(c.id) ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <><PhoneOff className="h-3 w-3 mr-1" /> Stop</>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={stoppingCalls.has(c.id)}
+                      onClick={() => handleForceCancel(c.id)}
+                    >
+                      {stoppingCalls.has(c.id) ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <><PhoneOff className="h-3 w-3 mr-1" /> Force Cancel</>
+                      )}
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
@@ -492,7 +528,7 @@ export default function CampaignDetailPage() {
           <CardTitle className="text-base">Contacts ({total})</CardTitle>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="max-h-[400px]">
+          <ScrollArea className="h-[400px]">
             <Table>
               <TableHeader>
                 <TableRow>
