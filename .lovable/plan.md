@@ -1,56 +1,67 @@
 
 
-## Fix Cross-Domain Hallucination in Evaluator Improvements
+## Add Learning Progress Dashboard and Fix Knowledge Gap
 
-### Problem
+### Problem 1: Winning Patterns Not Reaching Agents
+The `learn-from-success` function saves patterns as `category: "winning_pattern"`, but `buildTaskPrompt.ts` only recognizes `product_knowledge`, `objection_handling`, `industry_insight`, and `competitor_info`. Similarly, `conversation_technique` entries (111 in the DB) are also dropped from the DOMAIN KNOWLEDGE section. These categories only survive if the 500-char AI briefing happens to include them -- which is unreliable.
 
-The AI evaluator (Claude) suggested travel-themed rapport rules ("Orlando is such a fun choice!", "family trip sounds wonderful!") for an ACA health insurance agent. When applied, these irrelevant rules were stored in `business_rules`, and the next evaluation then flagged "Didn't fully explore the travel-related business rules" -- creating a confusing loop.
+### Problem 2: No Progress Visibility
+There's no UI to track whether the learning loop is working. Users can't see if lessons are being applied or if scores improved.
 
-This is a two-part problem:
-1. Claude hallucinated improvements from the wrong domain
-2. The system blindly applied them without checking relevance
+---
 
-### Fix (Two Parts)
+### Fix 1: Include Missing Categories in Prompt Builder
 
-#### Part 1: Add Domain Context to Evaluator Prompt
+**File: `src/lib/buildTaskPrompt.ts`**
 
-**File: `supabase/functions/evaluate-call/index.ts`**
+Add `winning_pattern` and `conversation_technique` to the category label map (line 41-46):
 
-Add an explicit instruction to the system prompt telling Claude to only suggest improvements relevant to the agent's actual use case/vertical:
-
-```
-DOMAIN CONSTRAINT: This agent's use case is "${spec.use_case || 'general'}".
-ALL suggested improvements MUST be directly relevant to this domain.
-Do NOT suggest examples, rapport-building lines, or business rules from
-unrelated industries (e.g., travel examples for a health insurance agent).
-Every suggested_value must make sense in the context of "${spec.use_case}".
-```
-
-This goes right after the existing ANTI-REPETITION DIRECTIVE in the system prompt.
-
-#### Part 2: Immediate Data Fix
-
-**File: `supabase/functions/apply-improvement/index.ts`**
-
-Add a lightweight domain-relevance guard for `business_rules` and `humanization_notes` fields. Before applying, check if the suggested value contains keywords clearly from a different vertical than the agent's `use_case`. If mismatched, store a warning but skip the application.
-
-Additionally, a one-time database cleanup is needed to remove the travel-related content currently in this agent's spec.
-
-### Database Cleanup (one-time migration)
-
-Clear the incorrectly applied travel business rules from the affected agent:
-
-```sql
-UPDATE agent_specs 
-SET business_rules = NULL 
-WHERE project_id = '5d72204a-caa3-4a41-a980-bfb6d413060b';
+```typescript
+const labels: Record<string, string> = {
+  product_knowledge: "PRODUCT KNOWLEDGE",
+  objection_handling: "OBJECTION HANDLING",
+  industry_insight: "INDUSTRY INSIGHTS",
+  competitor_info: "COMPETITOR AWARENESS",
+  winning_pattern: "WINNING PATTERNS",           // NEW
+  conversation_technique: "CONVERSATION TIPS",    // NEW
+};
 ```
 
-### Files Changed
+Also update the backend copy at `supabase/functions/_shared/buildTaskPrompt.ts` with the same change.
+
+### Fix 2: Add Learning Progress Section to Agent Knowledge Page
+
+**File: `src/pages/AgentKnowledgePage.tsx`**
+
+Add a summary stats bar at the top of the Knowledge page showing:
+- Total knowledge entries by source (Auto-researched / Evaluation / Manual / Success patterns)
+- Score trend (fetch last 5 `score_snapshots` and show if scores are improving)
+- Last learning activity timestamp
+- A simple timeline of recent learning events
+
+This uses existing data from `agent_knowledge`, `score_snapshots`, and `improvements` tables -- no new tables needed.
+
+### Fix 3: Add `winning_pattern` to Knowledge Page Categories
+
+**File: `src/pages/AgentKnowledgePage.tsx`**
+
+Add the missing category to the `CATEGORIES` array so users can see and manage winning patterns:
+
+```typescript
+{ value: "winning_pattern", label: "Winning Patterns", icon: "trophy" },
+```
+
+---
+
+### Technical Summary
 
 | File | Change |
 |---|---|
-| `supabase/functions/evaluate-call/index.ts` | Add DOMAIN CONSTRAINT directive to system prompt using the agent's use_case |
-| `supabase/functions/apply-improvement/index.ts` | Add domain-relevance validation before applying improvements to business_rules |
-| Database migration | Clear stale travel-themed business_rules from the affected ACA agent |
+| `src/lib/buildTaskPrompt.ts` | Add `winning_pattern` and `conversation_technique` to category labels |
+| `supabase/functions/_shared/buildTaskPrompt.ts` | Same category label update (backend copy) |
+| `src/pages/AgentKnowledgePage.tsx` | Add winning_pattern category; add learning progress stats section at top |
 
+### What This Achieves
+- All 229 knowledge entries (including 111 conversation techniques) will now reliably appear in agent prompts
+- Users get visibility into whether the system is actually learning
+- Winning patterns extracted from successful calls are surfaced in the UI and fed to agents
