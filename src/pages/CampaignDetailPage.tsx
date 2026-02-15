@@ -29,19 +29,74 @@ const COLORS = [
   "hsl(var(--muted))",
 ];
 
-const STATUS_BADGES: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  queued: { label: "Queued", variant: "outline" },
-  calling: { label: "In Progress", variant: "secondary" },
-  completed: { label: "Completed", variant: "default" },
-  failed: { label: "Failed", variant: "destructive" },
-  cancelled: { label: "Cancelled", variant: "outline" },
-  voicemail: { label: "Voicemail", variant: "secondary" },
-  no_answer: { label: "No Answer", variant: "secondary" },
-  busy: { label: "Busy", variant: "secondary" },
-  dnc: { label: "DNC", variant: "destructive" },
-  disconnected: { label: "Disconnected", variant: "destructive" },
-  call_me_later: { label: "Call Me Later", variant: "secondary" },
-  not_available: { label: "Not Available", variant: "secondary" },
+// Lifecycle status mapping
+const getLifecycleStatus = (status: string): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; isLive?: boolean } => {
+  switch (status) {
+    case "queued":
+      return { label: "Queued", variant: "outline" };
+    case "calling":
+      return { label: "Dialing", variant: "secondary", isLive: true };
+    case "completed":
+    case "qualified":
+    case "disqualified":
+      return { label: "Connected", variant: "default" };
+    case "voicemail":
+    case "no_answer":
+    case "busy":
+    case "call_me_later":
+    case "not_available":
+    case "failed":
+    case "disconnected":
+    case "dnc":
+    case "cancelled":
+      return { label: "Attempted", variant: "secondary" };
+    default:
+      return { label: status, variant: "outline" };
+  }
+};
+
+// Outcome badge styling
+const getOutcomeBadge = (outcome: string | null | undefined): { label: string; className: string } | null => {
+  if (!outcome) return null;
+  switch (outcome) {
+    case "qualified":
+      return { label: "Qualified", className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 border-green-200 dark:border-green-800" };
+    case "disqualified":
+      return { label: "Disqualified", className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 border-red-200 dark:border-red-800" };
+    case "completed":
+      return { label: "Completed", className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-800" };
+    case "callback":
+    case "call_me_later":
+      return { label: "Callback", className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800" };
+    case "voicemail":
+      return { label: "Voicemail", className: "bg-muted text-muted-foreground border-border" };
+    case "no_answer":
+      return { label: "No Answer", className: "bg-muted text-muted-foreground border-border" };
+    case "busy":
+      return { label: "Busy", className: "bg-muted text-muted-foreground border-border" };
+    case "not_available":
+      return { label: "Not Available", className: "bg-muted text-muted-foreground border-border" };
+    case "dnc":
+      return { label: "DNC", className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 border-red-200 dark:border-red-800" };
+    case "disconnected":
+      return { label: "Disconnected", className: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300 border-orange-200 dark:border-orange-800" };
+    case "failed":
+      return { label: "Failed", className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 border-red-200 dark:border-red-800" };
+    case "cancelled":
+      return { label: "Cancelled", className: "bg-muted text-muted-foreground border-border" };
+    default:
+      return { label: outcome, className: "bg-muted text-muted-foreground border-border" };
+  }
+};
+
+// Resolve the outcome to display for a contact
+const resolveOutcome = (contact: any, call: any): string | null => {
+  if (contact.status === "queued" || contact.status === "calling") return null;
+  if (call?.outcome) return call.outcome;
+  // Fall back to raw contact status for non-connected calls
+  const fallbackOutcomes = ["voicemail", "no_answer", "busy", "dnc", "disconnected", "failed", "cancelled", "call_me_later", "not_available"];
+  if (fallbackOutcomes.includes(contact.status)) return contact.status;
+  return contact.status === "completed" ? "completed" : null;
 };
 
 export default function CampaignDetailPage() {
@@ -595,20 +650,22 @@ export default function CampaignDetailPage() {
               <TableBody>
                 {contacts.map((c) => {
                   const call = callByContact[c.id];
-                  const badge = STATUS_BADGES[c.status] || { label: c.status, variant: "outline" as const };
+                  const lifecycle = getLifecycleStatus(c.status);
+                  const outcomeValue = resolveOutcome(c, call);
+                  const outcomeBadge = getOutcomeBadge(outcomeValue);
                   return (
                     <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedContactId(c.id)}>
                       <TableCell>{c.name}</TableCell>
                       <TableCell className="font-mono text-xs">{c.phone}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {c.status === "calling" && (
+                          {lifecycle.isLive && (
                             <span className="relative flex h-2.5 w-2.5">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
                               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
                             </span>
                           )}
-                          <Badge variant={badge.variant}>{badge.label}</Badge>
+                          <Badge variant={lifecycle.variant}>{lifecycle.label}</Badge>
                         </div>
                       </TableCell>
                       <TableCell className="text-xs text-center">{c.attempts || 0}</TableCell>
@@ -617,7 +674,15 @@ export default function CampaignDetailPage() {
                           ? `${Math.floor(call.duration_seconds / 60)}m ${call.duration_seconds % 60}s`
                           : "—"}
                       </TableCell>
-                      <TableCell className="text-xs">{call?.outcome || "—"}</TableCell>
+                      <TableCell>
+                        {outcomeBadge ? (
+                          <Badge variant="outline" className={`text-xs ${outcomeBadge.className}`}>
+                            {outcomeBadge.label}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       {campaign.hipaa_enabled && (
                         <TableCell>
                           {(() => {
@@ -666,7 +731,7 @@ export default function CampaignDetailPage() {
             const call = callByContact[selectedContactId];
             if (!contact) return <p className="text-muted-foreground">Contact not found.</p>;
             const evaluation = call?.evaluation as any;
-            const badge = STATUS_BADGES[contact.status] || { label: contact.status, variant: "outline" as const };
+            const badge = getLifecycleStatus(contact.status);
 
             return (
               <>
