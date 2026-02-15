@@ -1,29 +1,33 @@
 
 
-## Execute: Fix Bryan Contreras Account
+## Show User Role in Sidebar
 
-Now that I have the password, here's exactly what I'll do:
+Add a role badge to the bottom of the sidebar so every logged-in user can see their current role (e.g., super_admin, admin, analyst, viewer).
 
-### Step 1: Create temporary Edge Function `admin-fix-user`
+### What changes
 
-This function will use the service role to:
-- Look up Bryan by his current email `bcontrereas@appendify.io`
-- Update his auth email to `bcontreras@appendify.io`
-- Set his password to `Appendify2025!`
-- Update his role in `user_roles` to `super_admin`
+**File: `src/components/AppSidebar.tsx`**
 
-### Step 2: Deploy and call the function
+1. Import `useUserRole` from `@/hooks/useUserRole` and import the `Badge` component from `@/components/ui/badge`.
+2. Inside the component, call `const { role } = useUserRole();`.
+3. In the bottom footer section (lines 238-247), add a role display row above the ThemeToggle, showing:
+   - A `Shield` icon (from lucide-react)
+   - The role as a styled Badge with a human-friendly label (e.g., "Super Admin", "Admin", "Analyst", "Viewer")
+   - A subtle, non-interactive row matching the existing sidebar style
 
-Invoke the function to apply all three changes at once.
+### Visual result
 
-### Step 3: Clean up
+```text
+---------------------
+| Shield  Super Admin |   <-- new row with badge
+| Theme Toggle        |
+| Sign Out            |
+---------------------
+```
 
-Delete the `admin-fix-user` Edge Function since it's a one-time operation.
+### Technical details
 
-### Result
-
-Bryan will be able to log in with:
-- **Email:** bcontreras@appendify.io
-- **Password:** Appendify2025!
-- **Role:** super_admin
+- Use a small helper to format the role string: `super_admin` becomes "Super Admin", `admin` becomes "Admin", etc.
+- Badge variant mirrors the logic already in `TeamPage.tsx`: destructive for super_admin, default for admin, secondary for analyst, outline for viewer.
+- The `useUserRole` hook already exists and fetches from the `user_roles` table, so no new queries or backend changes are needed.
 
