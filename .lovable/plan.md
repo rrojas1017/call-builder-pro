@@ -1,63 +1,80 @@
 
 
-## Fix Voice Filtering: Use API Tags + Expand Accent Detection
+## Fix Campaign Execution + Build Live Campaign Dashboard
 
-### Root Cause
+### Problems Found
 
-The current `useBlandVoices.ts` hook only parses gender and accent from the `description` text using simple keyword matching. This fails in two ways:
+**1. Campaign has zero contacts (root cause: empty dial list rows)**
 
-1. **Only 3 accents detected** (american, british, australian) -- but the API has 10+ nationalities (indian, french, german, dutch, brazilian-portuguese, italian, spanish, etc.). Voices with unrecognized accents get `accent: undefined` and become invisible to the filter.
+The list "Corrupted or Binary Excel Data" has `row_count: 6` but zero actual rows in `dial_list_rows`. The contact-copy loop in `CampaignsPage.tsx` ran but found nothing to copy. The campaign started with 0 contacts, so `tick-campaign` immediately sees "no queued contacts" and marks it completed.
 
-2. **Tags are ignored** -- The Bland API returns a `tags` array per voice (e.g., `["english", "male", "cloned"]`, `["french", "cloned"]`, `["German"]`) that contains reliable gender and language/accent data. The current code doesn't use it at all.
+**Fix**: After copying contacts, check if any were actually inserted. If zero, show an error toast and don't create the campaign, or warn the user.
 
-3. **Voices without clear descriptions are unclassified** -- e.g., "Sal" with description "An effective and simple voice" but tag `"male"` gets no gender assigned.
+**2. tick-campaign crashes with ambiguous FK error**
+
+The query `select("*, agent_projects!inner(id, org_id)")` fails because `campaigns` has two foreign keys to `agent_projects`: `project_id` and `agent_project_id`. PostgREST can't pick one.
+
+**Fix**: Change to `agent_projects!campaigns_agent_project_id_fkey` to disambiguate.
+
+**3. Campaign Detail page is static and basic**
+
+Currently loads data once on mount with no live updates, no call-level stats, no duration/score/conversion metrics.
 
 ### Solution
 
-Update `src/hooks/useBlandVoices.ts` to:
+#### A. Fix tick-campaign FK disambiguation
 
-1. **Check `tags` first for gender** -- if tags contain `"male"` or `"female"`, use that. Fall back to description parsing only if tags don't have it.
+In `supabase/functions/tick-campaign/index.ts` line 27, change the select to use the explicit FK hint.
 
-2. **Expand accent detection to all nationalities in the API** -- parse from description: american, british, australian, indian, french, german, dutch, italian, spanish, brazilian-portuguese. Also check tags for these keywords.
+#### B. Add contact-copy validation in CampaignsPage
 
-3. **Extract language from tags** -- tags like `"english"`, `"french"`, `"spanish"`, `"German"`, `"italian"` map directly to language.
+After the contact copy loop, count how many contacts were inserted. If zero, delete the campaign and show an error: "No valid contacts found in the selected lists. Check that your lists have phone numbers."
 
-Update `src/components/VoiceSelector.tsx` to:
+#### C. Rebuild Campaign Detail as a Live Dashboard
 
-4. **Show accent badges on each voice card** so users can visually confirm what they're getting.
+Replace the basic `CampaignDetailPage.tsx` with a rich, real-time dashboard:
 
-5. **Show "Unknown" counts** -- when filters are active, display how many voices were excluded due to missing metadata, so the user understands why the list seems limited.
+**Real-time data via Supabase Realtime**: Subscribe to `contacts` table changes filtered by `campaign_id` so the page updates live as calls complete.
+
+**New KPI cards** (top row):
+- Total Contacts (static)
+- In Progress (contacts with status "calling")
+- Completed (status "completed")
+- Failed (status "failed")
+- Success Rate (completed / (completed + failed) as %)
+- Avg Duration (from `calls` table, `duration_seconds`)
+- Avg Score (from `calls.evaluation->overall_score`)
+
+**Progress bar**: Visual progress indicator showing % of contacts processed.
+
+**Outcome distribution chart**: Existing pie chart but with live-updating data.
+
+**Live contact feed**: Contacts table sorted by most recently updated, with status badges that update in real-time. Show duration and outcome when available by joining with `calls` data.
+
+**Per-list breakdown**: Keep existing table but add success rate and avg duration per list.
+
+**Campaign controls**: Add Start/Pause/Resume buttons directly on the detail page header.
 
 ### Technical Details
 
 | File | Change |
 |---|---|
-| `src/hooks/useBlandVoices.ts` | Rewrite metadata extraction: check `tags` array for gender/language, expand accent keyword list from 3 to 10+, combine tags + description for best-effort classification |
-| `src/components/VoiceSelector.tsx` | Add language badge to voice cards, show excluded-count note when filters reduce results significantly |
+| `supabase/functions/tick-campaign/index.ts` | Line 27: change `agent_projects!inner` to `agent_projects!campaigns_agent_project_id_fkey(id, org_id)` |
+| `src/pages/CampaignsPage.tsx` | After contact copy loop, validate count > 0. If zero, delete campaign + campaign_lists rows and show error toast |
+| `src/pages/CampaignDetailPage.tsx` | Full rebuild: add Realtime subscription on `contacts` table, add `calls` data fetch for duration/score/evaluation metrics, add progress bar, add campaign control buttons, add richer KPI cards, improve contact table with live status updates |
 
-No backend changes. No new files. No new dependencies.
-
-### Accent Keyword Map (New)
+### Realtime Subscription Approach
 
 ```text
-Description keyword    ->  Accent value
-american               ->  american
-british                ->  british
-australian             ->  australian
-indian                 ->  indian
-french                 ->  french
-german                 ->  german
-dutch                  ->  dutch
-italian                ->  italian
-spanish                ->  spanish
-brazilian-portuguese   ->  brazilian
-brazilian              ->  brazilian
-portuguese             ->  portuguese
+Channel: campaign-{id}
+Table: contacts
+Filter: campaign_id=eq.{id}
+Events: UPDATE (status changes as calls complete)
+
+On each event:
+  - Update the contact in local state
+  - Recalculate all derived stats (counts, rates, progress %)
 ```
 
-### Gender Detection Priority (New)
-
-1. Check `tags` array for exact `"male"` or `"female"` string (case-insensitive)
-2. If not found, fall back to description keyword matching (current logic, which correctly checks "female" before "male")
-3. If neither works, `gender` stays `undefined` and voice is excluded when gender filter is active (correct behavior)
+The `calls` data (duration, scores, outcomes) will be fetched on initial load and periodically refreshed (every 15s while campaign is running) since calls are inserted by the webhook after contacts are updated.
 
