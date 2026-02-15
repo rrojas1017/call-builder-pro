@@ -378,18 +378,31 @@ export default function TrainingAuditPage() {
   useEffect(() => {
     if (!selectedAgent) { setPastAudits([]); setCurrentAudit(null); return; }
     (async () => {
-      const { data } = await (supabase.from("training_audits") as any)
-        .select("*")
-        .eq("project_id", selectedAgent)
-        .order("created_at", { ascending: false })
-        .limit(10);
-      const audits = (data || []) as AuditRecord[];
+      // Fetch audits and applied recommendations in parallel
+      const [auditsRes, appliedRes] = await Promise.all([
+        (supabase.from("training_audits") as any)
+          .select("*")
+          .eq("project_id", selectedAgent)
+          .order("created_at", { ascending: false })
+          .limit(10),
+        supabase
+          .from("improvements")
+          .select("source_recommendation")
+          .eq("project_id", selectedAgent)
+          .not("source_recommendation", "is", null),
+      ]);
+      const audits = (auditsRes.data || []) as AuditRecord[];
       setPastAudits(audits);
       setCurrentAudit(audits.length > 0 ? audits[0] : null);
+
+      // Load persisted applied state
+      const appliedSet = new Set<string>();
+      (appliedRes.data || []).forEach((row: any) => {
+        if (row.source_recommendation) appliedSet.add(row.source_recommendation);
+      });
+      setAppliedRecs(appliedSet);
+      setManualRecs(new Set());
     })();
-    // Reset applied state when switching agents
-    setAppliedRecs(new Set());
-    setManualRecs(new Set());
   }, [selectedAgent]);
 
   const runAudit = async () => {
@@ -412,7 +425,7 @@ export default function TrainingAuditPage() {
       };
       setCurrentAudit(newAudit);
       setPastAudits((prev) => [newAudit, ...prev]);
-      setAppliedRecs(new Set());
+      // Keep appliedRecs from DB — don't reset, previously applied recs stay applied
       setManualRecs(new Set());
       toast({ title: "Audit Complete", description: `Pipeline health score: ${data.merged_score}/10` });
     } catch (err: any) {

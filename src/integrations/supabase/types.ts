@@ -733,6 +733,7 @@ export type Database = {
           id: string
           patch: Json | null
           project_id: string
+          source_recommendation: string | null
           to_version: number
         }
         Insert: {
@@ -742,6 +743,7 @@ export type Database = {
           id?: string
           patch?: Json | null
           project_id: string
+          source_recommendation?: string | null
           to_version: number
         }
         Update: {
@@ -751,6 +753,7 @@ export type Database = {
           id?: string
           patch?: Json | null
           project_id?: string
+          source_recommendation?: string | null
           to_version?: number
         }
         Relationships: [
