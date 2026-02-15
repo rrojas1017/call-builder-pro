@@ -160,7 +160,7 @@ export default function UniversityPage() {
       .from("test_run_contacts")
       .select("*, test_runs!inner(project_id)")
       .eq("test_runs.project_id", agentId)
-      .eq("status", "completed")
+      .in("status", ["completed", "cancelled"])
       .not("evaluation", "is", null)
       .order("created_at", { ascending: false })
       .limit(20);
@@ -216,7 +216,7 @@ export default function UniversityPage() {
         .from("test_run_contacts")
         .select("evaluation, created_at, test_run_id, test_runs!inner(project_id)")
         .eq("test_runs.project_id", agentId)
-        .eq("status", "completed")
+        .in("status", ["completed", "cancelled"])
         .not("evaluation", "is", null)
         .order("created_at", { ascending: true })
         .limit(20);
