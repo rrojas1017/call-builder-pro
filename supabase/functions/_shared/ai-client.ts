@@ -64,7 +64,7 @@ async function callGemini(opts: Omit<CallAIOptions, "provider">): Promise<AIResp
   if (opts.tools) body.tools = opts.tools;
   if (opts.tool_choice) body.tool_choice = opts.tool_choice;
   if (opts.temperature !== undefined) body.temperature = opts.temperature;
-  if (opts.max_tokens !== undefined) body.max_tokens = opts.max_tokens;
+  if (opts.max_tokens !== undefined) body.max_completion_tokens = opts.max_tokens;
 
   const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
