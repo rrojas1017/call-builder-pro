@@ -593,7 +593,15 @@ export default function CampaignDetailPage() {
                       <TableCell>{c.name}</TableCell>
                       <TableCell className="font-mono text-xs">{c.phone}</TableCell>
                       <TableCell>
-                        <Badge variant={badge.variant}>{badge.label}</Badge>
+                        <div className="flex items-center gap-2">
+                          {c.status === "calling" && (
+                            <span className="relative flex h-2.5 w-2.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+                            </span>
+                          )}
+                          <Badge variant={badge.variant}>{badge.label}</Badge>
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs text-center">{c.attempts || 0}</TableCell>
                       <TableCell className="text-xs">

@@ -46,6 +46,12 @@ serve(async (req) => {
     else if (status === "call_me_later" || status === "callback") contactStatus = "call_me_later";
     else if (status === "not_available") contactStatus = "not_available";
 
+    // Override with answering machine detection result
+    const answeredBy = body.answered_by || null;
+    if (answeredBy === "voicemail" || answeredBy === "machine" || answeredBy === "unknown") {
+      contactStatus = "voicemail";
+    }
+
     // Determine outcome
     let outcome = contactStatus;
     let extractedData: any = null;
