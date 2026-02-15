@@ -492,6 +492,67 @@ VOICE TUNING RECOMMENDATIONS:
       }
     }
 
+    // ── Auto-Graduation Check ──
+    try {
+      // Count total evaluated calls for this agent
+      const { count: totalEvaluated } = await supabase
+        .from("evaluations")
+        .select("id", { count: "exact", head: true })
+        .in("call_id", 
+          (await supabase.from("calls").select("id").eq("project_id", call.project_id)).data?.map((c: any) => c.id) || []
+        );
+
+      const evalCount = totalEvaluated || 0;
+
+      // Get recent scores ordered by creation
+      const { data: recentEvals } = await supabase
+        .from("evaluations")
+        .select("overall_score, call_id")
+        .in("call_id",
+          (await supabase.from("calls").select("id").eq("project_id", call.project_id).order("created_at", { ascending: false }).limit(30)).data?.map((c: any) => c.id) || []
+        );
+
+      const scores = (recentEvals || []).map((e: any) => e.overall_score).filter((s: any) => s != null) as number[];
+
+      // Determine maturity level
+      let newLevel = "training";
+      if (evalCount >= 30 && scores.length >= 15) {
+        const last15Avg = scores.slice(0, 15).reduce((a, b) => a + b, 0) / 15;
+        // Check stability: no version with score drop > 5 pts
+        const snapVersions = (await supabase.from("score_snapshots").select("avg_overall, spec_version").eq("project_id", call.project_id).order("spec_version", { ascending: true })).data || [];
+        let stable = true;
+        for (let i = 1; i < snapVersions.length; i++) {
+          if ((snapVersions[i-1].avg_overall || 0) - (snapVersions[i].avg_overall || 0) > 5) { stable = false; break; }
+        }
+        if (last15Avg >= 90 && stable) newLevel = "graduated";
+        else if (scores.length >= 10) {
+          const last10Avg = scores.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+          const last5Min = Math.min(...scores.slice(0, 5));
+          if (last10Avg >= 85 && last5Min >= 70 && evalCount >= 20) newLevel = "expert";
+          else if (last10Avg >= 70 && evalCount >= 10) newLevel = "competent";
+          else if (evalCount >= 5) newLevel = scores.slice(0, Math.min(scores.length, 10)).reduce((a, b) => a + b, 0) / Math.min(scores.length, 10) >= 50 ? "developing" : "training";
+        }
+      } else if (evalCount >= 20 && scores.length >= 10) {
+        const last10Avg = scores.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+        const last5Min = Math.min(...scores.slice(0, 5));
+        if (last10Avg >= 85 && last5Min >= 70) newLevel = "expert";
+        else if (last10Avg >= 70) newLevel = "competent";
+        else newLevel = "developing";
+      } else if (evalCount >= 10 && scores.length >= 10) {
+        const last10Avg = scores.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+        if (last10Avg >= 70) newLevel = "competent";
+        else if (last10Avg >= 50) newLevel = "developing";
+      } else if (evalCount >= 5) {
+        const avg = scores.slice(0, Math.min(scores.length, 10)).reduce((a, b) => a + b, 0) / Math.min(scores.length, 10);
+        if (avg >= 50) newLevel = "developing";
+      }
+
+      await supabase.from("agent_projects").update({ maturity_level: newLevel } as any).eq("id", call.project_id);
+      console.log(`Maturity level updated: ${newLevel} (${evalCount} evals, recent scores: ${scores.slice(0, 5).join(",")})`);
+    } catch (e) {
+      console.error("Failed graduation check:", e);
+    }
+
     // Success-based learning: trigger learn-from-success every 5th qualified call
     if (call.outcome === "qualified") {
       try {

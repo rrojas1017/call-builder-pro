@@ -58,6 +58,7 @@ export type Database = {
           created_by: string | null
           description: string | null
           id: string
+          maturity_level: string
           name: string
           org_id: string
           source_text: string | null
@@ -68,6 +69,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
+          maturity_level?: string
           name: string
           org_id: string
           source_text?: string | null
@@ -78,6 +80,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
+          maturity_level?: string
           name?: string
           org_id?: string
           source_text?: string | null

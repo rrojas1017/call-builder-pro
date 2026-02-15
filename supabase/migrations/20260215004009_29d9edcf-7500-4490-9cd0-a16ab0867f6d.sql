@@ -1,0 +1,1 @@
+ALTER TABLE public.agent_projects ADD COLUMN maturity_level TEXT NOT NULL DEFAULT 'training';

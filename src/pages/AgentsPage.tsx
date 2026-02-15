@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "react-router-dom";
-import { Plus, Loader2, FlaskConical, BookOpen, Pencil, Phone, PhoneIncoming, PhoneForwarded, Trash2 } from "lucide-react";
+import { Plus, Loader2, FlaskConical, BookOpen, Pencil, Phone, PhoneIncoming, PhoneForwarded, Trash2, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -16,7 +16,16 @@ interface Agent {
   created_at: string;
   mode: "outbound" | "inbound" | "hybrid";
   voice_provider: "bland" | "retell";
+  maturity_level: string;
 }
+
+const maturityConfig: Record<string, { label: string; className: string; bgClassName: string; icon?: boolean }> = {
+  training: { label: "Training", className: "text-muted-foreground", bgClassName: "bg-muted" },
+  developing: { label: "Developing", className: "text-blue-400", bgClassName: "bg-blue-500/10 border-blue-500/20" },
+  competent: { label: "Competent", className: "text-amber-400", bgClassName: "bg-amber-500/10 border-amber-500/20" },
+  expert: { label: "Expert", className: "text-emerald-400", bgClassName: "bg-emerald-500/10 border-emerald-500/20" },
+  graduated: { label: "Graduated", className: "text-purple-400", bgClassName: "bg-purple-500/10 border-purple-500/20", icon: true },
+};
 
 const modeConfig = {
   outbound: { icon: Phone, label: "Outbound", className: "text-primary", bgClassName: "bg-primary/10" },
@@ -37,7 +46,7 @@ export default function AgentsPage() {
     const load = async () => {
       const { data } = await supabase
         .from("agent_projects")
-        .select("id, name, description, created_at, agent_specs(mode, voice_provider)")
+        .select("id, name, description, created_at, maturity_level, agent_specs(mode, voice_provider)")
         .order("created_at", { ascending: false });
 
       const mapped: Agent[] = (data || []).map((p: any) => ({
@@ -47,6 +56,7 @@ export default function AgentsPage() {
         created_at: p.created_at,
         mode: p.agent_specs?.mode || "outbound",
         voice_provider: p.agent_specs?.voice_provider || "bland",
+        maturity_level: p.maturity_level || "training",
       }));
       setAgents(mapped);
       setLoading(false);
@@ -102,6 +112,7 @@ export default function AgentsPage() {
             {agents.map((agent) => {
               const config = modeConfig[agent.mode] || modeConfig.outbound;
               const ModeIcon = config.icon;
+              const maturity = maturityConfig[agent.maturity_level] || maturityConfig.training;
               return (
                 <Link
                   key={agent.id}
@@ -122,6 +133,10 @@ export default function AgentsPage() {
                         <h3 className="font-semibold text-foreground truncate">{agent.name}</h3>
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{config.label}</Badge>
                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">{agent.voice_provider === "retell" ? "Append" : "Voz"}</Badge>
+                        <Badge variant="outline" className={`text-[10px] px-1.5 py-0 shrink-0 border ${maturity.bgClassName} ${maturity.className}`}>
+                          {maturity.icon && <GraduationCap className="h-2.5 w-2.5 mr-0.5" />}
+                          {maturity.label}
+                        </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">{new Date(agent.created_at).toLocaleDateString()}</p>
                     </div>
