@@ -5,12 +5,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Phone, CheckCircle, Star, BookOpen, GitBranch, Wrench, Mic, Radio } from "lucide-react";
 
-const maturityConfig: Record<string, { label: string; percent: number; barClass: string; textClass: string }> = {
-  training: { label: "Training", percent: 10, barClass: "bg-muted-foreground/40", textClass: "text-muted-foreground" },
-  developing: { label: "Developing", percent: 30, barClass: "bg-blue-500", textClass: "text-blue-400" },
-  competent: { label: "Competent", percent: 55, barClass: "bg-amber-500", textClass: "text-amber-400" },
-  expert: { label: "Expert", percent: 80, barClass: "bg-emerald-500", textClass: "text-emerald-400" },
-  graduated: { label: "Graduated", percent: 100, barClass: "bg-purple-500", textClass: "text-purple-400" },
+const maturityConfig: Record<string, { label: string; percent: number; barClass: string; textClass: string; personality: string }> = {
+  training: { label: "Training", percent: 10, barClass: "bg-muted-foreground/40", textClass: "text-muted-foreground", personality: "Fresh out of the academy. Eager, enthusiastic, and still figuring out when to stop talking." },
+  developing: { label: "Developing", percent: 30, barClass: "bg-blue-500", textClass: "text-blue-400", personality: "Getting the hang of it. Handles objections with growing confidence and only occasionally panics." },
+  competent: { label: "Competent", percent: 55, barClass: "bg-amber-500", textClass: "text-amber-400", personality: "A solid performer. Knows the script, reads the room, and rarely trips over their own words." },
+  expert: { label: "Expert", percent: 80, barClass: "bg-emerald-500", textClass: "text-emerald-400", personality: "Battle-tested closer. Turns 'not interested' into 'tell me more' like it's second nature." },
+  graduated: { label: "Graduated", percent: 100, barClass: "bg-purple-500", textClass: "text-purple-400", personality: "The legend. Could sell ice to a penguin and make it feel like a favor." },
 };
 
 interface AgentProfileCardProps {
@@ -124,6 +124,9 @@ export default function AgentProfileCard({ agentId, description, maturityLevel }
               {maturity.label} {maturity.percent}%
             </span>
           </div>
+
+          {/* Personality remark */}
+          <p className="text-xs text-muted-foreground italic line-clamp-3">"{maturity.personality}"</p>
 
           {/* Row 2: Stats */}
           <div className="grid grid-cols-6 gap-1">
