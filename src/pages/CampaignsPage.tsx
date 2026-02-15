@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
+import AgentProfileCard from "@/components/AgentProfileCard";
 
 interface Campaign {
   id: string;
@@ -26,6 +27,8 @@ interface Campaign {
 interface Agent {
   id: string;
   name: string;
+  description: string | null;
+  maturity_level: string;
 }
 
 interface DialList {
@@ -58,7 +61,7 @@ export default function CampaignsPage() {
   const load = async () => {
     const [campRes, agentRes, listRes] = await Promise.all([
       supabase.from("campaigns").select("*").order("created_at", { ascending: false }),
-      supabase.from("agent_projects").select("id, name").order("name"),
+      supabase.from("agent_projects").select("id, name, description, maturity_level").order("name"),
       supabase.from("dial_lists").select("id, name, row_count, created_at").eq("status", "ready").order("created_at", { ascending: false }),
     ]);
     setCampaigns((campRes.data as Campaign[]) || []);
@@ -269,7 +272,17 @@ export default function CampaignsPage() {
                       <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                     ))}
                   </SelectContent>
-                </Select>
+              </Select>
+                {selectedAgent && (() => {
+                  const agent = agents.find((a) => a.id === selectedAgent);
+                  return agent ? (
+                    <AgentProfileCard
+                      agentId={agent.id}
+                      description={agent.description}
+                      maturityLevel={agent.maturity_level}
+                    />
+                  ) : null;
+                })()}
               </div>
               <div className="space-y-2">
                 <Label>Max Concurrent Calls</Label>
