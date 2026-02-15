@@ -1,18 +1,36 @@
 
 
-## Fix Elena Nunez's Contact Status
+## Add Qualified Count and Conversion Rate to Campaign KPIs
 
-### Problem
+### What changes
 
-Elena Nunez's contact record has `status: "voicemail"` despite having a 162-second qualified call with a full transcript ending in a successful transfer. This was processed before the transcript-aware voicemail fix was deployed.
+Replace the "Completed" KPI card with "Qualified" and replace "Success Rate" with "Conversion Rate" (qualified + transferred / total called).
 
-### Fix
+### Technical details
 
-Update Elena's contact record status from `"voicemail"` to `"completed"` in the database.
+**File: `src/pages/CampaignDetailPage.tsx`**
 
-| Change | Detail |
+1. **Add qualified count** (from `calls` data, since `outcome` lives on the `calls` table):
+```typescript
+const qualified = calls.filter((c) => c.outcome === "qualified").length;
+```
+
+2. **Add conversion rate** -- qualified (and transferred) divided by total contacts that were actually called (not queued):
+```typescript
+const called = contacts.filter((c) => c.status !== "queued").length;
+const conversionRate = called > 0 ? Math.round((qualified / called) * 100) : 0;
+```
+
+3. **Update the KPI array** (lines 324-334):
+   - Change `{ label: "Completed", value: completed }` to `{ label: "Qualified", value: qualified }`
+   - Change `{ label: "Success Rate", value: successRate% }` to `{ label: "Conversion Rate", value: conversionRate% }`
+
+### Result
+
+| Before | After |
 |---|---|
-| Database update | Set Elena Nunez's contact status to `"completed"` (ID: `c2f7e194-ce1a-47fa-b141-ee9a0d8117d5`) |
+| Completed: 3 | Qualified: 2 |
+| Success Rate: 43% | Conversion Rate: 25% (2 qualified / 8 called) |
 
-No code changes needed -- the webhook fix is already deployed and will prevent this from happening on future calls.
+All other KPI cards (Total Contacts, In Progress, Terminal, Retryable, Failed, Avg Duration, Avg Score) remain unchanged.
 
