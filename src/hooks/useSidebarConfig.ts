@@ -78,8 +78,22 @@ export function useSidebarConfig() {
           const dbSections = data.sections as unknown as SidebarSection[];
           // Filter out ADMIN section from DB config (it's handled separately)
           const filtered = dbSections.filter((s) => s.label !== "ADMIN");
-          if (filtered.length > 0) {
-            setSections(filtered);
+          // Merge any missing default items into DB-loaded sections
+          const merged = filtered.map((dbSection) => {
+            const defaultMatch = DEFAULT_SECTIONS.find((d) => d.label === dbSection.label);
+            if (!defaultMatch) return dbSection;
+            const dbPaths = new Set(dbSection.items.map((i) => i.path));
+            const missing = defaultMatch.items.filter((i) => !dbPaths.has(i.path));
+            return missing.length > 0
+              ? { ...dbSection, items: [...dbSection.items, ...missing] }
+              : dbSection;
+          });
+          // Also add any entirely new default sections not in DB
+          const dbLabels = new Set(merged.map((s) => s.label));
+          const newSections = DEFAULT_SECTIONS.filter((d) => d.label !== "ADMIN" && !dbLabels.has(d.label));
+          const final = [...merged, ...newSections];
+          if (final.length > 0) {
+            setSections(final);
           }
           setConfigId(data.id);
         } catch {
