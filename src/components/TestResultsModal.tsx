@@ -49,16 +49,21 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
     const fetchApplied = async () => {
       const { data } = await supabase
         .from("improvements")
-        .select("patch")
+        .select("patch, source_recommendation")
         .eq("project_id", projectId);
       if (data) {
-        const keys = data.flatMap((row: any) =>
-          row.patch
+        const keys: string[] = data.flatMap((row: any) => {
+          const patchKeys = row.patch
             ? Object.keys(row.patch)
-                .filter((k) => k !== "version")
-                .map((k) => k + "::" + JSON.stringify(row.patch[k]))
-            : []
-        );
+                .filter((k: string) => k !== "version")
+                .map((k: string) => k + "::" + JSON.stringify(row.patch[k]))
+            : [];
+          // Also include source_recommendation so audit-applied fixes show as applied here too
+          if (row.source_recommendation) {
+            patchKeys.push(row.source_recommendation);
+          }
+          return patchKeys;
+        });
         setAppliedFixes(keys);
       }
     };

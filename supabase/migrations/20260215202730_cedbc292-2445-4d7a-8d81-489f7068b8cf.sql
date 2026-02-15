@@ -1,0 +1,1 @@
+ALTER TABLE public.improvements ADD COLUMN source_recommendation text;

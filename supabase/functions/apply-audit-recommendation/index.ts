@@ -311,6 +311,7 @@ Rules:
       to_version: toVersion,
       change_summary: mapping.reason || `Applied audit recommendation: ${recommendation.slice(0, 100)}`,
       patch,
+      source_recommendation: recommendation,
     });
 
     return new Response(JSON.stringify({
