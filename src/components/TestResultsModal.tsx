@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2 } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2, GraduationCap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface TestContact {
@@ -237,6 +237,10 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                 </div>
               )}
 
+              {selected.status === "completed" && !selected.evaluation && (
+                <GradingProgress hasTranscript={!!selected.transcript} />
+              )}
+
               {selected.evaluation && (
                 <div className="space-y-2">
                   <h5 className="text-xs font-medium text-muted-foreground">Evaluation</h5>
@@ -421,6 +425,9 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                     <p className="text-xs text-muted-foreground font-mono">{c.phone}</p>
                   </div>
                   <div className="flex items-center gap-2">
+                   {c.status === "completed" && !c.evaluation && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                    )}
                     {c.evaluation?.overall_score != null && (
                       <span className={`text-sm font-semibold ${c.evaluation.overall_score >= 70 ? "text-green-400" : c.evaluation.overall_score >= 40 ? "text-yellow-400" : "text-destructive"}`}>
                         {c.evaluation.overall_score}
@@ -445,6 +452,40 @@ function ScoreCard({ label, score }: { label: string; score?: number }) {
     <div className="rounded-lg bg-muted/30 border border-border p-2 text-center">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={`text-lg font-bold ${color}`}>{score}</p>
+    </div>
+  );
+}
+
+function GradingProgress({ hasTranscript }: { hasTranscript: boolean }) {
+  const steps = [
+    { label: "Transcript received", done: hasTranscript },
+    { label: "Evaluating performance", done: false, active: hasTranscript },
+    { label: "Calculating scores", done: false, active: false },
+  ];
+
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <GraduationCap className="h-4 w-4 text-primary animate-pulse" />
+        <p className="text-sm font-medium text-foreground">Grading in progress…</p>
+      </div>
+      <p className="text-xs text-muted-foreground">Analyzing transcript and scoring performance</p>
+      <div className="space-y-2">
+        {steps.map((step, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            {step.done ? (
+              <CheckCircle className="h-3.5 w-3.5 text-green-400 shrink-0" />
+            ) : step.active ? (
+              <Loader2 className="h-3.5 w-3.5 text-primary animate-spin shrink-0" />
+            ) : (
+              <div className="h-3.5 w-3.5 rounded-full border border-border shrink-0" />
+            )}
+            <span className={step.done ? "text-foreground" : step.active ? "text-primary font-medium" : "text-muted-foreground"}>
+              {step.label}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
