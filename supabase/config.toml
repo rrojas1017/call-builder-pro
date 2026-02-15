@@ -86,3 +86,9 @@ verify_jwt = false
 
 [functions.apply-audit-recommendation]
 verify_jwt = false
+
+[functions.receive-whatsapp-webhook]
+verify_jwt = false
+
+[functions.send-whatsapp-message]
+verify_jwt = false

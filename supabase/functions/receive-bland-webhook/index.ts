@@ -282,6 +282,36 @@ serve(async (req) => {
       }).catch((e) => console.error("Error triggering tick:", e));
     }
 
+    // Trigger WhatsApp follow-up if agent has whatsapp_number configured
+    if (metadata.project_id && contactStatus === "completed" && transcript) {
+      try {
+        const { data: agentSpec } = await supabase
+          .from("agent_specs")
+          .select("whatsapp_number")
+          .eq("project_id", metadata.project_id)
+          .maybeSingle();
+
+        const contactPhone = body.to || body.to_number || null;
+        if (agentSpec?.whatsapp_number && contactPhone) {
+          const followUpMsg = `Hi! Thanks for speaking with us just now. If you have any follow-up questions, feel free to message us here on WhatsApp. We're happy to help! 😊`;
+          fetch(`${supabaseUrl}/functions/v1/send-whatsapp-message`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify({
+              to_number: contactPhone,
+              project_id: metadata.project_id,
+              message: followUpMsg,
+            }),
+          }).catch((e) => console.error("Error sending WhatsApp follow-up:", e));
+        }
+      } catch (e) {
+        console.error("Error checking WhatsApp follow-up:", e);
+      }
+    }
+
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

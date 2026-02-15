@@ -133,6 +133,7 @@ export type Database = {
           voice_id: string | null
           voice_provider: string
           voicemail_message: string | null
+          whatsapp_number: string | null
         }
         Insert: {
           background_track?: string | null
@@ -170,6 +171,7 @@ export type Database = {
           voice_id?: string | null
           voice_provider?: string
           voicemail_message?: string | null
+          whatsapp_number?: string | null
         }
         Update: {
           background_track?: string | null
@@ -207,6 +209,7 @@ export type Database = {
           voice_id?: string | null
           voice_provider?: string
           voicemail_message?: string | null
+          whatsapp_number?: string | null
         }
         Relationships: [
           {
@@ -1289,6 +1292,89 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      whatsapp_conversations: {
+        Row: {
+          created_at: string
+          id: string
+          org_id: string
+          project_id: string
+          status: string
+          updated_at: string
+          wa_number: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          org_id: string
+          project_id: string
+          status?: string
+          updated_at?: string
+          wa_number: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          org_id?: string
+          project_id?: string
+          status?: string
+          updated_at?: string
+          wa_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_conversations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_messages: {
+        Row: {
+          body: string
+          conversation_id: string
+          created_at: string
+          direction: string
+          id: string
+          status: string
+          twilio_message_sid: string | null
+        }
+        Insert: {
+          body: string
+          conversation_id: string
+          created_at?: string
+          direction?: string
+          id?: string
+          status?: string
+          twilio_message_sid?: string | null
+        }
+        Update: {
+          body?: string
+          conversation_id?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          status?: string
+          twilio_message_sid?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       wizard_questions: {
         Row: {
