@@ -1,40 +1,48 @@
 
 
-## Add Personality Remark to Agent Profile Card
+## Add HIPAA Compliance Badge per Call in Campaign Detail
+
+### Context
+
+HIPAA (Health Insurance Portability and Accountability Act) is the correct compliance framework for healthcare campaigns. The system already has a `hipaa_enabled` toggle on campaigns and the AI evaluator already produces a `compliance_score` for every call. This feature connects the two: when a campaign has HIPAA enabled, each call row in the contacts table shows a visual compliance badge based on the evaluation results.
 
 ### What it does
 
-Adds a short, witty 1-3 line personality description between the maturity bar and the stats row. This gives the agent character and makes the selection process more engaging -- like reading a bio on a trading card.
+For HIPAA-enabled campaigns, every contact row in the campaign detail table gets a small shield badge indicating whether the agent handled the call in a HIPAA-compliant manner:
 
-### Personality remarks by maturity level
+- **Green shield + "Compliant"**: compliance_score >= 80
+- **Yellow shield + "Partial"**: compliance_score between 50-79
+- **Red shield + "Non-Compliant"**: compliance_score below 50
+- **Gray shield + "Pending"**: no evaluation yet
 
-| Level | Remark |
-|---|---|
-| training | "Fresh out of the academy. Eager, enthusiastic, and still figuring out when to stop talking." |
-| developing | "Getting the hang of it. Handles objections with growing confidence and only occasionally panics." |
-| competent | "A solid performer. Knows the script, reads the room, and rarely trips over their own words." |
-| expert | "Battle-tested closer. Turns 'not interested' into 'tell me more' like it's second nature." |
-| graduated | "The legend. Could sell ice to a penguin and make it feel like a favor." |
+This gives campaign managers an at-a-glance compliance audit view without clicking into each contact.
+
+### Layout in the contacts table
+
+```text
+| Name  | Phone | Status | Attempts | Duration | Outcome | Compliance    | Called At |
+|-------|-------|--------|----------|----------|---------|---------------|----------|
+| Alice | ...   | Done   | 1        | 2m 30s   | qual.   | [shield] Pass | Jan 15   |
+| Bob   | ...   | Done   | 2        | 1m 45s   | qual.   | [shield] Fail | Jan 15   |
+| Carol | ...   | Queued | 0        | --       | --      | [shield] --   | --       |
+```
 
 ### Technical details
 
-**File: `src/components/AgentProfileCard.tsx`**
+**File: `src/pages/CampaignDetailPage.tsx`**
 
-1. Add a `personality` string field to the `maturityConfig` object for each level
-2. Render the remark as a `<p>` tag with `text-xs text-muted-foreground italic` styling, placed between the maturity bar div and the stats grid div
-3. Max 3 lines enforced via `line-clamp-3` utility class
-4. No data fetching changes -- personality is derived purely from the existing `maturityLevel` prop
+1. **Contacts table** (around line 582-636): Add a "Compliance" column header and cell, only rendered when `campaign.hipaa_enabled` is true
+2. The cell reads `call?.evaluation?.compliance_score` and renders:
+   - A `ShieldCheck` icon colored green/yellow/red based on score thresholds
+   - A short text label ("Pass", "Partial", "Fail", or "--" for no evaluation)
+3. **Contact detail drawer** (around line 640+): Add a prominent HIPAA compliance status banner at the top of the drawer when the campaign is HIPAA-enabled, showing the compliance score with the same color coding
 
-### Layout
+No database changes needed -- `hipaa_enabled` already exists on campaigns, and `compliance_score` already exists in the call evaluation JSON.
 
-```text
-+------------------------------------------------------------+
-| [====>                                   ] Developing  30%  |
-| "Getting the hang of it. Handles objections with growing    |
-|  confidence and only occasionally panics."                  |
-+------------------------------------------------------------+
-|  54    6     45.9/100   323    v37    36                    |
-| Total Qual  Avg Score  Know  Vers  Improv                  |
-+------------------------------------------------------------+
-```
+### Summary of changes
+
+| Area | Change |
+|---|---|
+| CampaignDetailPage contacts table | Add conditional "Compliance" column with shield badge when HIPAA enabled |
+| CampaignDetailPage contact drawer | Add HIPAA compliance status banner at top of drawer |
 
