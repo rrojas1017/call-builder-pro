@@ -1,58 +1,40 @@
 
 
-## Redesign Agent Profile Card: Compact Bar + Click-to-Expand
+## Add Personality Remark to Agent Profile Card
 
-### Current problem
-The profile card dumps all details inline -- maturity badge, voice, mode, description, and a 6-column stats grid. For mature agents with lots of data, it's too tall and cluttered for a form context.
+### What it does
 
-### New design
+Adds a short, witty 1-3 line personality description between the maturity bar and the stats row. This gives the agent character and makes the selection process more engaging -- like reading a bio on a trading card.
 
-The card becomes two compact rows:
+### Personality remarks by maturity level
 
-```text
-+------------------------------------------------------------+
-| [Training ====>                          ] Developing  40%  |
-+------------------------------------------------------------+
-|  54         6        45.9/100    323       v37       36     |
-|  Total    Qualified  Avg Score  Knowledge  Version  Improv. |
-+------------------------------------------------------------+
-```
-
-**Row 1 -- Maturity Bar**: A slim, color-coded progress bar showing the agent's maturity level. The bar fill and color change per level (gray for Training, blue for Developing, amber for Competent, green for Expert, purple for Graduated). The level label and percentage sit to the right.
-
-**Row 2 -- Stats Row**: The same 6 stats (Total Calls, Qualified, Avg Score, Knowledge, Version, Improvements) displayed in a single compact row with small icons above each value -- matching the reference image style exactly.
-
-**Click to expand**: Clicking anywhere on the card (or the bar specifically) opens a Popover showing the full details:
-- Description text
-- Voice name and mode
-- All stats with more context
-- Maturity level explanation
-
-### Maturity bar mapping
-
-| Level | Progress % | Bar Color |
-|---|---|---|
-| training | 10% | Gray (muted) |
-| developing | 30% | Blue |
-| competent | 55% | Amber |
-| expert | 80% | Emerald |
-| graduated | 100% | Purple |
+| Level | Remark |
+|---|---|
+| training | "Fresh out of the academy. Eager, enthusiastic, and still figuring out when to stop talking." |
+| developing | "Getting the hang of it. Handles objections with growing confidence and only occasionally panics." |
+| competent | "A solid performer. Knows the script, reads the room, and rarely trips over their own words." |
+| expert | "Battle-tested closer. Turns 'not interested' into 'tell me more' like it's second nature." |
+| graduated | "The legend. Could sell ice to a penguin and make it feel like a favor." |
 
 ### Technical details
 
-**File: `src/components/AgentProfileCard.tsx`** -- Full redesign
+**File: `src/components/AgentProfileCard.tsx`**
 
-1. Keep all existing data fetching logic (useEffect, queries) unchanged
-2. Replace the render with:
-   - A clickable container with `cursor-pointer`
-   - A slim progress bar (6px height, rounded, with colored fill based on maturity level)
-   - Maturity label + percentage to the right of the bar
-   - Stats row below with icons, values, and labels in a horizontal grid
-3. Add a `Popover` (using existing Radix popover) that opens on click, showing:
-   - Description
-   - Voice + Mode badges
-   - Full stats with larger formatting
-   - Maturity level with explanation text
-4. Simplify the loading skeleton to match the new compact height (one thin bar + one row)
+1. Add a `personality` string field to the `maturityConfig` object for each level
+2. Render the remark as a `<p>` tag with `text-xs text-muted-foreground italic` styling, placed between the maturity bar div and the stats grid div
+3. Max 3 lines enforced via `line-clamp-3` utility class
+4. No data fetching changes -- personality is derived purely from the existing `maturityLevel` prop
 
-No new files needed. No database changes. Only `AgentProfileCard.tsx` is modified.
+### Layout
+
+```text
++------------------------------------------------------------+
+| [====>                                   ] Developing  30%  |
+| "Getting the hang of it. Handles objections with growing    |
+|  confidence and only occasionally panics."                  |
++------------------------------------------------------------+
+|  54    6     45.9/100   323    v37    36                    |
+| Total Qual  Avg Score  Know  Vers  Improv                  |
++------------------------------------------------------------+
+```
+
