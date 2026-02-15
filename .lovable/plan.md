@@ -1,35 +1,41 @@
 
 
-## Add "Trusted Outbound Numbers" Feature
+## Enhance Call Data Collection: Zip Validation + Email Capture
 
-### What This Does
+### What Changes
 
-Lets you save outbound phone numbers that came through clean (no spam flag) so you can reuse them on future calls. When a number works well, you mark it as "trusted" and the system will prefer it for outgoing calls.
+Two improvements to how the agent collects information on calls:
+
+1. **Zip code validation**: Instead of just saying "must be 5 digits," the agent will be instructed to repeat the zip back to the caller for confirmation and re-ask if it doesn't sound like a valid US zip.
+
+2. **Email address collection**: The agent will ask for the caller's email near the end of the call, framed naturally as: *"What's the best email to reach you at? That way we can send you a summary of what we discussed and any next steps."* This gives a genuine, helpful reason rather than sounding like a data grab.
 
 ### How It Works
 
-1. **New "Outbound Numbers" table** in the database to store numbers per organization with a status (trusted / flagged / retired)
-2. **UI on the Settings page** (or a new dedicated tab) where you can:
-   - See all outbound numbers that have been used
-   - Mark numbers as "trusted" (keep) or "flagged" (avoid)
-   - Add notes (e.g., "clean on AT&T", "flagged on T-Mobile")
-3. **Agent-level number selection**: In agent settings, instead of a single `from_number` text field, you pick from your trusted numbers list
-4. **Call dispatch integration**: When making calls, the system picks from your trusted numbers pool rather than letting Bland assign a random one
+Both `buildTaskPrompt` files (frontend preview + backend edge functions) will be updated:
+
+- **Zip validation prompt** -- Replace the current one-liner `ZIP: Must be exactly 5 digits.` with stronger instructions that tell the agent to read it back and re-ask if unclear.
+- **Email auto-injection** -- Similar to how we already auto-inject "Can I confirm your full name?", the system will auto-inject an email collection step near the end of the fields list if one isn't already present. The prompt will include the natural framing reason.
 
 ### Technical Details
 
-| Change | Details |
+| File | Change |
 |---|---|
-| **New DB table: `outbound_numbers`** | Columns: `id`, `org_id`, `phone_number`, `label`, `status` (trusted/untrusted/retired), `notes`, `last_used_at`, `created_at`. RLS scoped to org. |
-| **Settings UI update** | Add an "Outbound Numbers" section to Settings page with a table showing saved numbers, status badges, and add/edit/retire actions. |
-| **Agent spec UI update** | Replace the free-text `from_number` field with a dropdown populated from the org's trusted outbound numbers. |
-| **`tick-campaign` + `run-test-run` updates** | When dispatching calls, if no specific `from_number` is set on the spec, rotate through the org's trusted numbers to distribute load and reduce spam risk. |
+| `src/lib/buildTaskPrompt.ts` | Replace zip validation line with expanded instructions. Add email auto-injection logic after the name injection block. |
+| `supabase/functions/_shared/buildTaskPrompt.ts` | Same changes -- this is the backend copy used for actual calls. |
 
-### Files to Create/Modify
+#### Zip Validation (replaces current single line)
+```
+ZIP CODE: Must be exactly 5 digits. After caller says it, repeat it back: "Just to confirm, that's [zip], correct?" If unclear or fewer/more than 5 digits, ask again: "I want to make sure I have that right -- could you repeat your zip code?"
+```
 
-- **New migration**: Create `outbound_numbers` table with RLS policies
-- `src/pages/SettingsPage.tsx`: Add outbound numbers management section
-- `src/pages/CreateAgentPage.tsx` / `src/pages/EditAgentPage.tsx`: Replace `from_number` text input with dropdown from trusted numbers
-- `supabase/functions/tick-campaign/index.ts`: Pull from trusted numbers pool when dispatching
-- `supabase/functions/run-test-run/index.ts`: Same pool logic for test runs
+#### Email Auto-Injection Logic
+- Check if any field already mentions "email"
+- If not, insert near the end of the fields list (before the last field): `"What's the best email address to reach you at? We'll send you a quick summary of what we covered and any next steps."`
+- This keeps the flow natural -- email comes after qualification questions but before wrap-up
+
+### What This Fixes
+- Zip codes won't be mis-heard or partially captured -- the agent confirms them verbally
+- Every qualified call will capture an email for follow-up, increasing lead value
+- The reason given ("send you a summary") is genuine and non-pushy
 
