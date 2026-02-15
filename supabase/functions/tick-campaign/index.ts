@@ -44,6 +44,13 @@ serve(async (req) => {
       });
     }
 
+    // Load trusted outbound numbers for rotation
+    const { data: trustedNumbers } = await supabase
+      .from("outbound_numbers").select("id, phone_number")
+      .eq("org_id", orgId).eq("status", "trusted")
+      .order("last_used_at", { ascending: true, nullsFirst: true });
+    let trustedNumberIndex = 0;
+
     // Get spec
     const { data: spec, error: specErr } = await supabase
       .from("agent_specs").select("*").eq("project_id", campaign.project_id).single();
@@ -132,7 +139,14 @@ serve(async (req) => {
             },
             webhook_url: retellWebhookUrl,
           };
-          if (spec.from_number) retellPayload.from_number = spec.from_number;
+          if (spec.from_number) {
+            retellPayload.from_number = spec.from_number;
+          } else if (trustedNumbers && trustedNumbers.length > 0) {
+            const picked = trustedNumbers[trustedNumberIndex % trustedNumbers.length];
+            retellPayload.from_number = picked.phone_number;
+            trustedNumberIndex++;
+            await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
+          }
 
           const retellResp = await fetch("https://api.retellai.com/v2/create-phone-call", {
             method: "POST",
@@ -187,7 +201,16 @@ serve(async (req) => {
 
       if (spec.voice_id) globalSettings.voice_id = spec.voice_id;
       if (spec.transfer_phone_number) globalSettings.transfer_phone_number = spec.transfer_phone_number;
-      if (spec.from_number) globalSettings.from = spec.from_number;
+      // Use spec.from_number if set, otherwise pick from trusted pool
+      if (spec.from_number) {
+        globalSettings.from = spec.from_number;
+      } else if (trustedNumbers && trustedNumbers.length > 0) {
+        const picked = trustedNumbers[trustedNumberIndex % trustedNumbers.length];
+        globalSettings.from = picked.phone_number;
+        trustedNumberIndex++;
+        // Update last_used_at
+        await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
+      }
       if (spec.background_track && spec.background_track !== "none") globalSettings.background_track = spec.background_track;
 
       const blandResp = await fetch("https://api.bland.ai/v2/batches/create", {

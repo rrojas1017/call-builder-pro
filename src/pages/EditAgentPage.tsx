@@ -3,12 +3,14 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useBlandVoices } from "@/hooks/useBlandVoices";
+import { useOutboundNumbers } from "@/hooks/useOutboundNumbers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { VoiceSelector } from "@/components/VoiceSelector";
 
@@ -17,6 +19,7 @@ export default function EditAgentPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { voices, loading: voicesLoading } = useBlandVoices();
+  const { numbers: trustedNumbers } = useOutboundNumbers();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -30,13 +33,14 @@ export default function EditAgentPage() {
   const [backgroundTrack, setBackgroundTrack] = useState<string | null>(null);
   const [voiceProvider, setVoiceProvider] = useState<"bland" | "retell">("bland");
   const [retellAgentId, setRetellAgentId] = useState("");
+  const [fromNumber, setFromNumber] = useState("");
 
   useEffect(() => {
     if (!id) return;
     const load = async () => {
       const [{ data: project }, { data: spec }] = await Promise.all([
         supabase.from("agent_projects").select("name, description").eq("id", id).single(),
-        supabase.from("agent_specs").select("voice_id, opening_line, tone_style, transfer_required, transfer_phone_number, background_track, voice_provider, retell_agent_id").eq("project_id", id).single(),
+        supabase.from("agent_specs").select("voice_id, opening_line, tone_style, transfer_required, transfer_phone_number, background_track, voice_provider, retell_agent_id, from_number").eq("project_id", id).single(),
       ]);
       if (project) {
         setName(project.name);
@@ -51,6 +55,7 @@ export default function EditAgentPage() {
         setBackgroundTrack((spec as any).background_track || null);
         setVoiceProvider(((spec as any).voice_provider as "bland" | "retell") || "bland");
         setRetellAgentId((spec as any).retell_agent_id || "");
+        setFromNumber((spec as any).from_number || "");
       }
       setLoading(false);
     };
@@ -82,6 +87,7 @@ export default function EditAgentPage() {
           background_track: backgroundTrack,
           voice_provider: voiceProvider,
           retell_agent_id: voiceProvider === "retell" ? retellAgentId || null : null,
+          from_number: fromNumber || null,
         } as any).eq("project_id", id),
       ]);
 
@@ -168,7 +174,27 @@ export default function EditAgentPage() {
         </div>
       </div>
 
-      {/* Voice Selection (Voz only) */}
+      {/* Outbound Number */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <Phone className="h-4 w-4 text-primary" /> Outbound Number
+        </h3>
+        <p className="text-xs text-muted-foreground">Pick a trusted outbound number, or leave blank to auto-rotate from your pool.</p>
+        <Select value={fromNumber} onValueChange={setFromNumber}>
+          <SelectTrigger>
+            <SelectValue placeholder="Auto (rotate from trusted pool)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Auto (rotate from trusted pool)</SelectItem>
+            {trustedNumbers.map((n) => (
+              <SelectItem key={n.id} value={n.phone_number}>
+                {n.phone_number}{n.label ? ` — ${n.label}` : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {voiceProvider === "bland" && (
         <div className="surface-elevated rounded-xl p-6 space-y-4">
           <h3 className="font-semibold text-foreground flex items-center gap-2">

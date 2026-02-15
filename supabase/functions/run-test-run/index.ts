@@ -71,6 +71,13 @@ serve(async (req) => {
     const { data: spec } = await supabase
       .from("agent_specs").select("*").eq("project_id", testRun.project_id).single();
 
+    // Load trusted outbound numbers for rotation
+    const { data: trustedNumbers } = await supabase
+      .from("outbound_numbers").select("id, phone_number")
+      .eq("org_id", testRun.org_id).eq("status", "trusted")
+      .order("last_used_at", { ascending: true, nullsFirst: true });
+    let trustedNumberIndex = 0;
+
     // Summarize agent knowledge via AI (replaces raw knowledge fetch)
     let knowledgeBriefing = "";
     try {
@@ -135,7 +142,14 @@ serve(async (req) => {
             },
             webhook_url: retellWebhookUrl,
           };
-          if (spec?.from_number) retellPayload.from_number = spec.from_number;
+          if (spec?.from_number) {
+            retellPayload.from_number = spec.from_number;
+          } else if (trustedNumbers && trustedNumbers.length > 0) {
+            const picked = trustedNumbers[trustedNumberIndex % trustedNumbers.length];
+            retellPayload.from_number = picked.phone_number;
+            trustedNumberIndex++;
+            await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
+          }
 
           const retellResp = await fetch("https://api.retellai.com/v2/create-phone-call", {
             method: "POST",
@@ -200,6 +214,15 @@ serve(async (req) => {
           }
           if (spec?.background_track && spec.background_track !== "none") {
             blandPayload.background_track = spec.background_track;
+          }
+          // Use spec.from_number if set, otherwise pick from trusted pool
+          if (spec?.from_number) {
+            blandPayload.from = spec.from_number;
+          } else if (trustedNumbers && trustedNumbers.length > 0) {
+            const picked = trustedNumbers[trustedNumberIndex % trustedNumbers.length];
+            blandPayload.from = picked.phone_number;
+            trustedNumberIndex++;
+            await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
           }
 
           const blandResp = await fetch("https://us.api.bland.ai/v1/calls", {
