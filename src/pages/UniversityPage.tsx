@@ -97,10 +97,13 @@ export default function UniversityPage() {
     const fetchApplied = async () => {
       const { data } = await supabase
         .from("improvements")
-        .select("patch")
+        .select("patch, source_recommendation")
         .eq("project_id", selectedProjectId);
       const keys: string[] = [];
       (data || []).forEach((row: any) => {
+        if (row.source_recommendation) {
+          keys.push(row.source_recommendation);
+        }
         if (row.patch && typeof row.patch === "object") {
           Object.keys(row.patch).filter(k => k !== "version").forEach(k => {
             keys.push(k + "::" + JSON.stringify(row.patch[k]));
@@ -339,6 +342,7 @@ export default function UniversityPage() {
             field: improvement.field,
             suggested_value: improvement.suggested_value,
             reason: improvement.reason,
+            original_key: improvementKey(improvement),
           },
         },
       });

@@ -197,10 +197,13 @@ export default function CallsPage() {
     const fetchApplied = async () => {
       const { data } = await supabase
         .from("improvements")
-        .select("patch")
+        .select("patch, source_recommendation")
         .eq("project_id", selected.project_id);
       const keys = new Set<string>();
       (data || []).forEach((row: any) => {
+        if (row.source_recommendation) {
+          keys.add(row.source_recommendation);
+        }
         if (row.patch && typeof row.patch === "object") {
           Object.keys(row.patch).filter(k => k !== "version").forEach(k => {
             keys.add(k + "::" + JSON.stringify(row.patch[k]));
@@ -262,7 +265,13 @@ export default function CallsPage() {
     setApplyingIdx(idx);
     try {
       const { data, error } = await supabase.functions.invoke("apply-improvement", {
-        body: { project_id: selected.project_id, improvement },
+        body: {
+          project_id: selected.project_id,
+          improvement: {
+            ...improvement,
+            original_key: improvementKey(improvement),
+          },
+        },
       });
       if (error) throw error;
       const desc = data.caution

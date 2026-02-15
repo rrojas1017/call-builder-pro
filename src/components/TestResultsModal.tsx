@@ -80,6 +80,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
             field: improvement.field,
             suggested_value: improvement.suggested_value,
             reason: improvement.reason,
+            original_key: improvementKey(improvement),
           },
         },
       });
