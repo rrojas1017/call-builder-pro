@@ -1,45 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildTaskPrompt } from "../_shared/buildTaskPrompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-function buildTaskPrompt(spec: any): string {
-  const discl = spec.disclosure_text || "This call may be recorded for quality and compliance purposes.";
-  const fields = spec.must_collect_fields || ["consent", "state", "zip_code", "age", "household_size", "income_est_annual", "coverage_type"];
-  const transferNum = spec.transfer_phone_number || "";
-  const fieldLabels: Record<string, string> = {
-    consent: "Confirm they requested information and obtain verbal consent",
-    state: "What state do you live in?",
-    zip_code: "And what's your zip code?",
-    age: "How old are you?",
-    household_size: "How many people are in your household?",
-    income_est_annual: "What is your estimated annual household income?",
-    coverage_type: "Do you currently have health insurance? (uninsured, private, employer, Medicare, Medicaid)",
-  };
-
-  return `You are a friendly, knowledgeable health benefits advisor answering an inbound call.
-
-DISCLOSURE (read verbatim): "${discl}"
-
-RULES:
-- Obtain verbal consent before screening questions
-- NEVER give insurance advice. Say: "A licensed agent can explain after transfer."
-- Tone: ${spec.tone_style || "Friendly, professional"}
-
-QUESTIONS:
-${(fields as string[]).map((f: string, i: number) => `${i + 1}. ${fieldLabels[f] || f}`).join("\n")}
-
-QUALIFICATION:
-- ESI or Medicare → disqualify
-- Medicaid → tag, no transfer
-- Uninsured/private + income within 100-400% FPL → qualified, transfer
-${transferNum ? `- Transfer to: ${transferNum}` : ""}
-
-After call, provide JSON: consent, state, zip_code, age, household_size, income_est_annual, coverage_type, qualified, disqual_reason, transfer_attempted, transfer_completed`;
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -62,7 +28,6 @@ serve(async (req) => {
       const { area_code, org_id } = body;
       if (!area_code || !org_id) throw new Error("area_code and org_id required");
 
-      // Purchase number from Bland
       const purchaseResp = await fetch("https://api.bland.ai/v1/inbound/purchase", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": BLAND_API_KEY },
@@ -71,7 +36,6 @@ serve(async (req) => {
       const purchaseData = await purchaseResp.json();
       console.log("Bland purchase response:", JSON.stringify(purchaseData));
       if (!purchaseResp.ok) {
-        // Parse Bland-specific errors for better UX
         const blandErrors = purchaseData?.errors || [];
         const unavailable = blandErrors.some((e: any) => e.error === "NUMBER_UNAVAILABLE_ERROR");
         if (unavailable) {
@@ -82,7 +46,6 @@ serve(async (req) => {
       const phoneNumber = purchaseData.phone_number || purchaseData.number || purchaseData.data?.phone_number || purchaseData.data?.number;
       if (!phoneNumber) throw new Error(`No phone number in Bland response: ${JSON.stringify(purchaseData)}`);
 
-      // Insert into our table
       const { data: inserted, error: insertErr } = await supabase
         .from("inbound_numbers")
         .insert({ org_id, phone_number: phoneNumber, area_code, status: "active" })
@@ -100,28 +63,53 @@ serve(async (req) => {
       const { number_id, project_id } = body;
       if (!number_id || !project_id) throw new Error("number_id and project_id required");
 
-      // Get the number
       const { data: num, error: numErr } = await supabase
         .from("inbound_numbers").select("*").eq("id", number_id).single();
       if (numErr) throw numErr;
 
-      // Get agent spec
       const { data: spec, error: specErr } = await supabase
         .from("agent_specs").select("*").eq("project_id", project_id).single();
       if (specErr) throw new Error("Agent has no spec configured");
 
-      // Get agent project for org_id
       const { data: project } = await supabase
         .from("agent_projects").select("org_id").eq("id", project_id).single();
 
-      // Load global behaviors
-      const { data: globalBehaviors } = await supabase
-        .from("global_human_behaviors").select("content").order("created_at", { ascending: true });
-      const techniques = (globalBehaviors || []).map((g: any) => g.content as string);
+      // Summarize agent knowledge via AI (matching university/campaign pattern)
+      let knowledgeBriefing = "";
+      try {
+        const { data: summaryData, error: summaryErr } = await supabase.functions.invoke("summarize-agent-knowledge", {
+          body: { project_id },
+        });
+        if (summaryErr) {
+          console.error("Knowledge summarization error:", summaryErr);
+        } else if (summaryData?.briefing) {
+          knowledgeBriefing = summaryData.briefing;
+          console.log(`Inbound knowledge briefing: ${summaryData.entries_count} entries → ${knowledgeBriefing.length} chars`);
+        }
+      } catch (sumErr: any) {
+        console.error("Failed to invoke summarize-agent-knowledge:", sumErr.message);
+      }
 
-      let task = buildTaskPrompt(spec);
-      if (techniques.length > 0) {
-        task += `\n\nLEARNED CONVERSATION TECHNIQUES:\n${techniques.map((t, i) => `${i + 1}. ${t}`).join("\n")}`;
+      // Load global human behaviors and merge into spec (matching university/campaign pattern)
+      const { data: globalBehaviors } = await supabase
+        .from("global_human_behaviors").select("content")
+        .order("created_at", { ascending: false }).limit(10);
+      const globalTechniques = (globalBehaviors || []).map((g: any) => g.content as string);
+
+      if (globalTechniques.length > 0) {
+        const currentNotes: string[] = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
+        const existingLower = new Set(currentNotes.map((n: string) => n.toLowerCase().trim()));
+        const newGlobal = globalTechniques.filter((t: string) => !existingLower.has(t.toLowerCase().trim()));
+        spec.humanization_notes = [...currentNotes, ...newGlobal];
+      }
+
+      // Build task using shared builder (identical to university/campaign)
+      let task = buildTaskPrompt(spec, [], knowledgeBriefing);
+
+      const MAX_TASK_LENGTH = 28000;
+      if (task.length > MAX_TASK_LENGTH) {
+        console.warn(`Inbound prompt too long (${task.length} chars), truncating`);
+        task = task.substring(0, MAX_TASK_LENGTH) + "\n\n[Trimmed for length]";
       }
 
       // Configure on Bland
@@ -131,6 +119,7 @@ serve(async (req) => {
         metadata: { org_id: project?.org_id || num.org_id, project_id },
       };
       if (spec.voice_id) configBody.voice = spec.voice_id;
+      else configBody.voice = "maya";
       if (spec.opening_line) configBody.first_sentence = spec.opening_line;
       if (spec.language) configBody.language = spec.language;
       if (spec.transfer_phone_number) configBody.transfer_phone_number = spec.transfer_phone_number;
@@ -147,7 +136,6 @@ serve(async (req) => {
         throw new Error(`Bland config error: ${JSON.stringify(configData)}`);
       }
 
-      // Update local DB
       await supabase.from("inbound_numbers").update({ project_id }).eq("id", number_id);
 
       return new Response(JSON.stringify({ success: true }), {
@@ -164,7 +152,6 @@ serve(async (req) => {
         .from("inbound_numbers").select("*").eq("id", number_id).single();
       if (!num) throw new Error("Number not found");
 
-      // Set generic prompt on Bland
       await fetch(`https://api.bland.ai/v1/inbound/${encodeURIComponent(num.phone_number)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": BLAND_API_KEY },
