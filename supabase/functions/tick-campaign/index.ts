@@ -147,6 +147,17 @@ serve(async (req) => {
     // Build task prompt using shared builder (now consumes qualification_rules, humanization_notes, knowledge)
     let task = buildTaskPrompt(spec, [], knowledgeBriefing);
 
+    // Inject HIPAA compliance guardrails when enabled
+    if (campaign.hipaa_enabled) {
+      task += `\n\n=== HIPAA COMPLIANCE RULES ===
+- This call is recorded. You MUST disclose this at the start: "This call may be recorded for quality and compliance purposes."
+- NEVER read back full SSN, date of birth, or policy/member ID numbers. Only confirm last 4 digits.
+- Do NOT repeat or store specific medical diagnoses, conditions, or medication names in conversation summaries.
+- You MUST obtain explicit verbal consent before collecting any health-related information.
+- If leaving a voicemail: leave ONLY a callback number and a generic message. Do NOT include any health information, names of conditions, or reason for calling.
+- Minimize collection of Protected Health Information (PHI) to only what is strictly necessary for the conversation objective.`;
+    }
+
     const MAX_TASK_LENGTH = 28000;
     if (task.length > MAX_TASK_LENGTH) {
       console.warn(`Campaign prompt too long (${task.length} chars), truncating`);

@@ -6,13 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Play, Pause, Megaphone, Plus, Eye } from "lucide-react";
+import { Loader2, Play, Pause, Megaphone, Plus, Eye, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import AgentProfileCard from "@/components/AgentProfileCard";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 
 interface Campaign {
   id: string;
@@ -22,6 +24,7 @@ interface Campaign {
   agent_project_id: string | null;
   max_concurrent_calls: number;
   created_at: string;
+  hipaa_enabled: boolean;
 }
 
 interface Agent {
@@ -57,6 +60,7 @@ export default function CampaignsPage() {
   const [redialDelay, setRedialDelay] = useState(60);
   const [redialStatuses, setRedialStatuses] = useState<string[]>(["voicemail", "no_answer", "busy"]);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [hipaaEnabled, setHipaaEnabled] = useState(false);
 
   const load = async () => {
     const [campRes, agentRes, listRes] = await Promise.all([
@@ -95,6 +99,7 @@ export default function CampaignsPage() {
           max_attempts: maxAttempts,
           redial_delay_minutes: redialDelay,
           redial_statuses: redialStatuses,
+          hipaa_enabled: hipaaEnabled,
         } as any)
         .select()
         .single();
@@ -194,6 +199,7 @@ export default function CampaignsPage() {
       setMaxAttempts(3);
       setRedialDelay(60);
       setRedialStatuses(["voicemail", "no_answer", "busy"]);
+      setHipaaEnabled(false);
       setShowCreate(false);
       load();
     } catch (err: any) {
@@ -350,6 +356,19 @@ export default function CampaignsPage() {
               </div>
             </div>
 
+            <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+                <div>
+                  <Label htmlFor="hipaa-toggle" className="font-medium cursor-pointer">HIPAA Compliance Mode</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Adds recording disclosure, PHI minimization, and consent requirements to agent prompts.
+                  </p>
+                </div>
+              </div>
+              <Switch id="hipaa-toggle" checked={hipaaEnabled} onCheckedChange={setHipaaEnabled} />
+            </div>
+
             <div className="space-y-2">
               <Label>Select Lists</Label>
               {dialLists.length === 0 ? (
@@ -409,6 +428,11 @@ export default function CampaignsPage() {
                     <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", statusColor[c.status])}>
                       {c.status}
                     </span>
+                    {(c as any).hipaa_enabled && (
+                      <Badge variant="outline" className="gap-1 text-xs border-primary/50 text-primary">
+                        <ShieldCheck className="h-3 w-3" /> HIPAA
+                      </Badge>
+                    )}
                     <span>{new Date(c.created_at).toLocaleDateString()}</span>
                   </div>
                 </div>
