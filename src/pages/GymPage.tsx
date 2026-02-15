@@ -111,7 +111,7 @@ export default function GymPage() {
       setAppliedFixes(keys);
     };
     fetchApplied();
-  }, [selectedProjectId, contact]);
+  }, [selectedProjectId]);
 
   // Reset all state when agent changes
   useEffect(() => {
@@ -237,6 +237,8 @@ export default function GymPage() {
   useEffect(() => {
     if (!testRunId) return;
 
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
     const fetchContact = async () => {
       const { data } = await supabase
         .from("test_run_contacts")
@@ -248,6 +250,11 @@ export default function GymPage() {
         setContact(data as TestContact);
         if (!["queued", "calling"].includes(data.status)) {
           setRunning(false);
+          // Stop polling once call is done
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
           // Refresh history when test completes
           loadHistory();
         }
@@ -270,11 +277,11 @@ export default function GymPage() {
       )
       .subscribe();
 
-    const interval = setInterval(fetchContact, 5000);
+    intervalId = setInterval(fetchContact, 5000);
 
     return () => {
       channel.unsubscribe();
-      clearInterval(interval);
+      if (intervalId) clearInterval(intervalId);
     };
   }, [testRunId]);
 
