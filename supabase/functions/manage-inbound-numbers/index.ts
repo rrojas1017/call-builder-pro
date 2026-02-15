@@ -112,18 +112,24 @@ serve(async (req) => {
         task = task.substring(0, MAX_TASK_LENGTH) + "\n\n[Trimmed for length]";
       }
 
-      // Configure on Bland
+      // Configure on Bland (full parity with run-test-run / tick-campaign)
       const configBody: any = {
         prompt: task,
         webhook: webhookUrl,
+        model: "base",
+        voice: spec.voice_id || "maya",
+        temperature: spec.temperature ?? 0.7,
+        interruption_threshold: spec.interruption_threshold ?? 100,
+        noise_cancellation: true,
+        record: true,
         metadata: { org_id: project?.org_id || num.org_id, project_id },
       };
-      if (spec.voice_id) configBody.voice = spec.voice_id;
-      else configBody.voice = "maya";
       if (spec.opening_line) configBody.first_sentence = spec.opening_line;
       if (spec.language) configBody.language = spec.language;
       if (spec.transfer_phone_number) configBody.transfer_phone_number = spec.transfer_phone_number;
       if (spec.background_track && spec.background_track !== "none") configBody.background_track = spec.background_track;
+      if (spec.speaking_speed && spec.speaking_speed !== 1.0) configBody.voice_settings = { speed: spec.speaking_speed };
+      if (spec.pronunciation_guide && Array.isArray(spec.pronunciation_guide) && spec.pronunciation_guide.length > 0) configBody.pronunciation_guide = spec.pronunciation_guide;
 
       const configResp = await fetch(`https://api.bland.ai/v1/inbound/${encodeURIComponent(num.phone_number)}`, {
         method: "POST",

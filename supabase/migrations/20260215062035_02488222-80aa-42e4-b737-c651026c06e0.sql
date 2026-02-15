@@ -1,0 +1,1 @@
+ALTER TABLE public.agent_specs ADD COLUMN voicemail_message text;

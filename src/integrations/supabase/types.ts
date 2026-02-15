@@ -132,6 +132,7 @@ export type Database = {
           version: number
           voice_id: string | null
           voice_provider: string
+          voicemail_message: string | null
         }
         Insert: {
           background_track?: string | null
@@ -168,6 +169,7 @@ export type Database = {
           version?: number
           voice_id?: string | null
           voice_provider?: string
+          voicemail_message?: string | null
         }
         Update: {
           background_track?: string | null
@@ -204,6 +206,7 @@ export type Database = {
           version?: number
           voice_id?: string | null
           voice_provider?: string
+          voicemail_message?: string | null
         }
         Relationships: [
           {

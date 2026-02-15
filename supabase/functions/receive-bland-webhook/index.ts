@@ -56,6 +56,13 @@ serve(async (req) => {
       contactStatus = "voicemail";
     }
 
+    // Detect successful voicemail left
+    if (contactStatus === "voicemail" && (body.voicemail_detected || body.voicemail_left)) {
+      if (body.voicemail_left) {
+        contactStatus = "left_message";
+      }
+    }
+
     // Determine outcome
     let outcome = contactStatus;
     let extractedData: any = null;
