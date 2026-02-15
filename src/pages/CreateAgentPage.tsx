@@ -15,6 +15,14 @@ import { VoiceSelector } from "@/components/VoiceSelector";
 
 const STEPS = ["Build Your Agent", "Clarify Details", "Review & Save"];
 
+const TEMPLATES = [
+  { label: "Health Insurance Pre-Qualifier", name: "Health Insurance Pre-Qualifier", desc: "AI agent that calls leads who requested health insurance info, verifies eligibility, collects basic details, and transfers qualified individuals to a licensed agent." },
+  { label: "Appointment Setter", name: "Appointment Setter", desc: "AI agent that calls to schedule or confirm appointments, collects preferred date/time, and sends a confirmation summary." },
+  { label: "Lead Qualifier", name: "Lead Qualifier", desc: "AI agent that calls inbound leads, asks qualifying questions, collects contact info, and routes hot leads to the sales team." },
+  { label: "Survey / Feedback", name: "Customer Feedback", desc: "AI agent that calls customers after a purchase or service to collect satisfaction ratings and open-ended feedback." },
+  { label: "Inbound Support", name: "Inbound Support", desc: "AI agent that handles incoming calls, answers common questions from a knowledge base, and escalates complex issues to a live agent." },
+];
+
 interface WizardQuestion {
   question: string;
   rationale: string;
@@ -44,7 +52,7 @@ export default function CreateAgentPage() {
   const [saving, setSaving] = useState(false);
   const [transferEnabled, setTransferEnabled] = useState(false);
   const [transferPhone, setTransferPhone] = useState("");
-  const [backgroundTrack, setBackgroundTrack] = useState<string | null>(null);
+  const [backgroundTrack, setBackgroundTrack] = useState<string | null>("office");
   const [voiceProvider, setVoiceProvider] = useState<"bland" | "retell">("bland");
   const [retellAgentId, setRetellAgentId] = useState("");
 
@@ -169,36 +177,70 @@ export default function CreateAgentPage() {
 
       {/* Step 1: Build Your AI Call Agent */}
       {step === 0 && (
-        <div className="surface-elevated rounded-xl p-6 space-y-5">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Build Your AI Call Agent</h1>
-            <p className="text-muted-foreground mt-1">Describe what you want the agent to do. We'll handle the structure.</p>
+        <div className="space-y-5">
+          {/* Quick-Start Templates */}
+          <div className="surface-elevated rounded-xl p-6 space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Quick-Start Templates</h2>
+              <p className="text-muted-foreground text-sm mt-1">Pick a template to pre-fill the form, or describe your own below.</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {TEMPLATES.map((t) => (
+                <button
+                  key={t.label}
+                  onClick={() => { setAgentName(t.name); setDescription(t.desc); setSourceText(t.desc); }}
+                  className={cn(
+                    "rounded-lg border p-3 text-left transition-colors hover:border-primary hover:bg-primary/5",
+                    agentName === t.name && sourceText === t.desc
+                      ? "border-primary bg-primary/10"
+                      : "border-border"
+                  )}
+                >
+                  <p className="text-sm font-medium text-foreground">{t.label}</p>
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{t.desc}</p>
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>Agent Name</Label>
-            <Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder="e.g. Health Insurance Pre-Qualifier" />
+
+          <div className="flex items-center gap-3 text-muted-foreground text-xs">
+            <div className="h-px flex-1 bg-border" />
+            <span>Or describe your own below</span>
+            <div className="h-px flex-1 bg-border" />
           </div>
-          <div className="space-y-2">
-            <Label>What should your agent do?</Label>
-            <Textarea
-              value={sourceText || description}
-              onChange={(e) => { setSourceText(e.target.value); setDescription(e.target.value); }}
-              placeholder="I need an AI agent that calls people who requested health insurance information, checks qualification, and transfers qualified individuals."
-              rows={6}
-            />
+
+          {/* Blank form */}
+          <div className="surface-elevated rounded-xl p-6 space-y-5">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Build Your AI Call Agent</h1>
+              <p className="text-muted-foreground mt-1">Describe what you want the agent to do. We'll handle the structure.</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Agent Name</Label>
+              <Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder="e.g. Health Insurance Pre-Qualifier" />
+            </div>
+            <div className="space-y-2">
+              <Label>What should your agent do?</Label>
+              <Textarea
+                value={sourceText || description}
+                onChange={(e) => { setSourceText(e.target.value); setDescription(e.target.value); }}
+                placeholder="I need an AI agent that calls people who requested health insurance information, checks qualification, and transfers qualified individuals."
+                rows={6}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Or upload a document (.txt, .docx, .pdf)</Label>
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-foreground transition-colors">
+                <Upload className="h-4 w-4" />
+                {file ? file.name : "Choose file"}
+                <input type="file" className="hidden" accept=".txt,.docx,.pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+              </label>
+            </div>
+            <Button onClick={handleGenerateSpec} disabled={loading || !agentName.trim()} className="w-full" size="lg">
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              Generate My Agent
+            </Button>
           </div>
-          <div className="space-y-2">
-            <Label>Or upload a document (.txt, .docx, .pdf)</Label>
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-foreground transition-colors">
-              <Upload className="h-4 w-4" />
-              {file ? file.name : "Choose file"}
-              <input type="file" className="hidden" accept=".txt,.docx,.pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-            </label>
-          </div>
-          <Button onClick={handleGenerateSpec} disabled={loading || !agentName.trim()} className="w-full" size="lg">
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-            Generate My Agent
-          </Button>
         </div>
       )}
 
@@ -229,6 +271,19 @@ export default function CreateAgentPage() {
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => setStep(0)}>
               <ArrowLeft className="mr-2 h-4 w-4" /> Back
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setQuestions((prev) => prev.map((q) => ({
+                  ...q,
+                  answer: q.answer || "Use your best judgment based on industry standards",
+                })));
+                setTimeout(() => handleSaveAnswers(), 0);
+              }}
+              disabled={loading}
+            >
+              Use Defaults & Continue
             </Button>
             <Button onClick={handleSaveAnswers} disabled={loading} className="flex-1">
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />}
