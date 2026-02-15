@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save, FileText, Phone, ExternalLink, AlertTriangle, Lightbulb, BookOpen } from "lucide-react";
+import LiveCallMonitor from "@/components/LiveCallMonitor";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -642,6 +643,15 @@ export default function CampaignDetailPage() {
                     <Badge variant={badge.variant}>{badge.label}</Badge>
                   </div>
                 </SheetHeader>
+
+                {contact.status === "calling" && (contact.bland_call_id || (call?.retell_call_id)) && (
+                  <LiveCallMonitor
+                    blandCallId={contact.bland_call_id}
+                    retellCallId={call?.retell_call_id}
+                    contactId={contact.id}
+                    isActive={true}
+                  />
+                )}
 
                 <div className="space-y-5 mt-4">
                   {/* Call metadata */}
