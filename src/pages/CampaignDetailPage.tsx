@@ -37,6 +37,10 @@ const STATUS_BADGES: Record<string, { label: string; variant: "default" | "secon
   voicemail: { label: "Voicemail", variant: "secondary" },
   no_answer: { label: "No Answer", variant: "secondary" },
   busy: { label: "Busy", variant: "secondary" },
+  dnc: { label: "DNC", variant: "destructive" },
+  disconnected: { label: "Disconnected", variant: "destructive" },
+  call_me_later: { label: "Call Me Later", variant: "secondary" },
+  not_available: { label: "Not Available", variant: "secondary" },
 };
 
 export default function CampaignDetailPage() {
@@ -255,13 +259,15 @@ export default function CampaignDetailPage() {
   // Compute stats
   const total = contacts.length;
   const inProgress = contacts.filter((c) => c.status === "calling").length;
+  const terminalStatuses = ["completed", "dnc", "disconnected", "failed", "cancelled"];
+  const retryableStatuses = ["voicemail", "no_answer", "busy", "call_me_later", "not_available"];
   const completed = contacts.filter((c) => c.status === "completed").length;
+  const dnc = contacts.filter((c) => c.status === "dnc").length;
+  const disconnected = contacts.filter((c) => c.status === "disconnected").length;
   const failed = contacts.filter((c) => c.status === "failed").length;
-  const voicemail = contacts.filter((c) => c.status === "voicemail").length;
-  const noAnswer = contacts.filter((c) => c.status === "no_answer").length;
-  const busy = contacts.filter((c) => c.status === "busy").length;
-  const nonConnect = voicemail + noAnswer + busy;
-  const processed = completed + failed + nonConnect;
+  const retryable = contacts.filter((c) => retryableStatuses.includes(c.status)).length;
+  const terminal = contacts.filter((c) => terminalStatuses.includes(c.status)).length;
+  const processed = terminal + retryable;
   const successRate = processed > 0 ? Math.round((completed / processed) * 100) : 0;
   const progressPct = total > 0 ? Math.round((processed / total) * 100) : 0;
 
@@ -318,9 +324,9 @@ export default function CampaignDetailPage() {
     { label: "Total Contacts", value: total },
     { label: "In Progress", value: inProgress },
     { label: "Completed", value: completed },
+    { label: "Terminal", value: terminal },
+    { label: "Retryable", value: retryable },
     { label: "Failed", value: failed },
-    { label: "Voicemail", value: voicemail },
-    { label: "Non-Connect", value: nonConnect },
     { label: "Success Rate", value: `${successRate}%` },
     { label: "Avg Duration", value: avgDuration > 0 ? `${Math.floor(avgDuration / 60)}m ${avgDuration % 60}s` : "—" },
     { label: "Avg Score", value: avgScore > 0 ? `${avgScore}/100` : "—" },
@@ -571,6 +577,7 @@ export default function CampaignDetailPage() {
                   <TableHead>Name</TableHead>
                   <TableHead>Phone</TableHead>
                   <TableHead>Status</TableHead>
+                   <TableHead>Attempts</TableHead>
                   <TableHead>Duration</TableHead>
                   <TableHead>Outcome</TableHead>
                   <TableHead>Called At</TableHead>
@@ -587,6 +594,7 @@ export default function CampaignDetailPage() {
                       <TableCell>
                         <Badge variant={badge.variant}>{badge.label}</Badge>
                       </TableCell>
+                      <TableCell className="text-xs text-center">{c.attempts || 0}</TableCell>
                       <TableCell className="text-xs">
                         {call?.duration_seconds != null
                           ? `${Math.floor(call.duration_seconds / 60)}m ${call.duration_seconds % 60}s`
@@ -601,7 +609,7 @@ export default function CampaignDetailPage() {
                 })}
                 {contacts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       No contacts yet.
                     </TableCell>
                   </TableRow>
