@@ -212,6 +212,7 @@ serve(async (req) => {
         await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
       }
       if (spec.background_track && spec.background_track !== "none") globalSettings.background_track = spec.background_track;
+      globalSettings.answering_machine_detection = true;
 
       const blandResp = await fetch("https://api.bland.ai/v2/batches/create", {
         method: "POST",

@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2 } from "lucide-react";
+import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -31,6 +31,10 @@ const STATUS_BADGES: Record<string, { label: string; variant: "default" | "secon
   calling: { label: "In Progress", variant: "secondary" },
   completed: { label: "Completed", variant: "default" },
   failed: { label: "Failed", variant: "destructive" },
+  cancelled: { label: "Cancelled", variant: "outline" },
+  voicemail: { label: "Voicemail", variant: "secondary" },
+  no_answer: { label: "No Answer", variant: "secondary" },
+  busy: { label: "Busy", variant: "secondary" },
 };
 
 export default function CampaignDetailPage() {
@@ -45,6 +49,7 @@ export default function CampaignDetailPage() {
   const [agent, setAgent] = useState<any>(null);
   const [calls, setCalls] = useState<any[]>([]);
   const [actionLoading, setActionLoading] = useState(false);
+  const [stoppingCalls, setStoppingCalls] = useState<Set<string>>(new Set());
 
   const fetchData = useCallback(async () => {
     if (!user || !id) return;
@@ -110,7 +115,7 @@ export default function CampaignDetailPage() {
       if (campRes.data && campRes.data.status !== campaign?.status) {
         setCampaign((prev: any) => ({ ...prev, status: campRes.data!.status }));
       }
-    }, 15000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [id, campaign?.status]);
 
@@ -153,6 +158,36 @@ export default function CampaignDetailPage() {
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
       setActionLoading(false);
+    }
+  };
+
+  const liveCalls = contacts.filter((c) => c.status === "calling" && c.bland_call_id);
+
+  const handleStopCall = async (callId: string, contactId: string) => {
+    setStoppingCalls((prev) => new Set(prev).add(contactId));
+    try {
+      const { error } = await supabase.functions.invoke("stop-call", {
+        body: { call_id: callId, contact_id: contactId },
+      });
+      if (error) throw error;
+      setContacts((prev) =>
+        prev.map((c) => (c.id === contactId ? { ...c, status: "cancelled" } : c))
+      );
+      toast({ title: "Call stopped" });
+    } catch (err: any) {
+      toast({ title: "Error stopping call", description: err.message, variant: "destructive" });
+    } finally {
+      setStoppingCalls((prev) => {
+        const next = new Set(prev);
+        next.delete(contactId);
+        return next;
+      });
+    }
+  };
+
+  const handleStopAll = async () => {
+    for (const c of liveCalls) {
+      handleStopCall(c.bland_call_id, c.id);
     }
   };
 
@@ -312,6 +347,48 @@ export default function CampaignDetailPage() {
           </Card>
         ))}
       </div>
+
+      {/* Live Calls */}
+      {liveCalls.length > 0 && (
+        <Card className="border-orange-500/30 bg-orange-50/5">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500" />
+              </span>
+              Live Calls ({liveCalls.length})
+            </CardTitle>
+            <Button size="sm" variant="destructive" onClick={handleStopAll}>
+              <PhoneOff className="h-4 w-4 mr-1" /> Stop All
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {liveCalls.map((c) => (
+                <div key={c.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    <span className="font-medium text-sm">{c.name}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{c.phone}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={stoppingCalls.has(c.id)}
+                    onClick={() => handleStopCall(c.bland_call_id, c.id)}
+                  >
+                    {stoppingCalls.has(c.id) ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <><PhoneOff className="h-3 w-3 mr-1" /> Stop</>
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Outcome pie */}
