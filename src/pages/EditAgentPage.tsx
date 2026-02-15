@@ -33,7 +33,7 @@ export default function EditAgentPage() {
   const [backgroundTrack, setBackgroundTrack] = useState<string | null>(null);
   const [voiceProvider, setVoiceProvider] = useState<"bland" | "retell">("bland");
   const [retellAgentId, setRetellAgentId] = useState("");
-  const [fromNumber, setFromNumber] = useState("");
+  const [fromNumber, setFromNumber] = useState("auto");
 
   useEffect(() => {
     if (!id) return;
@@ -55,7 +55,7 @@ export default function EditAgentPage() {
         setBackgroundTrack((spec as any).background_track || null);
         setVoiceProvider(((spec as any).voice_provider as "bland" | "retell") || "bland");
         setRetellAgentId((spec as any).retell_agent_id || "");
-        setFromNumber((spec as any).from_number || "");
+        setFromNumber((spec as any).from_number || "auto");
       }
       setLoading(false);
     };
@@ -87,7 +87,7 @@ export default function EditAgentPage() {
           background_track: backgroundTrack,
           voice_provider: voiceProvider,
           retell_agent_id: voiceProvider === "retell" ? retellAgentId || null : null,
-          from_number: fromNumber || null,
+          from_number: fromNumber === "auto" ? null : fromNumber || null,
         } as any).eq("project_id", id),
       ]);
 
@@ -185,7 +185,7 @@ export default function EditAgentPage() {
             <SelectValue placeholder="Auto (rotate from trusted pool)" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Auto (rotate from trusted pool)</SelectItem>
+            <SelectItem value="auto">Auto (rotate from trusted pool)</SelectItem>
             {trustedNumbers.map((n) => (
               <SelectItem key={n.id} value={n.phone_number}>
                 {n.phone_number}{n.label ? ` — ${n.label}` : ""}
