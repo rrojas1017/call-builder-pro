@@ -1225,6 +1225,44 @@ export type Database = {
           },
         ]
       }
+      training_audits: {
+        Row: {
+          claude_results: Json | null
+          created_at: string | null
+          gpt_results: Json | null
+          id: string
+          merged_score: number | null
+          org_id: string
+          project_id: string
+        }
+        Insert: {
+          claude_results?: Json | null
+          created_at?: string | null
+          gpt_results?: Json | null
+          id?: string
+          merged_score?: number | null
+          org_id: string
+          project_id: string
+        }
+        Update: {
+          claude_results?: Json | null
+          created_at?: string | null
+          gpt_results?: Json | null
+          id?: string
+          merged_score?: number | null
+          org_id?: string
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_audits_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
