@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Bot, PlusCircle, Megaphone, Phone, PhoneIncoming,
   BookOpen, Settings, LogOut, GraduationCap, FileSpreadsheet, Users, CreditCard,
   Building2, ScrollText, X, Pencil, Save, RotateCcw, GripVertical,
-  Brain, Shield, LucideIcon
+  Brain, Shield, LucideIcon, MessageSquare
 } from "lucide-react";
 import { useUserRole, AppRole } from "@/hooks/useUserRole";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,7 @@ const iconMap: Record<string, LucideIcon> = {
   "/admin/companies": Building2,
   "/admin/audit": ScrollText,
   "/training-audit": Brain,
+  "/whatsapp": MessageSquare,
 };
 
 export default function AppSidebar() {
