@@ -1,33 +1,29 @@
 
 
-## Promote Bryan Contreras to Super Admin and Fix His Account
+## Execute: Fix Bryan Contreras Account
 
-### What Changes
+Now that I have the password, here's exactly what I'll do:
 
-1. **Fix email**: Update Bryan's auth email from `bcontrereas@appendify.io` to `bcontreras@appendify.io`
-2. **Promote to super_admin**: Change his role from `admin` to `super_admin`
-3. **Reset password**: Set a new password via an Edge Function call (you'll tell me the password after approving)
+### Step 1: Create temporary Edge Function `admin-fix-user`
 
-### How
+This function will use the service role to:
+- Look up Bryan by his current email `bcontrereas@appendify.io`
+- Update his auth email to `bcontreras@appendify.io`
+- Set his password to `Appendify2025!`
+- Update his role in `user_roles` to `super_admin`
 
-All three changes will be done through a small Edge Function that uses the service role to:
-- Update Bryan's email in the auth system
-- Update his role in the `user_roles` table
-- Reset his password
+### Step 2: Deploy and call the function
 
-| Step | Action |
-|------|--------|
-| 1 | Create a one-time Edge Function `admin-fix-user` that takes the new password, fixes the email, updates the role, and resets the password |
-| 2 | Call the function with the desired password |
-| 3 | Delete the Edge Function after use (it's a one-time admin operation) |
+Invoke the function to apply all three changes at once.
 
-### Security Note
+### Step 3: Clean up
 
-- Bryan will be able to create other super admins once promoted (the `create-user` Edge Function already allows super admins to assign any role)
-- Password-less login is NOT implemented as it would be a critical security vulnerability
-- The temporary Edge Function will be removed after the fix is applied
+Delete the `admin-fix-user` Edge Function since it's a one-time operation.
 
-### After Approval
+### Result
 
-I will ask you for the password you want to set for Bryan before executing.
+Bryan will be able to log in with:
+- **Email:** bcontreras@appendify.io
+- **Password:** Appendify2025!
+- **Role:** super_admin
 
