@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.audit-training-pipeline]
 verify_jwt = false
+
+[functions.apply-audit-recommendation]
+verify_jwt = false
