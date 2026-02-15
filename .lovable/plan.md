@@ -1,39 +1,41 @@
 
 
-## Fix: Campaign Creation Fails With "No Valid Contacts Found"
+## Fix: `detected_fields` Saved as Empty Object
 
 ### Root Cause
 
-When a list is uploaded, the `detected_fields` column is saved as an empty object `{}`. The campaign creation code relies on `detected_fields` to figure out which columns contain phone numbers and names. Since it's empty, the code can't find any phone/name columns, marks every contact's phone as `""`, filters them all out, and shows the error.
-
-Your actual data looks like `{ fname: "Ramon", lname: "Rojas", phone: "+14076393814" }` -- the keys are right there in the row data, the code just doesn't look at them when `detected_fields` is empty.
-
-### Fix
-
-**File:** `src/pages/CampaignsPage.tsx`
-
-When `detected_fields` yields an empty fields array, fall back to extracting keys from the first row's `row_data`. This way the heuristic phone/name detection still works regardless of whether `detected_fields` was populated.
+In `src/pages/ListsPage.tsx` line 174, the code does:
 
 ```text
-Current (line ~118):
-  const fields = ... from detected_fields ...
-  
-Changed to:
-  let fields = ... from detected_fields ...
-  // Fallback: if no fields detected, infer from actual row data keys
-  if (fields.length === 0 && rows.length > 0) {
-    fields = Object.keys((rows[0] as any).row_data || {});
-  }
+detected_fields: parseResult.field_map ? parseResult.field_map : parseResult.detected_fields
 ```
 
-This is a one-line addition that makes the existing phone/name heuristic (`phoneCols`, `nameCols`) work correctly with the actual data keys like `phone`, `fname`, etc.
+The problem is that `parseResult.field_map` is always truthy -- even when AI returns an empty object `{}` -- because `Boolean({})` is `true` in JavaScript. So the database always gets the `field_map` value, which is `{}` when AI analysis fails or returns nothing useful.
 
-### Also Fix Name Detection
-
-The current `nameCols` list doesn't include `fname`. Since the data uses `fname`/`lname`, add `fname` to the name column heuristics so the contact name is properly extracted. Additionally, combine `fname` + `lname` when both exist.
-
-### Technical Summary
+### Fix (Two Files)
 
 | File | Change |
 |---|---|
-| `src/pages/CampaignsPage.tsx` | Add fallback to infer fields from `row_data` keys when `detected_fields` is empty. Add `fname` to `nameCols`. Combine `fname`+`lname` for full name. |
+| `src/pages/ListsPage.tsx` (line 174) | Check that `field_map` actually has keys before preferring it over the `detected_fields` array. |
+| `supabase/functions/parse-dial-list/index.ts` (line 10) | Add `fname` and `lname` to `NAME_HEADERS` so the heuristic fallback also catches these common field names. |
+
+### Details
+
+**ListsPage.tsx** -- Change the save line to:
+
+```text
+detected_fields: parseResult.field_map && Object.keys(parseResult.field_map).length > 0
+  ? parseResult.field_map
+  : parseResult.detected_fields
+```
+
+This ensures that only a non-empty `field_map` object is used. When AI fails or returns `{}`, the raw `detected_fields` array (the actual CSV headers) is saved instead.
+
+**parse-dial-list/index.ts** -- Update `NAME_HEADERS` to include `fname` and `lname`:
+
+```text
+const NAME_HEADERS = ["name", "full_name", "first_name", "fname", "lname", "contact", "contact_name", "fullname", "customer"];
+```
+
+This improves the heuristic fallback so it correctly identifies first/last name columns without needing AI.
+
