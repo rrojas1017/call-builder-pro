@@ -93,6 +93,12 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[] = [
     }
   }
 
+  // Inject email collection near end if not already present
+  if (fields.length > 0 && !fields.some(f => f.toLowerCase().includes('email'))) {
+    const insertAt = Math.max(fields.length - 1, 0);
+    fields.splice(insertAt, 0, "What's the best email address to reach you at? We'll send you a quick summary of what we covered and any next steps.");
+  }
+
   const qualRules = spec.qualification_rules
     ? (typeof spec.qualification_rules === "string" ? spec.qualification_rules : JSON.stringify(spec.qualification_rules, null, 2))
     : null;
@@ -127,7 +133,7 @@ RULES:
 
   if (fields.length > 0) {
     prompt += `\n\nCOLLECT (in order):\n${fields.map((f, i) => `${i + 1}. ${f}`).join("\n")}`;
-    prompt += `\nZIP: Must be exactly 5 digits.`;
+    prompt += `\nZIP CODE: Must be exactly 5 digits. After caller says it, repeat it back: "Just to confirm, that's [zip], correct?" If unclear or fewer/more than 5 digits, ask again: "I want to make sure I have that right -- could you repeat your zip code?"`;
   }
 
   if (isHealth) {
