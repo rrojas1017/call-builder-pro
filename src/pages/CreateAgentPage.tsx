@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, Shield, Target, Users, Mic, Save, Volume2 } from "lucide-react";
+import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, PhoneIncoming, PhoneForwarded, Shield, Target, Users, Mic, Save, Volume2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useBlandVoices } from "@/hooks/useBlandVoices";
@@ -55,6 +55,7 @@ export default function CreateAgentPage() {
   const [backgroundTrack, setBackgroundTrack] = useState<string | null>("office");
   const [voiceProvider, setVoiceProvider] = useState<"bland" | "retell">("bland");
   const [retellAgentId, setRetellAgentId] = useState("");
+  const [agentMode, setAgentMode] = useState<"outbound" | "inbound" | "hybrid">("outbound");
 
   // Step 1: Create project + generate spec
   const handleGenerateSpec = async () => {
@@ -115,6 +116,7 @@ export default function CreateAgentPage() {
       setRawSpecText(JSON.stringify(data.spec, null, 2));
       setTransferEnabled(!!data.spec?.transfer_required);
       setTransferPhone(data.spec?.transfer_phone_number || "");
+      setAgentMode(data.spec?.mode || "outbound");
       setStep(2);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -145,6 +147,7 @@ export default function CreateAgentPage() {
         background_track: backgroundTrack,
         voice_provider: voiceProvider,
         retell_agent_id: voiceProvider === "retell" ? retellAgentId || null : null,
+        mode: agentMode,
       } as any).eq("project_id", projectId);
       toast({ title: "Agent saved!", description: "Run test calls to fine-tune voice and delivery." });
       navigate("/agents");
@@ -299,6 +302,34 @@ export default function CreateAgentPage() {
               } />
             </div>
           )}
+
+          {/* Agent Mode */}
+          <div className="surface-elevated rounded-xl p-6 space-y-4">
+            <h3 className="font-semibold text-foreground">Agent Mode</h3>
+            <p className="text-xs text-muted-foreground">
+              The AI detected this as <span className="font-medium text-foreground">{spec?.mode || "outbound"}</span>. Change if needed.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {([
+                { value: "outbound" as const, label: "Outbound", icon: Phone, desc: "Makes calls to your contacts" },
+                { value: "inbound" as const, label: "Inbound", icon: PhoneIncoming, desc: "Receives incoming calls" },
+                { value: "hybrid" as const, label: "Hybrid", icon: PhoneForwarded, desc: "Both directions" },
+              ]).map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setAgentMode(opt.value)}
+                  className={cn(
+                    "rounded-lg border p-3 text-left transition-colors",
+                    agentMode === opt.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                  )}
+                >
+                  <opt.icon className={cn("h-4 w-4 mb-1", agentMode === opt.value ? "text-primary" : "text-muted-foreground")} />
+                  <p className="text-sm font-medium text-foreground">{opt.label}</p>
+                  <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Voice Provider */}
           <div className="surface-elevated rounded-xl p-6 space-y-4">
