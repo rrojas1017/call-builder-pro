@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Brain, Zap, CheckCircle2, AlertTriangle, XCircle, History, Sparkles, ArrowRight } from "lucide-react";
+import { Loader2, Brain, Zap, CheckCircle2, AlertTriangle, XCircle, History, Sparkles, ArrowRight, Play, Check, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // ── Types ──
@@ -174,9 +174,93 @@ function LegacyCategoryCard({ cat, claude, gpt }: { cat: string; claude?: Catego
   );
 }
 
-// ── Unified category card ──
+// ── Apply button for a single recommendation ──
 
-function UnifiedCategoryCard({ cat, data }: { cat: string; data: UnifiedCategoryResult }) {
+function ApplyButton({
+  projectId,
+  recommendation,
+  category,
+  applied,
+  onApplied,
+}: {
+  projectId: string;
+  recommendation: string;
+  category: string;
+  applied: boolean;
+  onApplied: (rec: string, result: { success: boolean; manual?: boolean; note?: string; reason?: string; action?: string }) => void;
+}) {
+  const [applying, setApplying] = useState(false);
+  const { toast } = useToast();
+
+  if (applied) {
+    return (
+      <Badge variant="default" className="bg-green-600 text-white text-[10px] px-2 py-0.5 shrink-0">
+        <Check className="h-3 w-3 mr-1" />Applied
+      </Badge>
+    );
+  }
+
+  const handleApply = async () => {
+    setApplying(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("apply-audit-recommendation", {
+        body: { project_id: projectId, recommendation, category },
+      });
+      if (error) throw error;
+
+      if (data.success) {
+        onApplied(recommendation, data);
+        toast({
+          title: data.action === "add_knowledge" ? "Knowledge Added" : "Spec Updated",
+          description: data.reason || `Applied: ${recommendation.slice(0, 60)}…`,
+        });
+      } else if (data.manual) {
+        onApplied(recommendation, { success: false, manual: true, note: data.note });
+        toast({
+          title: "Manual Review Needed",
+          description: data.note || "This recommendation requires manual intervention",
+          variant: "destructive",
+        });
+      } else if (data.skipped) {
+        toast({
+          title: "Skipped",
+          description: data.reason || "Domain mismatch",
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
+      console.error("Apply error:", err);
+      toast({ title: "Apply Failed", description: err.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <Button size="sm" variant="outline" onClick={handleApply} disabled={applying} className="h-7 text-xs px-2 shrink-0">
+      {applying ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+      <span className="ml-1">{applying ? "Applying…" : "Apply"}</span>
+    </Button>
+  );
+}
+
+// ── Unified category card with Apply buttons ──
+
+function UnifiedCategoryCard({
+  cat,
+  data,
+  projectId,
+  appliedSet,
+  manualSet,
+  onApplied,
+}: {
+  cat: string;
+  data: UnifiedCategoryResult;
+  projectId: string;
+  appliedSet: Set<string>;
+  manualSet: Set<string>;
+  onApplied: (rec: string, result: any) => void;
+}) {
   const sortedFindings = [...data.findings].sort((a, b) => {
     const order = { critical: 0, important: 1, minor: 2 };
     return order[a.priority] - order[b.priority];
@@ -234,6 +318,19 @@ function UnifiedCategoryCard({ cat, data }: { cat: string; data: UnifiedCategory
                         {r.priority}
                       </Badge>
                       <SourceBadge source={r.source} />
+                      {manualSet.has(r.text) ? (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-yellow-500 text-yellow-500 shrink-0">
+                          <AlertCircle className="h-3 w-3 mr-0.5" />Manual
+                        </Badge>
+                      ) : (
+                        <ApplyButton
+                          projectId={projectId}
+                          recommendation={r.text}
+                          category={cat}
+                          applied={appliedSet.has(r.text)}
+                          onApplied={onApplied}
+                        />
+                      )}
                     </div>
                   </div>
                   {r.cross_agent_note && (
@@ -264,6 +361,10 @@ export default function TrainingAuditPage() {
   const [currentAudit, setCurrentAudit] = useState<AuditRecord | null>(null);
   const [pastAudits, setPastAudits] = useState<AuditRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [appliedRecs, setAppliedRecs] = useState<Set<string>>(new Set());
+  const [manualRecs, setManualRecs] = useState<Set<string>>(new Set());
+  const [applyingAll, setApplyingAll] = useState(false);
+  const [applyAllProgress, setApplyAllProgress] = useState<{ current: number; total: number } | null>(null);
 
   useEffect(() => {
     if (!orgId) return;
@@ -286,6 +387,9 @@ export default function TrainingAuditPage() {
       setPastAudits(audits);
       setCurrentAudit(audits.length > 0 ? audits[0] : null);
     })();
+    // Reset applied state when switching agents
+    setAppliedRecs(new Set());
+    setManualRecs(new Set());
   }, [selectedAgent]);
 
   const runAudit = async () => {
@@ -308,6 +412,8 @@ export default function TrainingAuditPage() {
       };
       setCurrentAudit(newAudit);
       setPastAudits((prev) => [newAudit, ...prev]);
+      setAppliedRecs(new Set());
+      setManualRecs(new Set());
       toast({ title: "Audit Complete", description: `Pipeline health score: ${data.merged_score}/10` });
     } catch (err: any) {
       console.error("Audit error:", err);
@@ -315,6 +421,78 @@ export default function TrainingAuditPage() {
     } finally {
       setRunning(false);
     }
+  };
+
+  const handleApplied = (rec: string, result: any) => {
+    if (result.success) {
+      setAppliedRecs((prev) => new Set(prev).add(rec));
+    } else if (result.manual) {
+      setManualRecs((prev) => new Set(prev).add(rec));
+    }
+  };
+
+  // Collect all actionable recommendations
+  const allActionableRecs = useMemo(() => {
+    if (!currentAudit?.unified_results) return [];
+    const recs: { text: string; category: string; priority: string }[] = [];
+    for (const cat of CATEGORIES) {
+      const data = currentAudit.unified_results[cat as keyof UnifiedAuditResults];
+      if (!data) continue;
+      for (const r of data.recommendations) {
+        if (r.priority === "critical" || r.priority === "important") {
+          recs.push({ text: r.text, category: cat, priority: r.priority });
+        }
+      }
+    }
+    return recs;
+  }, [currentAudit]);
+
+  const unappliedRecs = allActionableRecs.filter(
+    (r) => !appliedRecs.has(r.text) && !manualRecs.has(r.text)
+  );
+
+  const applyAll = async () => {
+    if (!selectedAgent || unappliedRecs.length === 0) return;
+    setApplyingAll(true);
+    let applied = 0;
+    let manual = 0;
+    let failed = 0;
+
+    for (let i = 0; i < unappliedRecs.length; i++) {
+      const rec = unappliedRecs[i];
+      setApplyAllProgress({ current: i + 1, total: unappliedRecs.length });
+      try {
+        const { data, error } = await supabase.functions.invoke("apply-audit-recommendation", {
+          body: { project_id: selectedAgent, recommendation: rec.text, category: rec.category },
+        });
+        if (error) { failed++; continue; }
+        if (data.success) {
+          setAppliedRecs((prev) => new Set(prev).add(rec.text));
+          applied++;
+        } else if (data.manual) {
+          setManualRecs((prev) => new Set(prev).add(rec.text));
+          manual++;
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    setApplyingAll(false);
+    setApplyAllProgress(null);
+
+    const parts: string[] = [];
+    if (applied > 0) parts.push(`${applied} applied`);
+    if (manual > 0) parts.push(`${manual} need manual review`);
+    if (failed > 0) parts.push(`${failed} failed`);
+
+    toast({
+      title: "Apply All Complete",
+      description: parts.join(", "),
+      variant: failed > 0 ? "destructive" : "default",
+    });
   };
 
   const selectedAgentName = useMemo(() => agents.find((a) => a.id === selectedAgent)?.name || "", [agents, selectedAgent]);
@@ -399,6 +577,30 @@ export default function TrainingAuditPage() {
             </CardContent>
           </Card>
 
+          {/* Apply All button */}
+          {hasUnified && unappliedRecs.length > 0 && (
+            <div className="flex items-center gap-3">
+              <Button onClick={applyAll} disabled={applyingAll} variant="default">
+                {applyingAll ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Applying {applyAllProgress?.current}/{applyAllProgress?.total}…
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 mr-2" />
+                    Apply All Critical & Important ({unappliedRecs.length})
+                  </>
+                )}
+              </Button>
+              {appliedRecs.size > 0 && (
+                <span className="text-sm text-muted-foreground">
+                  {appliedRecs.size} applied{manualRecs.size > 0 ? `, ${manualRecs.size} manual` : ""}
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Cross-Agent Insights banner */}
           {currentAudit.cross_agent_context && currentAudit.cross_agent_context.length > 0 && (
             <Card className="border-primary/30 bg-primary/5">
@@ -426,7 +628,17 @@ export default function TrainingAuditPage() {
             if (hasUnified) {
               const data = currentAudit.unified_results![cat as keyof UnifiedAuditResults];
               if (!data) return null;
-              return <UnifiedCategoryCard key={cat} cat={cat} data={data} />;
+              return (
+                <UnifiedCategoryCard
+                  key={cat}
+                  cat={cat}
+                  data={data}
+                  projectId={selectedAgent}
+                  appliedSet={appliedRecs}
+                  manualSet={manualRecs}
+                  onApplied={handleApplied}
+                />
+              );
             }
             // Legacy fallback
             return (
