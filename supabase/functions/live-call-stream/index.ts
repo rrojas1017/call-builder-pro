@@ -30,31 +30,37 @@ serve(async (req) => {
     }
 
     if (action === "transcript") {
-      // Fetch event stream from Bland AI
-      const res = await fetch(`https://api.bland.ai/v1/event_stream/${call_id}`, {
+      // Use Call Details endpoint which returns actual transcripts
+      const res = await fetch(`https://api.bland.ai/v1/calls/${call_id}`, {
         method: "GET",
         headers: { authorization: BLAND_API_KEY },
       });
 
       if (!res.ok) {
         const text = await res.text();
-        console.error("Bland event_stream error:", res.status, text);
-        return new Response(JSON.stringify({ error: `Bland API error: ${res.status}`, events: [] }), {
+        console.error("Bland call details error:", res.status, text);
+        return new Response(JSON.stringify({ error: `Bland API error: ${res.status}`, transcripts: [] }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       const data = await res.json();
-      // data is typically an array of event objects
-      const events = Array.isArray(data) ? data : data?.events || [];
+      const rawTranscripts = Array.isArray(data.transcripts) ? data.transcripts : [];
 
-      // Filter to transcript-relevant events
-      const transcriptEvents = events.filter(
-        (e: any) => e.text || e.transcript || e.message
-      );
+      // Map Bland's format to our format
+      const transcripts = rawTranscripts.map((t: any) => ({
+        id: String(t.id),
+        text: t.text || "",
+        role: t.user === "assistant" ? "agent" : "caller",
+        created_at: t.created_at || null,
+      }));
 
-      return new Response(JSON.stringify({ events: transcriptEvents }), {
+      return new Response(JSON.stringify({ 
+        transcripts, 
+        status: data.status || null,
+        concatenated_transcript: data.concatenated_transcript || null,
+      }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
