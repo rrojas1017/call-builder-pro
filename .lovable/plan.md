@@ -1,55 +1,64 @@
 
 
-## Add Learning Progress Dashboard and Fix Knowledge Gap
+## Auto-Graduation System for AI Agents
 
-### Problem 1: Winning Patterns Not Reaching Agents
-The `learn-from-success` function saves patterns as `category: "winning_pattern"`, but `buildTaskPrompt.ts` only recognizes `product_knowledge`, `objection_handling`, `industry_insight`, and `competitor_info`. Similarly, `conversation_technique` entries (111 in the DB) are also dropped from the DOMAIN KNOWLEDGE section. These categories only survive if the 500-char AI briefing happens to include them -- which is unreliable.
+### Concept
 
-### Problem 2: No Progress Visibility
-There's no UI to track whether the learning loop is working. Users can't see if lessons are being applied or if scores improved.
+Agents progress through maturity stages based on consistent performance. When an agent hits defined score thresholds over a minimum number of calls, it automatically "graduates" to the next level. This gives you clear visibility into which agents are production-ready vs. still training.
 
----
+### Maturity Levels
 
-### Fix 1: Include Missing Categories in Prompt Builder
+| Level | Label | Criteria |
+|---|---|---|
+| Training | "Training" | Default state, fewer than 5 evaluated calls |
+| Developing | "Developing" | 5+ calls, average overall score 50-69 |
+| Competent | "Competent" | 10+ calls, average overall score 70-84 over last 10 calls |
+| Expert | "Expert" | 20+ calls, average overall score 85+ over last 10 calls, no score below 70 in last 5 |
+| Graduated | "Graduated" | 30+ calls, average overall score 90+ over last 15 calls, stable (no version with score drop > 5 pts) |
 
-**File: `src/lib/buildTaskPrompt.ts`**
+### Implementation
 
-Add `winning_pattern` and `conversation_technique` to the category label map (line 41-46):
+#### 1. New `maturity_level` Column on `agent_projects`
 
-```typescript
-const labels: Record<string, string> = {
-  product_knowledge: "PRODUCT KNOWLEDGE",
-  objection_handling: "OBJECTION HANDLING",
-  industry_insight: "INDUSTRY INSIGHTS",
-  competitor_info: "COMPETITOR AWARENESS",
-  winning_pattern: "WINNING PATTERNS",           // NEW
-  conversation_technique: "CONVERSATION TIPS",    // NEW
-};
+Add a column to track the current graduation level per agent:
+
+```sql
+ALTER TABLE agent_projects 
+ADD COLUMN maturity_level TEXT NOT NULL DEFAULT 'training';
 ```
 
-Also update the backend copy at `supabase/functions/_shared/buildTaskPrompt.ts` with the same change.
+#### 2. Graduation Check Function (Backend)
 
-### Fix 2: Add Learning Progress Section to Agent Knowledge Page
+After each call evaluation in `evaluate-call/index.ts`, run a lightweight graduation check:
 
-**File: `src/pages/AgentKnowledgePage.tsx`**
+- Query `score_snapshots` for the agent's recent history
+- Count total evaluated calls from the `calls` table
+- Compute the rolling average and check against thresholds
+- If the agent qualifies for a higher (or lower) level, update `agent_projects.maturity_level`
 
-Add a summary stats bar at the top of the Knowledge page showing:
-- Total knowledge entries by source (Auto-researched / Evaluation / Manual / Success patterns)
-- Score trend (fetch last 5 `score_snapshots` and show if scores are improving)
-- Last learning activity timestamp
-- A simple timeline of recent learning events
+This is a ~30-line addition at the end of the existing evaluate-call function -- no new edge function needed.
 
-This uses existing data from `agent_knowledge`, `score_snapshots`, and `improvements` tables -- no new tables needed.
+#### 3. Maturity Badge on Agents Page
 
-### Fix 3: Add `winning_pattern` to Knowledge Page Categories
+Show the current level as a color-coded badge on each agent card in `AgentsPage.tsx`:
 
-**File: `src/pages/AgentKnowledgePage.tsx`**
+- Training: gray
+- Developing: blue
+- Competent: yellow/amber
+- Expert: green
+- Graduated: purple with a graduation cap icon
 
-Add the missing category to the `CATEGORIES` array so users can see and manage winning patterns:
+#### 4. Progress Indicator on Knowledge Page
 
-```typescript
-{ value: "winning_pattern", label: "Winning Patterns", icon: "trophy" },
-```
+Enhance the existing `LearningProgressBar` in `AgentKnowledgePage.tsx` to show:
+
+- Current maturity level with badge
+- Progress toward next level (e.g., "7/10 calls needed, avg 72/85 required")
+- A simple progress bar showing how close the agent is to graduating
+
+#### 5. Demotion Logic
+
+If an agent's rolling average drops below its current level threshold (e.g., Expert drops below 85 avg over last 10), it gets demoted back one level. This prevents premature graduation from being permanent.
 
 ---
 
@@ -57,11 +66,14 @@ Add the missing category to the `CATEGORIES` array so users can see and manage w
 
 | File | Change |
 |---|---|
-| `src/lib/buildTaskPrompt.ts` | Add `winning_pattern` and `conversation_technique` to category labels |
-| `supabase/functions/_shared/buildTaskPrompt.ts` | Same category label update (backend copy) |
-| `src/pages/AgentKnowledgePage.tsx` | Add winning_pattern category; add learning progress stats section at top |
+| Database migration | Add `maturity_level` column to `agent_projects` |
+| `supabase/functions/evaluate-call/index.ts` | Add graduation check after evaluation completes |
+| `src/pages/AgentsPage.tsx` | Show maturity badge on agent cards |
+| `src/pages/AgentKnowledgePage.tsx` | Add graduation progress section to LearningProgressBar |
 
 ### What This Achieves
-- All 229 knowledge entries (including 111 conversation techniques) will now reliably appear in agent prompts
-- Users get visibility into whether the system is actually learning
-- Winning patterns extracted from successful calls are surfaced in the UI and fed to agents
+
+- Agents automatically progress from "Training" to "Graduated" as they prove consistency
+- You can see at a glance which agents are ready for production campaigns
+- Agents that regress get demoted, preventing false confidence
+- No manual rating needed -- the system tracks it automatically based on real call performance
