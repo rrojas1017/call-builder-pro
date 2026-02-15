@@ -86,3 +86,6 @@ verify_jwt = false
 
 [functions.apply-audit-recommendation]
 verify_jwt = false
+
+[functions.generate-teacher-briefing]
+verify_jwt = false
