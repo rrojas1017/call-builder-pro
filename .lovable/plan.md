@@ -1,81 +1,115 @@
 
 
-## Make the US Map Interactive and Data-Rich
+## Calls Command Center -- Complete Rebuild
 
-### The Problem Today
+### Overview
 
-The US map currently pulls state data from `extracted_data.state`, but this field contains messy AI-extracted text like "Unknown", "Not specified", or full sentences ("zip code 32765 suggests Florida"). As a result, the map shows almost nothing useful.
+Rebuild the entire Calls section (`CallsPage.tsx` + `USMapChart.tsx`) from scratch into a proper analytics command center. The map gets interactive multi-metric support and drill-down, while the call list gets search, filters, audio playback, chat-style transcripts, and summary stats.
 
-### The Fix: Two-Part Approach
+### Reality Check: Map Data
 
-#### Part 1: Reliable State Data from Phone Numbers
+Right now only 3 out of 100 calls have a linked contact with a phone number (from campaigns). The rest are test calls with no `contact_id`. The area code approach is correct and will populate naturally as more campaign calls are made. The map will show an "empty state" message when data is sparse, and grow richer over time.
 
-Instead of relying on AI-extracted state values, derive state from the contact's **phone number area code**. Area codes map reliably to US states. This means every outbound call with a phone number gets plotted on the map automatically -- no AI extraction needed.
+---
 
-**New utility file: `src/lib/areaCodeToState.ts`**
-- A lookup map of ~300 US area codes to state abbreviations (e.g., `212 -> NY`, `310 -> CA`, `786 -> FL`)
-- A helper function `phoneToState(phone: string): string | null` that extracts the area code and returns the state
+### Part 1: Enhanced US Map (`src/components/USMapChart.tsx`)
 
-**Database**: Add `to_number` column to the `calls` table so we store the dialed number (currently only in `contacts`). Alternatively, join through `contact_id` to get the phone number.
-
-#### Part 2: Interactive Map with Drill-Down and Metrics
-
-Transform the static map into a rich, clickable analytics view.
-
-**Enhanced `USMapChart` component** -- new props and features:
-
-| Feature | Description |
-|---------|-------------|
-| **Metric selector** | Toggle between: Call Volume, Conversion Rate, Avg Score, Avg Duration |
-| **Color by metric** | Heat map colors change based on selected metric (green gradient for conversion, blue for volume, etc.) |
-| **Click to filter** | Clicking a state filters the call list below to only show calls from that state |
-| **State detail panel** | Hovering shows a rich tooltip: call count, conversion rate, top outcome, avg score |
-| **Legend** | Color scale legend showing what the gradient means |
-| **Active state highlight** | Selected state gets a border highlight and a "Clear filter" option |
-
-**Changes to `CallsPage.tsx`:**
-
-1. Add `selectedState` state variable
-2. Pass an `onStateClick` callback to `USMapChart`
-3. Filter the call list when a state is selected
-4. Show a "Showing calls from [State]" banner with a clear button
-5. Derive per-state metrics (conversion rate, avg score, avg duration) and pass as enriched data to the map
-
-**Updated `USMapChart` props:**
-```
-interface USMapChartProps {
-  stateData: Record<string, {
-    calls: number;
-    conversionRate: number;
-    avgScore: number | null;
-    avgDuration: number;
-  }>;
-  metric: "calls" | "conversion" | "score" | "duration";
-  onMetricChange: (m: string) => void;
-  selectedState: string | null;
-  onStateClick: (abbr: string | null) => void;
-}
+**New props interface:**
+```text
+stateData: Record<string, {
+  calls: number;
+  conversionRate: number;
+  avgScore: number | null;
+  avgDuration: number;
+}>
+metric: "calls" | "conversion" | "score" | "duration"
+onMetricChange: (metric) => void
+selectedState: string | null
+onStateClick: (abbr | null) => void
 ```
 
-**Color logic by metric:**
-- **Call Volume**: Teal gradient (current style, but richer)
-- **Conversion Rate**: Green gradient (0% = gray, 100% = bright green)
-- **Avg Score**: Blue-to-purple gradient
-- **Avg Duration**: Amber gradient
+**Features:**
+- Metric selector tabs above the map: Call Volume, Conversion %, Avg Score, Avg Duration
+- Color gradients per metric:
+  - Volume: teal gradient (current style)
+  - Conversion: green gradient
+  - Score: blue-purple gradient
+  - Duration: amber gradient
+- Click a state to filter (passes `onStateClick` up to CallsPage)
+- Selected state gets a highlighted border and can be cleared
+- Rich tooltips showing all 4 metrics for the hovered state
+- Color scale legend bar below the map
+- Empty state message when fewer than 3 states have data: "Map populates as campaign calls increase"
+
+### Part 2: Rebuilt Calls Page (`src/pages/CallsPage.tsx`)
+
+Complete rewrite with these sections:
+
+**A. Summary Stats Row (4 cards)**
+- Total Calls (filtered count)
+- Avg Duration (formatted as m:ss)
+- Avg Score (color-coded)
+- Conversion Rate (qualified / total %)
+
+All stats update dynamically based on active filters.
+
+**B. Filter Bar**
+- Text search input (filters transcript content, client-side)
+- Direction tabs: All / Outbound / Inbound
+- Outcome multi-select dropdown: qualified, completed, voicemail, busy, failed
+- Score quick filters: All, 80+, 50-79, Below 50
+- Duration quick filters: All, 30s+, 1min+, 5min+
+- "Showing calls from [State] -- Clear" banner when map state is selected
+
+**C. Call List (left panel when detail is open)**
+- Shows: direction icon, agent name (from `agent_projects`), outcome badge, duration, score, relative timestamp, provider badge
+- Pagination: Load 50 at a time with "Load More" button
+- CSV export button in the header
+
+**D. Detail Panel (right side)**
+
+When a call is clicked, the map hides and the list shrinks to a sidebar:
+
+1. **Header**: Agent name, direction, relative timestamp, close button
+2. **Metric cards** (3 cols): Outcome, Duration, Score
+3. **Call Timeline**: Horizontal visual showing Created, Started, Ended with time labels and duration badge
+4. **Audio Player**: HTML5 audio element with playback speed controls (1x, 1.25x, 1.5x, 2x) -- only when `recording_url` exists
+5. **Evaluation section**: Compliance/Objective/Overall score cards, hallucination alert, issues list, recommended improvements with Apply buttons (preserving existing improvement logic)
+6. **Voice Recommendation**: Same card as current
+7. **Chat-Style Transcript**: Parse "Agent: ... / User: ..." lines into chat bubbles with Bot/User icons (reuse pattern from `LiveCallMonitor`)
+8. **Extracted Data**: Collapsible JSON viewer
+
+### Part 3: Data Fetching Strategy
+
+**Query**: Fetch calls with contact phone via join:
+```text
+calls(*, contacts(phone))
+```
+
+**Agent names**: Fetch `agent_projects(id, name)` once and build a lookup map for `project_id` to agent name.
+
+**State derivation**: Use `phoneToState(contact.phone)` from the existing `areaCodeToState.ts` utility for each call that has a contact.
+
+**Per-state metrics**: Computed in a `useMemo` from filtered calls -- aggregate calls, conversion rate, avg score, avg duration per state.
 
 ### Technical Summary
 
-| Change | File | What |
-|--------|------|------|
-| Area code map | New `src/lib/areaCodeToState.ts` | ~300 area code to state mappings |
-| DB migration | SQL | Query contacts table for phone numbers via `contact_id` join |
-| Map component | `src/components/USMapChart.tsx` | Multi-metric support, click handler, enriched tooltips, legend |
-| Calls page | `src/pages/CallsPage.tsx` | State click filtering, metric selector, per-state metric derivation, phone-to-state resolution |
+| File | Change |
+|------|--------|
+| `src/components/USMapChart.tsx` | Rewrite: multi-metric support, click handler, color gradients per metric, legend, enriched tooltips, selected state highlight, empty state |
+| `src/pages/CallsPage.tsx` | Rewrite from scratch: stats row, filter bar, search, pagination, audio player, chat transcript, CSV export, timeline, state filtering, agent name resolution |
+| `src/lib/areaCodeToState.ts` | Already exists -- no changes needed |
+| Database | No changes -- uses existing join to contacts table |
 
-### What This Unlocks
+### What This Delivers
 
-- **See where your calls convert best** -- click "Conversion Rate" and instantly spot which states perform well
-- **Drill into a state** -- click Texas, and the call list filters to only TX calls
-- **Compare performance geographically** -- toggle between score, duration, and volume to understand regional patterns
-- **Works automatically** -- no need for AI to extract state data; area codes handle it reliably
+- A professional analytics dashboard for the Calls section
+- Interactive map that filters the call list by state
+- Toggle between Volume, Conversion, Score, and Duration heat maps
+- Audio playback with speed control for call recordings
+- Chat-style transcript view instead of raw text
+- Powerful filtering across outcome, score, duration, direction, and text search
+- Summary stats that update as you filter
+- CSV export for reporting
+- All built on existing data -- no backend changes needed
 
