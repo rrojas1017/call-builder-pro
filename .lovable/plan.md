@@ -1,43 +1,63 @@
 
 
-## Fix Template Staleness and Skip-Questions Risk
+## Fix Voice Filtering: Use API Tags + Expand Accent Detection
 
-### Problem 1: Static Templates Get Stale
+### Root Cause
 
-The current `TEMPLATES` array is hardcoded. If adoption is low on some, they become clutter. Maintaining them is manual overhead.
+The current `useBlandVoices.ts` hook only parses gender and accent from the `description` text using simple keyword matching. This fails in two ways:
 
-**Solution: Replace templates with "Example Prompts"**
+1. **Only 3 accents detected** (american, british, australian) -- but the API has 10+ nationalities (indian, french, german, dutch, brazilian-portuguese, italian, spanish, etc.). Voices with unrecognized accents get `accent: undefined` and become invisible to the filter.
 
-Instead of rigid template cards that pre-fill the form, show 3-4 rotating example prompts as placeholder-style inspiration chips above the textarea. Clicking one pastes it into the description field as a starting point the user is expected to edit -- not a finished template.
+2. **Tags are ignored** -- The Bland API returns a `tags` array per voice (e.g., `["english", "male", "cloned"]`, `["french", "cloned"]`, `["German"]`) that contains reliable gender and language/accent data. The current code doesn't use it at all.
 
-This shifts from "pick a category" to "here's how to describe what you need," which:
-- Never goes stale (they're just example sentences, not product categories)
-- Encourages users to customize rather than blindly accept
-- Removes the maintenance burden entirely
+3. **Voices without clear descriptions are unclassified** -- e.g., "Sal" with description "An effective and simple voice" but tag `"male"` gets no gender assigned.
 
-The chips would look like: `"Calls leads to verify insurance eligibility and transfer qualified ones"` / `"Schedules appointments and sends confirmations"` / `"Surveys customers after purchases for feedback"`
+### Solution
 
-Clicking one fills the description textarea. The agent name field stays blank for the user to name it themselves.
+Update `src/hooks/useBlandVoices.ts` to:
 
-### Problem 2: "Use Defaults & Continue" Is a Blind Skip
+1. **Check `tags` first for gender** -- if tags contain `"male"` or `"female"`, use that. Fall back to description parsing only if tags don't have it.
 
-Currently the button auto-fills blanks with "Use your best judgment based on industry standards" and immediately advances. The user never sees what they're agreeing to.
+2. **Expand accent detection to all nationalities in the API** -- parse from description: american, british, australian, indian, french, german, dutch, italian, spanish, brazilian-portuguese. Also check tags for these keywords.
 
-**Solution: Change to "Review Defaults" flow**
+3. **Extract language from tags** -- tags like `"english"`, `"french"`, `"spanish"`, `"German"`, `"italian"` map directly to language.
 
-Instead of skipping directly, clicking the button:
-1. Fills all blank answers with the AI-suggested `suggested_default` values (the actual defaults from the spec generation, not a generic string)
-2. Stays on Step 2 so the user can review what was filled in
-3. Shows a subtle toast: "Defaults applied -- review and adjust if needed"
-4. The user then clicks "Confirm & Review" as normal
+Update `src/components/VoiceSelector.tsx` to:
 
-This keeps the speed benefit (one click fills everything) while giving users a chance to catch anything wrong before it gets baked into the agent spec.
+4. **Show accent badges on each voice card** so users can visually confirm what they're getting.
+
+5. **Show "Unknown" counts** -- when filters are active, display how many voices were excluded due to missing metadata, so the user understands why the list seems limited.
 
 ### Technical Details
 
 | File | Change |
 |---|---|
-| `src/pages/CreateAgentPage.tsx` | Replace `TEMPLATES` array with `EXAMPLE_PROMPTS` array of short description strings. Replace template card grid with a row of clickable chips that fill the description textarea only. Change "Use Defaults & Continue" button to fill answers with each question's original `suggested_default` (stored from the generate-spec response) instead of a generic string, then stay on Step 2 with a toast notification. |
+| `src/hooks/useBlandVoices.ts` | Rewrite metadata extraction: check `tags` array for gender/language, expand accent keyword list from 3 to 10+, combine tags + description for best-effort classification |
+| `src/components/VoiceSelector.tsx` | Add language badge to voice cards, show excluded-count note when filters reduce results significantly |
 
-No backend changes. No new files.
+No backend changes. No new files. No new dependencies.
+
+### Accent Keyword Map (New)
+
+```text
+Description keyword    ->  Accent value
+american               ->  american
+british                ->  british
+australian             ->  australian
+indian                 ->  indian
+french                 ->  french
+german                 ->  german
+dutch                  ->  dutch
+italian                ->  italian
+spanish                ->  spanish
+brazilian-portuguese   ->  brazilian
+brazilian              ->  brazilian
+portuguese             ->  portuguese
+```
+
+### Gender Detection Priority (New)
+
+1. Check `tags` array for exact `"male"` or `"female"` string (case-insensitive)
+2. If not found, fall back to description keyword matching (current logic, which correctly checks "female" before "male")
+3. If neither works, `gender` stays `undefined` and voice is excluded when gender filter is active (correct behavior)
 
