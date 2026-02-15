@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Bot, PlusCircle, Megaphone, Phone, PhoneIncoming,
   BookOpen, Settings, LogOut, GraduationCap, FileSpreadsheet, Users, CreditCard,
   Building2, ScrollText, X, Pencil, Save, RotateCcw, GripVertical,
-  LucideIcon
+  Brain, LucideIcon
 } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,6 +30,7 @@ const iconMap: Record<string, LucideIcon> = {
   "/billing": CreditCard,
   "/admin/companies": Building2,
   "/admin/audit": ScrollText,
+  "/training-audit": Brain,
 };
 
 export default function AppSidebar() {
