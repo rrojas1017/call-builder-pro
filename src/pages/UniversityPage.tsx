@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen, ArrowUp, ArrowDown, Minus, History, StopCircle, GraduationCap } from "lucide-react";
-import TeacherBriefingCard from "@/components/TeacherBriefingCard";
 import LiveCallMonitor from "@/components/LiveCallMonitor";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
@@ -81,10 +80,6 @@ export default function UniversityPage() {
 
   const [applyingFixId, setApplyingFixId] = useState<string | null>(null);
   const [appliedFixes, setAppliedFixes] = useState<string[]>([]);
-
-  // Teacher briefing state
-  const [briefing, setBriefing] = useState<any>(null);
-  const [briefingLoading, setBriefingLoading] = useState(false);
 
   // Trend data
   const [trendData, setTrendData] = useState<TrendPoint[]>([]);
@@ -305,18 +300,6 @@ export default function UniversityPage() {
     setAppliedFixes([]);
     setTestRunId(null);
     setSelectedHistoryId(null);
-    setBriefing(null);
-    setBriefingLoading(true);
-
-    // Fire briefing generation in parallel (non-blocking)
-    supabase.functions.invoke("generate-teacher-briefing", {
-      body: { project_id: agentId },
-    }).then(({ data }) => {
-      setBriefing(data);
-    }).catch(() => {}).finally(() => {
-      setBriefingLoading(false);
-    });
-
     try {
       const normalized = normalizePhone(phone.trim());
 
@@ -459,11 +442,6 @@ export default function UniversityPage() {
           </Button>
         )}
       </div>
-
-      {/* Teacher Briefing Card */}
-      {(briefingLoading || briefing) && running && (
-        <TeacherBriefingCard briefing={briefing} loading={briefingLoading} />
-      )}
 
       {/* Live Call Monitor */}
       {running && (contact?.bland_call_id || contact?.retell_call_id) && (
