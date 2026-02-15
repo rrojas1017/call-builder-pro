@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, FileSpreadsheet, Check, X, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { Loader2, Upload, FileSpreadsheet, Check, X, ChevronDown, ChevronRight, Sparkles, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 interface DialList {
   id: string;
@@ -70,6 +71,21 @@ export default function ListsPage() {
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [allRows, setAllRows] = useState<Record<string, string>[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [deletingListId, setDeletingListId] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    if (!deletingListId) return;
+    try {
+      const { error } = await supabase.from("dial_lists").delete().eq("id", deletingListId);
+      if (error) throw error;
+      toast({ title: "List deleted" });
+      loadLists();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setDeletingListId(null);
+    }
+  };
 
   const loadLists = async () => {
     const { data } = await supabase
@@ -390,11 +406,31 @@ export default function ListsPage() {
                   )}
                 </div>
                 <Badge variant={l.status === "ready" ? "default" : "secondary"}>{l.status}</Badge>
+                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeletingListId(l.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      <AlertDialog open={!!deletingListId} onOpenChange={(open) => !open && setDeletingListId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete List</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this list and all its contact rows. Campaigns using this list will no longer reference it. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
