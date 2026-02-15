@@ -34,13 +34,14 @@ export default function EditAgentPage() {
   const [voiceProvider, setVoiceProvider] = useState<"bland" | "retell">("bland");
   const [retellAgentId, setRetellAgentId] = useState("");
   const [fromNumber, setFromNumber] = useState("auto");
+  const [voicemailMessage, setVoicemailMessage] = useState("");
 
   useEffect(() => {
     if (!id) return;
     const load = async () => {
       const [{ data: project }, { data: spec }] = await Promise.all([
         supabase.from("agent_projects").select("name, description").eq("id", id).single(),
-        supabase.from("agent_specs").select("voice_id, opening_line, tone_style, transfer_required, transfer_phone_number, background_track, voice_provider, retell_agent_id, from_number").eq("project_id", id).single(),
+        supabase.from("agent_specs").select("voice_id, opening_line, tone_style, transfer_required, transfer_phone_number, background_track, voice_provider, retell_agent_id, from_number, voicemail_message").eq("project_id", id).single(),
       ]);
       if (project) {
         setName(project.name);
@@ -56,6 +57,7 @@ export default function EditAgentPage() {
         setVoiceProvider(((spec as any).voice_provider as "bland" | "retell") || "bland");
         setRetellAgentId((spec as any).retell_agent_id || "");
         setFromNumber((spec as any).from_number || "auto");
+        setVoicemailMessage((spec as any).voicemail_message || "");
       }
       setLoading(false);
     };
@@ -88,6 +90,7 @@ export default function EditAgentPage() {
           voice_provider: voiceProvider,
           retell_agent_id: voiceProvider === "retell" ? retellAgentId || null : null,
           from_number: fromNumber === "auto" ? null : fromNumber || null,
+          voicemail_message: voicemailMessage.trim() || null,
         } as any).eq("project_id", id),
       ]);
 
@@ -243,6 +246,18 @@ export default function EditAgentPage() {
             <Input value={transferPhone} onChange={(e) => setTransferPhone(e.target.value)} placeholder="e.g. (555) 123-4567" type="tel" />
           </div>
         )}
+      </div>
+
+      {/* Voicemail Message */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-foreground">Voicemail Message</h3>
+        <p className="text-xs text-muted-foreground">If a voicemail is detected, the agent will leave this message instead of hanging up. Leave blank to just disconnect.</p>
+        <Textarea
+          value={voicemailMessage}
+          onChange={(e) => setVoicemailMessage(e.target.value)}
+          rows={3}
+          placeholder="e.g. Hi, this is Sarah calling about your health coverage inquiry. Please call us back at 555-123-4567 at your convenience. Thank you!"
+        />
       </div>
 
       {/* Background Audio (Bland only) */}

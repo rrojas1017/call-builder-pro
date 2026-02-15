@@ -40,6 +40,7 @@ const getLifecycleStatus = (status: string): { label: string; variant: "default"
     case "qualified":
     case "disqualified":
       return { label: "Connected", variant: "default" };
+    case "left_message":
     case "voicemail":
     case "no_answer":
     case "busy":
@@ -84,6 +85,8 @@ const getOutcomeBadge = (outcome: string | null | undefined): { label: string; c
       return { label: "Failed", className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 border-red-200 dark:border-red-800" };
     case "cancelled":
       return { label: "Cancelled", className: "bg-muted text-muted-foreground border-border" };
+    case "left_message":
+      return { label: "Left Message", className: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300 border-purple-200 dark:border-purple-800" };
     default:
       return { label: outcome, className: "bg-muted text-muted-foreground border-border" };
   }
@@ -94,7 +97,7 @@ const resolveOutcome = (contact: any, call: any): string | null => {
   if (contact.status === "queued" || contact.status === "calling") return null;
   if (call?.outcome) return call.outcome;
   // Fall back to raw contact status for non-connected calls
-  const fallbackOutcomes = ["voicemail", "no_answer", "busy", "dnc", "disconnected", "failed", "cancelled", "call_me_later", "not_available"];
+  const fallbackOutcomes = ["voicemail", "no_answer", "busy", "dnc", "disconnected", "failed", "cancelled", "call_me_later", "not_available", "left_message"];
   if (fallbackOutcomes.includes(contact.status)) return contact.status;
   return contact.status === "completed" ? "completed" : null;
 };
