@@ -427,6 +427,7 @@ export type Database = {
           redial_statuses: string[]
           retell_batch_id: string | null
           status: string
+          voicemail_message: string | null
         }
         Insert: {
           agent_project_id?: string | null
@@ -442,6 +443,7 @@ export type Database = {
           redial_statuses?: string[]
           retell_batch_id?: string | null
           status?: string
+          voicemail_message?: string | null
         }
         Update: {
           agent_project_id?: string | null
@@ -457,6 +459,7 @@ export type Database = {
           redial_statuses?: string[]
           retell_batch_id?: string | null
           status?: string
+          voicemail_message?: string | null
         }
         Relationships: [
           {

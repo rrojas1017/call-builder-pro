@@ -285,10 +285,11 @@ serve(async (req) => {
       if (spec.background_track && spec.background_track !== "none") globalSettings.background_track = spec.background_track;
 
       // Voicemail: leave message if configured, otherwise just detect & disconnect
-      if (spec.voicemail_message) {
+      const vmMessage = campaign.voicemail_message || spec.voicemail_message;
+      if (vmMessage) {
         globalSettings.voicemail = {
           action: "leave_message",
-          message: spec.voicemail_message,
+          message: vmMessage,
         };
       } else {
         globalSettings.answering_machine_detection = true;

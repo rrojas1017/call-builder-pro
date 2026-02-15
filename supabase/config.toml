@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.ingest-knowledge-source]
 verify_jwt = false
+
+[functions.generate-voicemail-message]
+verify_jwt = false
