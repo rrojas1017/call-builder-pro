@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff } from "lucide-react";
+import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 
 const COLORS = [
@@ -50,6 +51,8 @@ export default function CampaignDetailPage() {
   const [calls, setCalls] = useState<any[]>([]);
   const [actionLoading, setActionLoading] = useState(false);
   const [stoppingCalls, setStoppingCalls] = useState<Set<string>>(new Set());
+  const [editConcurrency, setEditConcurrency] = useState<number | null>(null);
+  const [savingConcurrency, setSavingConcurrency] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user || !id) return;
@@ -282,6 +285,44 @@ export default function CampaignDetailPage() {
               </span>
               {agent && <span>Agent: {agent.name}</span>}
               <span>{new Date(campaign.created_at).toLocaleDateString()}</span>
+              <span className="flex items-center gap-1.5">
+                Concurrency:
+                {editConcurrency !== null ? (
+                  <>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={editConcurrency}
+                      onChange={(e) => setEditConcurrency(Math.max(1, Math.min(100, Number(e.target.value))))}
+                      className="w-16 h-6 text-xs inline-block"
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-1.5"
+                      disabled={savingConcurrency}
+                      onClick={async () => {
+                        setSavingConcurrency(true);
+                        await supabase.from("campaigns").update({ max_concurrent_calls: editConcurrency }).eq("id", id);
+                        setCampaign((prev: any) => ({ ...prev, max_concurrent_calls: editConcurrency }));
+                        setEditConcurrency(null);
+                        setSavingConcurrency(false);
+                        toast({ title: "Concurrency updated" });
+                      }}
+                    >
+                      {savingConcurrency ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                    </Button>
+                  </>
+                ) : (
+                  <button
+                    className="underline decoration-dotted cursor-pointer hover:text-foreground"
+                    onClick={() => setEditConcurrency(campaign.max_concurrent_calls || 1)}
+                  >
+                    {campaign.max_concurrent_calls || 1}
+                  </button>
+                )}
+              </span>
             </div>
           </div>
         </div>

@@ -49,6 +49,7 @@ export default function CampaignsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [dialLists, setDialLists] = useState<DialList[]>([]);
   const [selectedLists, setSelectedLists] = useState<string[]>([]);
+  const [maxConcurrent, setMaxConcurrent] = useState(5);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const load = async () => {
@@ -84,6 +85,7 @@ export default function CampaignsPage() {
           name: newName,
           project_id: selectedAgent,
           agent_project_id: selectedAgent,
+          max_concurrent_calls: maxConcurrent,
         } as any)
         .select()
         .single();
@@ -179,6 +181,7 @@ export default function CampaignsPage() {
       setNewName("");
       setSelectedAgent("");
       setSelectedLists([]);
+      setMaxConcurrent(5);
       setShowCreate(false);
       load();
     } catch (err: any) {
@@ -258,6 +261,17 @@ export default function CampaignsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Max Concurrent Calls</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={maxConcurrent}
+                  onChange={(e) => setMaxConcurrent(Math.max(1, Math.min(100, Number(e.target.value))))}
+                />
+                <p className="text-xs text-muted-foreground">How many calls can run at the same time (1–100)</p>
               </div>
             </div>
 

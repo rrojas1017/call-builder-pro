@@ -56,11 +56,24 @@ serve(async (req) => {
       .from("agent_specs").select("*").eq("project_id", campaign.project_id).single();
     if (specErr) throw specErr;
 
-    // Get ALL queued contacts
+    // Count currently active calls to enforce concurrency limit
+    const { count: activeCalls } = await supabase
+      .from("contacts").select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaign_id).eq("status", "calling");
+
+    const slotsAvailable = campaign.max_concurrent_calls - (activeCalls || 0);
+    if (slotsAvailable <= 0) {
+      return new Response(JSON.stringify({ message: "All concurrent slots busy", active: activeCalls, max: campaign.max_concurrent_calls }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Fetch only as many queued contacts as we have slots for
     const { data: contacts } = await supabase
       .from("contacts").select("*")
       .eq("campaign_id", campaign_id).eq("status", "queued")
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .limit(slotsAvailable);
 
     if (!contacts || contacts.length === 0) {
       const { count: remaining } = await supabase
