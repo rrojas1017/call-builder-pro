@@ -24,7 +24,15 @@ serve(async (req) => {
     const transcript = body.concatenated_transcript || body.transcript || "";
     const summary = body.summary || body.analysis || null;
     const status = body.status || body.call_status || "completed";
-    const duration = body.call_length || body.duration || null;
+    // Compute duration from timestamps (reliable) instead of trusting call_length
+    const startedAt = body.created_at ? new Date(body.created_at) : null;
+    const endedAt = body.end_at ? new Date(body.end_at) : null;
+    let duration: number | null = null;
+    if (startedAt && endedAt) {
+      duration = Math.round((endedAt.getTime() - startedAt.getTime()) / 1000);
+    } else {
+      duration = body.call_length || body.duration || null;
+    }
     const recordingUrl = body.recording_url || body.recordingUrl || null;
 
     // Map Bland status to our contact status
