@@ -1,29 +1,30 @@
 
 
-## Fix: "fields.find is not a function" Error
+## Add Campaign Deletion
 
-### Root Cause
+### What Changes
 
-`detected_fields` in the `dial_lists` table is stored as a JSON object (or empty object `{}`), not an array. Line 117 of `CampaignsPage.tsx` casts it as `string[]` and immediately calls `.find()` on it, which crashes because plain objects don't have array methods.
+Add a **Delete** button to the campaign detail page header (next to Pause/Start). Clicking it opens a confirmation dialog. On confirm, the campaign row is deleted from the database and the user is redirected back to `/campaigns`.
 
-### Fix
+### Cleanup (Already Handled)
 
-On line 117 of `src/pages/CampaignsPage.tsx`, add a safety check to coerce `detected_fields` into an array regardless of its stored format:
+The database foreign keys already handle cascading:
+- `contacts` -- CASCADE (auto-deleted)
+- `campaign_lists` -- CASCADE (auto-deleted)  
+- `calls.campaign_id` -- SET NULL (calls preserved, campaign reference cleared)
 
-- If it's already an array, use it as-is
-- If it's an object, use `Object.keys()` to extract the field names
-- If it's null/undefined, default to an empty array
+No edge function or manual cleanup needed.
 
 ### Technical Details
 
 | File | Change |
 |---|---|
-| `src/pages/CampaignsPage.tsx` | Line 117: Replace `const fields = (listMeta as any)?.detected_fields as string[] \|\| [];` with a safe extraction that handles objects, arrays, and nulls |
+| `src/pages/CampaignDetailPage.tsx` | Add `Trash2` icon import, `AlertDialog` import, delete handler function, and a red Delete button in the header that triggers a confirmation dialog. On confirm, runs `supabase.from("campaigns").delete().eq("id", id)` then navigates to `/campaigns`. |
 
-Single line change:
-```typescript
-const rawFields = (listMeta as any)?.detected_fields;
-const fields: string[] = Array.isArray(rawFields) ? rawFields : (rawFields && typeof rawFields === "object" ? Object.keys(rawFields) : []);
-```
+The confirmation dialog will use the existing `AlertDialog` component with:
+- Title: "Delete Campaign"
+- Description: "This will permanently delete this campaign and all its contact data. Call records will be preserved. This action cannot be undone."
+- Cancel + destructive Delete button
 
-No backend changes. No new files.
+The Delete button will only appear when the campaign is **not running** (statuses: draft, paused, completed, failed).
+
