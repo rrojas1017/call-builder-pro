@@ -9,6 +9,8 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Save } from "lucide-react";
 import { useTheme } from "next-themes";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import OutboundNumbersSection from "@/components/OutboundNumbersSection";
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -61,53 +63,66 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-8 max-w-lg space-y-6">
+    <div className="p-8 max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground mt-1">Manage your account.</p>
+        <p className="text-muted-foreground mt-1">Manage your account and organization.</p>
       </div>
 
-      <div className="surface-elevated rounded-xl p-6 space-y-5">
-        <div className="space-y-2">
-          <Label>Email</Label>
-          <Input value={user?.email || ""} disabled className="opacity-60" />
-        </div>
-        <div className="space-y-2">
-          <Label>Full Name</Label>
-          <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
-        </div>
-        <div className="space-y-2">
-          <Label>Organization</Label>
-          <Input
-            value={orgName}
-            onChange={(e) => setOrgName(e.target.value)}
-            disabled={!isAdmin}
-            className={!isAdmin ? "opacity-60" : ""}
-          />
-          {!isAdmin && (
-            <p className="text-xs text-muted-foreground">Only admins can edit the organization name.</p>
-          )}
-        </div>
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-          Save Changes
-        </Button>
-      </div>
+      <Tabs defaultValue="account">
+        <TabsList>
+          <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsTrigger value="outbound">Outbound Numbers</TabsTrigger>
+        </TabsList>
 
-      <div className="surface-elevated rounded-xl p-6 space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">Appearance</h2>
-          <p className="text-sm text-muted-foreground mt-1">Choose your preferred theme.</p>
-        </div>
-        <div className="flex items-center justify-between">
-          <Label htmlFor="theme-switch">Dark Mode</Label>
-          <Switch
-            id="theme-switch"
-            checked={theme === "dark"}
-            onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
-          />
-        </div>
-      </div>
+        <TabsContent value="account" className="space-y-6 mt-4">
+          <div className="surface-elevated rounded-xl p-6 space-y-5 max-w-lg">
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input value={user?.email || ""} disabled className="opacity-60" />
+            </div>
+            <div className="space-y-2">
+              <Label>Full Name</Label>
+              <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Organization</Label>
+              <Input
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                disabled={!isAdmin}
+                className={!isAdmin ? "opacity-60" : ""}
+              />
+              {!isAdmin && (
+                <p className="text-xs text-muted-foreground">Only admins can edit the organization name.</p>
+              )}
+            </div>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save Changes
+            </Button>
+          </div>
+
+          <div className="surface-elevated rounded-xl p-6 space-y-4 max-w-lg">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Appearance</h2>
+              <p className="text-sm text-muted-foreground mt-1">Choose your preferred theme.</p>
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="theme-switch">Dark Mode</Label>
+              <Switch
+                id="theme-switch"
+                checked={theme === "dark"}
+                onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+              />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="outbound" className="mt-4">
+          <OutboundNumbersSection />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

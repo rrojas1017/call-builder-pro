@@ -864,6 +864,47 @@ export type Database = {
         }
         Relationships: []
       }
+      outbound_numbers: {
+        Row: {
+          created_at: string
+          id: string
+          label: string | null
+          last_used_at: string | null
+          notes: string | null
+          org_id: string
+          phone_number: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label?: string | null
+          last_used_at?: string | null
+          notes?: string | null
+          org_id: string
+          phone_number: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string | null
+          last_used_at?: string | null
+          notes?: string | null
+          org_id?: string
+          phone_number?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outbound_numbers_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
