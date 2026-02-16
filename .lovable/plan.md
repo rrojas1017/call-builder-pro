@@ -1,51 +1,25 @@
 
 
-## Remove All Twilio / WhatsApp Resources
+## Add Google Login
 
-Since Twilio is not being used, this plan removes every trace of the WhatsApp+Twilio integration cleanly.
+### Overview
+Add a "Sign in with Google" button to the login page using Lovable Cloud's managed Google OAuth, which works out of the box with no extra configuration needed.
 
-### What will be removed
+### Changes
 
-#### 1. Delete edge function files
-- **`supabase/functions/send-whatsapp-message/`** -- entire directory
-- **`supabase/functions/receive-whatsapp-webhook/`** -- entire directory
-- Delete the deployed edge functions from the backend as well
+#### 1. Configure Social Auth
+Use Lovable Cloud's social auth configuration tool to generate the required `src/integrations/lovable/` module and install the `@lovable.dev/cloud-auth-js` package.
 
-#### 2. Delete the frontend page
-- **`src/pages/WhatsAppPage.tsx`** -- entire file
+#### 2. Update AuthPage.tsx
+- Import `lovable` from `@/integrations/lovable/index`
+- Add a "Sign in with Google" button above or below the existing email/password form
+- The button calls `lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin })`
+- Add a visual divider ("or") between the Google button and the email form
+- Style the button to match the existing design (full width, rounded, with a Google icon)
 
-#### 3. Clean up App.tsx
-- Remove the `import WhatsAppPage` line
-- Remove the `<Route path="/whatsapp" ...>` route
+### Technical Details
 
-#### 4. Clean up AppSidebar.tsx
-- Remove the `"/whatsapp": MessageSquare` icon mapping (and the `MessageSquare` import if no longer used elsewhere)
-
-#### 5. Clean up supabase/config.toml
-- Remove the `[functions.receive-whatsapp-webhook]` entry
-- Remove the `[functions.send-whatsapp-message]` entry
-
-#### 6. Clean up receive-bland-webhook
-- Remove the WhatsApp follow-up block (lines 285-313) that triggers a WhatsApp message after a completed call
-
-#### 7. Database migration
-- Drop the `whatsapp_messages` table (and its RLS policies)
-- Drop the `whatsapp_conversations` table (and its RLS policies)
-- Drop the `whatsapp_number` column from `agent_specs`
-
-### What stays untouched
-- SMS tables and functions remain unaffected (they use ClickSend, not Twilio)
-- All other edge functions, pages, and routes remain intact
-- No Twilio secrets exist in the environment, so nothing to delete there
-
-### Technical details
-
-The database migration will run:
-```sql
-DROP TABLE IF EXISTS whatsapp_messages;
-DROP TABLE IF EXISTS whatsapp_conversations;
-ALTER TABLE agent_specs DROP COLUMN IF EXISTS whatsapp_number;
-```
-
-Order matters: `whatsapp_messages` has a foreign key to `whatsapp_conversations`, so it must be dropped first.
+- No API keys or secrets are needed -- Lovable Cloud provides managed Google OAuth credentials automatically
+- The Google button will be available on both login and signup views
+- After successful Google sign-in, the existing `handle_new_user` trigger will automatically create the user's profile and organization, just like email signup
 
