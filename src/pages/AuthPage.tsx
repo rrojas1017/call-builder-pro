@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, MessageSquare, BarChart3, FlaskConical } from "lucide-react";
+import { Loader2, MessageSquare, BarChart3, FlaskConical, ArrowLeft } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 import appendifyLogo from "@/assets/appendify-logo.png";
 
@@ -108,6 +108,11 @@ export default function AuthPage() {
       {/* Right form panel */}
       <div className="flex flex-1 items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-sm">
+          <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6">
+            <ArrowLeft className="h-4 w-4" />
+            Back to home
+          </Link>
+
           {/* Mobile logo */}
           <div className="lg:hidden text-center space-y-2 mb-10">
             <Link to="/" className="inline-flex items-center gap-2">
