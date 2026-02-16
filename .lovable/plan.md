@@ -1,35 +1,21 @@
 
 
-## Add Privacy Policy and Terms of Service Pages
+## Add Back Navigation to Auth Page
 
-### Overview
-Create Privacy Policy and Terms of Service pages for the app, which are required by Google's OAuth consent screen. Once deployed, you can paste the URLs into the Google Cloud Console fields.
+### Problem
+Users on the `/auth` page have no obvious way to navigate back to the landing page. The logo links to `/` but isn't clearly a navigation element.
+
+### Solution
+Add a visible "Back to Home" link/button at the top of the auth page.
 
 ### Changes
 
-#### 1. Create `/privacy` route — `src/pages/PrivacyPolicyPage.tsx`
-- A simple, styled page with standard privacy policy content for "Appendify Voz" / "aivoz.io"
-- Includes sections: data collection, usage, storage, third-party services, contact info
-- Placeholder text that can be customized later
-
-#### 2. Create `/terms` route — `src/pages/TermsOfServicePage.tsx`
-- A simple, styled page with standard terms of service content
-- Includes sections: acceptance, usage rights, limitations, termination, contact info
-- Placeholder text that can be customized later
-
-#### 3. Update `src/App.tsx` — Add routes
-- Add `/privacy` and `/terms` as public routes
-
-#### 4. Update `src/pages/AuthPage.tsx` — Add footer links
-- Add small "Privacy Policy" and "Terms of Service" links at the bottom of the auth card
-
-### After Deployment
-Once published, paste these URLs into the Google Cloud Console:
-- **Privacy Policy**: `https://aivoz.io/privacy` (or your lovable.app URL)
-- **Terms of Service**: `https://aivoz.io/terms`
+#### `src/pages/AuthPage.tsx`
+- Add an arrow-left icon link at the top-left corner of the right panel (and mobile view) that says "Back to home" and links to `/`
+- Uses the `ArrowLeft` icon from lucide-react for clear visual affordance
+- Styled subtly with `text-muted-foreground` so it doesn't compete with the form
 
 ### Technical Details
-- Pages are public (no auth required)
-- Styled consistently with existing app design (dark/light mode support)
-- Uses existing layout patterns and Tailwind classes
-
+- Import `ArrowLeft` from `lucide-react`
+- Add a `Link` component pointing to `/` positioned above the form card
+- Works on both desktop and mobile layouts
