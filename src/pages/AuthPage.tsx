@@ -212,6 +212,12 @@ export default function AuthPage() {
                 {isLogin ? "Sign up" : "Sign in"}
               </button>
             </p>
+
+            <p className="text-center text-xs text-muted-foreground/70">
+              <Link to="/privacy" className="hover:underline">Privacy Policy</Link>
+              {" · "}
+              <Link to="/terms" className="hover:underline">Terms of Service</Link>
+            </p>
           </div>
         </div>
       </div>
