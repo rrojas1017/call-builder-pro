@@ -14,13 +14,14 @@ interface VoiceSelectorProps {
   selectedVoice: string;
   onSelect: (voiceId: string) => void;
   sampleText?: string;
+  defaultLanguageFilter?: string;
 }
 
 type GenderFilter = "all" | "male" | "female";
 
-export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sampleText }: VoiceSelectorProps) {
+export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sampleText, defaultLanguageFilter }: VoiceSelectorProps) {
   const [search, setSearch] = useState("");
-  const [languageFilter, setLanguageFilter] = useState("all");
+  const [languageFilter, setLanguageFilter] = useState(defaultLanguageFilter ?? "all");
   const [genderFilter, setGenderFilter] = useState<GenderFilter>("all");
   const [accentFilter, setAccentFilter] = useState("all");
 
