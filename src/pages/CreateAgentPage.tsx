@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, PhoneIncoming, PhoneForwarded, Shield, Target, Users, Mic, Save, Volume2 } from "lucide-react";
+import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, PhoneIncoming, PhoneForwarded, Shield, Target, Users, Mic, Save, Volume2, Globe, CheckCircle2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useBlandVoices } from "@/hooks/useBlandVoices";
@@ -47,6 +47,8 @@ export default function CreateAgentPage() {
   const [showRawSpec, setShowRawSpec] = useState(false);
   const [rawSpecText, setRawSpecText] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [knowledgeUrl, setKnowledgeUrl] = useState("");
+  const [knowledgeExtracted, setKnowledgeExtracted] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState("maya");
   const [customVoiceId, setCustomVoiceId] = useState("");
   const [saving, setSaving] = useState(false);
@@ -61,6 +63,7 @@ export default function CreateAgentPage() {
   const handleGenerateSpec = async () => {
     if (!user || !agentName.trim()) return;
     setLoading(true);
+    setKnowledgeExtracted(false);
     try {
       const { data: profile } = await supabase.from("profiles").select("org_id").eq("id", user.id).single();
       if (!profile?.org_id) throw new Error("No organization found");
@@ -84,17 +87,32 @@ export default function CreateAgentPage() {
       if (projErr) throw projErr;
       setProjectId(project.id);
 
-      const { data, error } = await supabase.functions.invoke("generate-spec", {
-        body: { project_id: project.id },
-      });
-      if (error) throw error;
+      // Generate spec and optionally ingest knowledge URL in parallel
+      const promises: Promise<any>[] = [
+        supabase.functions.invoke("generate-spec", { body: { project_id: project.id } }),
+      ];
 
-      setQuestions((data.questions || []).map((q: any) => ({
+      if (knowledgeUrl.trim()) {
+        promises.push(
+          supabase.functions.invoke("ingest-knowledge-source", {
+            body: { project_id: project.id, url: knowledgeUrl.trim() },
+          })
+        );
+      }
+
+      const [specResult, knowledgeResult] = await Promise.all(promises);
+      if (specResult.error) throw specResult.error;
+
+      if (knowledgeResult && !knowledgeResult.error) {
+        setKnowledgeExtracted(true);
+      }
+
+      setQuestions((specResult.data.questions || []).map((q: any) => ({
         ...q,
         suggested_default: q.answer || "",
         answer: "",
       })));
-      setSpec(data.spec);
+      setSpec(specResult.data.spec);
       setStep(1);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -215,6 +233,21 @@ export default function CreateAgentPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                Company or product website (optional)
+              </Label>
+              <Input
+                value={knowledgeUrl}
+                onChange={(e) => setKnowledgeUrl(e.target.value)}
+                placeholder="https://yourcompany.com/products"
+                type="url"
+              />
+              <p className="text-xs text-muted-foreground">
+                We'll automatically read this page to give your agent product knowledge from day one.
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label>Or upload a document (.txt, .docx, .pdf)</Label>
               <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-foreground transition-colors">
                 <Upload className="h-4 w-4" />
@@ -237,6 +270,12 @@ export default function CreateAgentPage() {
             <h1 className="text-2xl font-bold text-foreground">Let's Make It Work Perfectly</h1>
             <p className="text-muted-foreground mt-1">Answer a few quick questions so your agent performs correctly.</p>
           </div>
+          {knowledgeExtracted && (
+            <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>Product knowledge extracted from your website and added to this agent's knowledge base.</span>
+            </div>
+          )}
           {questions.map((q, i) => (
             <div key={i} className="space-y-3 p-4 rounded-lg bg-muted/30 border border-border">
               <Label className="text-foreground font-medium">{q.question}</Label>
