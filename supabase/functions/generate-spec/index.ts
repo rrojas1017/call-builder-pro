@@ -10,8 +10,19 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { project_id } = await req.json();
+    const { project_id, language } = await req.json();
     if (!project_id) throw new Error("project_id required");
+
+    const lang = language || "en";
+    const LANGUAGE_LABELS: Record<string, string> = {
+      en: "English",
+      es: "Spanish",
+      fr: "French",
+      pt: "Portuguese",
+      de: "German",
+      it: "Italian",
+    };
+    const languageLabel = LANGUAGE_LABELS[lang] || "English";
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -35,6 +46,12 @@ serve(async (req) => {
       // AI-powered spec generation
       const systemPrompt = `You are an expert AI Call Agent Architect with deep knowledge of outbound sales, compliance, and voice AI.
 Convert the user's description into a structured Call Agent Specification.
+
+CRITICAL LANGUAGE REQUIREMENT:
+- The agent will operate in ${languageLabel}. You MUST write ALL questions, suggested_default answers, opening_line, tone_style, success_definition, and all text fields in ${languageLabel}. NOT in English (unless ${languageLabel} is English).
+- The opening_line must be a natural-sounding greeting in ${languageLabel} that a real person would say on the phone.
+- The suggested_default answers must be written in ${languageLabel} so the user can read and understand them.
+- Every question must be phrased in ${languageLabel}.
 
 Rules:
 - Ask 6-8 clarification questions that will help build a better, more personalized agent.
@@ -204,7 +221,7 @@ Rules:
       transfer_phone_number: spec.transfer_phone_number || "",
       business_rules: spec.business_rules,
       retry_policy: spec.retry_policy || { max_attempts: 3, spacing_minutes: 60 },
-      language: "en",
+      language: lang,
     };
 
     const { error: specErr } = await supabase.from("agent_specs").upsert(specRow, { onConflict: "project_id" });

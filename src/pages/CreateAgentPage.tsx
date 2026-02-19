@@ -13,14 +13,244 @@ import { cn } from "@/lib/utils";
 import { useBlandVoices } from "@/hooks/useBlandVoices";
 import { VoiceSelector } from "@/components/VoiceSelector";
 
-const STEPS = ["Build Your Agent", "Clarify Details", "Review & Save"];
+// ─── Translation map ────────────────────────────────────────────────────────
+const LANGUAGES = [
+  { code: "en", flag: "🇺🇸", name: "English" },
+  { code: "es", flag: "🇪🇸", name: "Español" },
+  { code: "fr", flag: "🇫🇷", name: "Français" },
+  { code: "pt", flag: "🇧🇷", name: "Português" },
+  { code: "de", flag: "🇩🇪", name: "Deutsch" },
+  { code: "it", flag: "🇮🇹", name: "Italiano" },
+] as const;
 
-const EXAMPLE_PROMPTS = [
-  "Calls leads to verify insurance eligibility and transfer qualified ones",
-  "Schedules appointments and sends confirmations",
-  "Surveys customers after purchases for feedback",
-  "Handles inbound support calls and escalates complex issues",
-];
+type LangCode = typeof LANGUAGES[number]["code"];
+
+const TRANSLATIONS: Record<LangCode, {
+  step0Title: string;
+  step0Sub: string;
+  agentNameLabel: string;
+  agentNamePlaceholder: string;
+  whatShouldDo: string;
+  websiteLabel: string;
+  websitePlaceholder: string;
+  websiteHint: string;
+  uploadLabel: string;
+  generateBtn: string;
+  step1Title: string;
+  step1Sub: string;
+  useDefaultsBtn: string;
+  confirmBtn: string;
+  backBtn: string;
+  saveBtn: string;
+  voicePreviewText: string;
+  step2Title: string;
+  step2Sub: string;
+  knowledgeExtracted: string;
+  agentLanguageLabel: string;
+  answerPlaceholder: string;
+  whyMatters: string;
+}> = {
+  en: {
+    step0Title: "Build Your AI Call Agent",
+    step0Sub: "Describe what you want the agent to do. We'll handle the structure.",
+    agentNameLabel: "Agent Name",
+    agentNamePlaceholder: "e.g. Health Insurance Pre-Qualifier",
+    whatShouldDo: "What should your agent do?",
+    websiteLabel: "Company or product website (optional)",
+    websitePlaceholder: "https://yourcompany.com/products",
+    websiteHint: "We'll automatically read this page to give your agent product knowledge from day one.",
+    uploadLabel: "Or upload a document (.txt, .docx, .pdf)",
+    generateBtn: "Generate My Agent",
+    step1Title: "Let's Make It Work Perfectly",
+    step1Sub: "Answer a few quick questions so your agent performs correctly.",
+    useDefaultsBtn: "Review Defaults",
+    confirmBtn: "Confirm & Review",
+    backBtn: "Back",
+    saveBtn: "Save Agent",
+    voicePreviewText: "Hello! I'm calling to help you find the best option for your needs. Do you have a moment?",
+    step2Title: "Review & Save Your Agent",
+    step2Sub: "Here's what your agent will do. Save it, then head to the Test Lab to fine-tune.",
+    knowledgeExtracted: "Product knowledge extracted from your website and added to this agent's knowledge base.",
+    agentLanguageLabel: "Agent Language",
+    answerPlaceholder: "Your answer...",
+    whyMatters: "Why this matters:",
+  },
+  es: {
+    step0Title: "Crea tu Agente de Llamadas con IA",
+    step0Sub: "Describe lo que quieres que haga el agente. Nosotros nos encargamos de la estructura.",
+    agentNameLabel: "Nombre del Agente",
+    agentNamePlaceholder: "ej. Pre-calificador de Seguros de Salud",
+    whatShouldDo: "¿Qué debe hacer tu agente?",
+    websiteLabel: "Sitio web de la empresa o producto (opcional)",
+    websitePlaceholder: "https://tuempresa.com/productos",
+    websiteHint: "Leeremos esta página automáticamente para dar a tu agente conocimiento del producto desde el primer día.",
+    uploadLabel: "O sube un documento (.txt, .docx, .pdf)",
+    generateBtn: "Generar Mi Agente",
+    step1Title: "Vamos a Perfeccionarlo",
+    step1Sub: "Responde unas preguntas rápidas para que tu agente funcione correctamente.",
+    useDefaultsBtn: "Revisar Valores Predeterminados",
+    confirmBtn: "Confirmar y Revisar",
+    backBtn: "Volver",
+    saveBtn: "Guardar Agente",
+    voicePreviewText: "¡Hola! Le llamo para ayudarle a encontrar la mejor opción para sus necesidades. ¿Tiene un momento?",
+    step2Title: "Revisar y Guardar tu Agente",
+    step2Sub: "Esto es lo que hará tu agente. Guárdalo y ve al Laboratorio de Pruebas para ajustarlo.",
+    knowledgeExtracted: "Conocimiento del producto extraído de tu sitio web y añadido a la base de conocimiento de este agente.",
+    agentLanguageLabel: "Idioma del Agente",
+    answerPlaceholder: "Tu respuesta...",
+    whyMatters: "Por qué importa:",
+  },
+  fr: {
+    step0Title: "Créez votre Agent d'Appel IA",
+    step0Sub: "Décrivez ce que vous voulez que l'agent fasse. Nous gérons la structure.",
+    agentNameLabel: "Nom de l'Agent",
+    agentNamePlaceholder: "ex. Pré-qualificateur d'Assurance Santé",
+    whatShouldDo: "Que doit faire votre agent ?",
+    websiteLabel: "Site web de l'entreprise ou du produit (optionnel)",
+    websitePlaceholder: "https://votreentreprise.com/produits",
+    websiteHint: "Nous lirons automatiquement cette page pour donner à votre agent une connaissance du produit dès le premier jour.",
+    uploadLabel: "Ou téléchargez un document (.txt, .docx, .pdf)",
+    generateBtn: "Générer Mon Agent",
+    step1Title: "Optimisons-le Ensemble",
+    step1Sub: "Répondez à quelques questions rapides pour que votre agent fonctionne correctement.",
+    useDefaultsBtn: "Réviser les Valeurs par Défaut",
+    confirmBtn: "Confirmer et Réviser",
+    backBtn: "Retour",
+    saveBtn: "Sauvegarder l'Agent",
+    voicePreviewText: "Bonjour ! Je vous appelle pour vous aider à trouver la meilleure option pour vos besoins. Avez-vous un moment ?",
+    step2Title: "Vérifier et Sauvegarder votre Agent",
+    step2Sub: "Voici ce que fera votre agent. Sauvegardez-le, puis rendez-vous au Lab de Test pour l'affiner.",
+    knowledgeExtracted: "Connaissances produit extraites de votre site web et ajoutées à la base de connaissances de cet agent.",
+    agentLanguageLabel: "Langue de l'Agent",
+    answerPlaceholder: "Votre réponse...",
+    whyMatters: "Pourquoi c'est important :",
+  },
+  pt: {
+    step0Title: "Crie seu Agente de Chamadas com IA",
+    step0Sub: "Descreva o que você quer que o agente faça. Nós cuidamos da estrutura.",
+    agentNameLabel: "Nome do Agente",
+    agentNamePlaceholder: "ex. Pré-qualificador de Seguro Saúde",
+    whatShouldDo: "O que seu agente deve fazer?",
+    websiteLabel: "Site da empresa ou produto (opcional)",
+    websitePlaceholder: "https://suaempresa.com.br/produtos",
+    websiteHint: "Leremos esta página automaticamente para dar ao seu agente conhecimento do produto desde o primeiro dia.",
+    uploadLabel: "Ou envie um documento (.txt, .docx, .pdf)",
+    generateBtn: "Gerar Meu Agente",
+    step1Title: "Vamos Deixá-lo Perfeito",
+    step1Sub: "Responda algumas perguntas rápidas para que seu agente funcione corretamente.",
+    useDefaultsBtn: "Revisar Padrões",
+    confirmBtn: "Confirmar e Revisar",
+    backBtn: "Voltar",
+    saveBtn: "Salvar Agente",
+    voicePreviewText: "Olá! Estou ligando para ajudá-lo a encontrar a melhor opção para suas necessidades. Tem um momento?",
+    step2Title: "Revisar e Salvar seu Agente",
+    step2Sub: "Veja o que seu agente fará. Salve-o e vá ao Laboratório de Testes para ajustar.",
+    knowledgeExtracted: "Conhecimento do produto extraído do seu site e adicionado à base de conhecimento deste agente.",
+    agentLanguageLabel: "Idioma do Agente",
+    answerPlaceholder: "Sua resposta...",
+    whyMatters: "Por que isso importa:",
+  },
+  de: {
+    step0Title: "Erstellen Sie Ihren KI-Anruf-Agenten",
+    step0Sub: "Beschreiben Sie, was der Agent tun soll. Wir kümmern uns um die Struktur.",
+    agentNameLabel: "Agentenname",
+    agentNamePlaceholder: "z.B. Krankenversicherungs-Vorqualifizierer",
+    whatShouldDo: "Was soll Ihr Agent tun?",
+    websiteLabel: "Unternehmens- oder Produktwebsite (optional)",
+    websitePlaceholder: "https://ihrfirma.de/produkte",
+    websiteHint: "Wir lesen diese Seite automatisch, um Ihrem Agenten von Anfang an Produktwissen zu geben.",
+    uploadLabel: "Oder laden Sie ein Dokument hoch (.txt, .docx, .pdf)",
+    generateBtn: "Meinen Agenten Generieren",
+    step1Title: "Lassen Sie uns ihn Perfektionieren",
+    step1Sub: "Beantworten Sie einige schnelle Fragen, damit Ihr Agent korrekt funktioniert.",
+    useDefaultsBtn: "Standardwerte Überprüfen",
+    confirmBtn: "Bestätigen und Überprüfen",
+    backBtn: "Zurück",
+    saveBtn: "Agenten Speichern",
+    voicePreviewText: "Hallo! Ich rufe an, um Ihnen zu helfen, die beste Option für Ihre Bedürfnisse zu finden. Haben Sie einen Moment?",
+    step2Title: "Ihren Agenten Überprüfen und Speichern",
+    step2Sub: "So wird Ihr Agent agieren. Speichern Sie ihn und gehen Sie zum Testlabor, um ihn zu verfeinern.",
+    knowledgeExtracted: "Produktwissen wurde von Ihrer Website extrahiert und zur Wissensdatenbank dieses Agenten hinzugefügt.",
+    agentLanguageLabel: "Agentensprache",
+    answerPlaceholder: "Ihre Antwort...",
+    whyMatters: "Warum das wichtig ist:",
+  },
+  it: {
+    step0Title: "Crea il tuo Agente di Chiamate IA",
+    step0Sub: "Descrivi cosa vuoi che l'agente faccia. Noi gestiamo la struttura.",
+    agentNameLabel: "Nome dell'Agente",
+    agentNamePlaceholder: "es. Pre-qualificatore Assicurazione Sanitaria",
+    whatShouldDo: "Cosa deve fare il tuo agente?",
+    websiteLabel: "Sito web dell'azienda o del prodotto (opzionale)",
+    websitePlaceholder: "https://tuaazienda.it/prodotti",
+    websiteHint: "Leggeremo automaticamente questa pagina per dare al tuo agente conoscenza del prodotto fin dal primo giorno.",
+    uploadLabel: "O carica un documento (.txt, .docx, .pdf)",
+    generateBtn: "Genera il Mio Agente",
+    step1Title: "Rendiamolo Perfetto",
+    step1Sub: "Rispondi ad alcune domande rapide affinché il tuo agente funzioni correttamente.",
+    useDefaultsBtn: "Rivedi i Valori Predefiniti",
+    confirmBtn: "Conferma e Rivedi",
+    backBtn: "Indietro",
+    saveBtn: "Salva Agente",
+    voicePreviewText: "Ciao! Ti chiamo per aiutarti a trovare la migliore opzione per le tue esigenze. Hai un momento?",
+    step2Title: "Rivedi e Salva il tuo Agente",
+    step2Sub: "Ecco cosa farà il tuo agente. Salvalo, poi vai al Test Lab per perfezionarlo.",
+    knowledgeExtracted: "Conoscenza del prodotto estratta dal tuo sito web e aggiunta alla base di conoscenza di questo agente.",
+    agentLanguageLabel: "Lingua dell'Agente",
+    answerPlaceholder: "La tua risposta...",
+    whyMatters: "Perché è importante:",
+  },
+};
+
+// ─── Example prompts per language ────────────────────────────────────────────
+const EXAMPLE_PROMPTS_BY_LANG: Record<LangCode, string[]> = {
+  en: [
+    "Calls leads to verify insurance eligibility and transfer qualified ones",
+    "Schedules appointments and sends confirmations",
+    "Surveys customers after purchases for feedback",
+    "Handles inbound support calls and escalates complex issues",
+  ],
+  es: [
+    "Llama a clientes potenciales para verificar elegibilidad de seguros y transferir los calificados",
+    "Agenda citas y envía confirmaciones",
+    "Encuesta clientes después de compras para obtener retroalimentación",
+    "Atiende llamadas de soporte entrantes y escala problemas complejos",
+  ],
+  fr: [
+    "Appelle les prospects pour vérifier l'éligibilité à l'assurance et transférer les qualifiés",
+    "Planifie des rendez-vous et envoie des confirmations",
+    "Interroge les clients après les achats pour des retours",
+    "Gère les appels entrants de support et escalade les problèmes complexes",
+  ],
+  pt: [
+    "Liga para leads para verificar elegibilidade de seguro e transferir os qualificados",
+    "Agenda consultas e envia confirmações",
+    "Pesquisa clientes após compras para feedback",
+    "Atende chamadas de suporte e escala problemas complexos",
+  ],
+  de: [
+    "Ruft Interessenten an, um Versicherungsberechtigung zu prüfen und qualifizierte weiterzuleiten",
+    "Plant Termine und sendet Bestätigungen",
+    "Befragt Kunden nach Käufen für Feedback",
+    "Behandelt eingehende Support-Anrufe und eskaliert komplexe Probleme",
+  ],
+  it: [
+    "Chiama i lead per verificare l'idoneità assicurativa e trasferire quelli qualificati",
+    "Pianifica appuntamenti e invia conferme",
+    "Sondaggia i clienti dopo gli acquisti per feedback",
+    "Gestisce le chiamate di supporto in entrata ed escala i problemi complessi",
+  ],
+};
+
+// ─── Steps per language ───────────────────────────────────────────────────────
+const STEPS_BY_LANG: Record<LangCode, string[]> = {
+  en: ["Build Your Agent", "Clarify Details", "Review & Save"],
+  es: ["Crear tu Agente", "Clarificar Detalles", "Revisar y Guardar"],
+  fr: ["Créer l'Agent", "Clarifier les Détails", "Réviser et Sauvegarder"],
+  pt: ["Criar o Agente", "Clarificar Detalhes", "Revisar e Salvar"],
+  de: ["Agent Erstellen", "Details Klären", "Prüfen und Speichern"],
+  it: ["Crea l'Agente", "Chiarisci i Dettagli", "Rivedi e Salva"],
+};
 
 interface WizardQuestion {
   question: string;
@@ -58,6 +288,11 @@ export default function CreateAgentPage() {
   const [voiceProvider, setVoiceProvider] = useState<"bland" | "retell">("bland");
   const [retellAgentId, setRetellAgentId] = useState("");
   const [agentMode, setAgentMode] = useState<"outbound" | "inbound" | "hybrid">("outbound");
+  const [agentLanguage, setAgentLanguage] = useState<LangCode>("en");
+
+  const t = TRANSLATIONS[agentLanguage];
+  const STEPS = STEPS_BY_LANG[agentLanguage];
+  const EXAMPLE_PROMPTS = EXAMPLE_PROMPTS_BY_LANG[agentLanguage];
 
   // Step 1: Create project + generate spec
   const handleGenerateSpec = async () => {
@@ -89,7 +324,7 @@ export default function CreateAgentPage() {
 
       // Generate spec and optionally ingest knowledge URL in parallel
       const promises: Promise<any>[] = [
-        supabase.functions.invoke("generate-spec", { body: { project_id: project.id } }),
+        supabase.functions.invoke("generate-spec", { body: { project_id: project.id, language: agentLanguage } }),
       ];
 
       if (knowledgeUrl.trim()) {
@@ -166,6 +401,7 @@ export default function CreateAgentPage() {
         voice_provider: voiceProvider,
         retell_agent_id: voiceProvider === "retell" ? retellAgentId || null : null,
         mode: agentMode,
+        language: agentLanguage,
       } as any).eq("project_id", projectId);
       toast({ title: "Agent saved!", description: "Run test calls to fine-tune voice and delivery." });
       navigate("/agents");
@@ -205,15 +441,38 @@ export default function CreateAgentPage() {
         <div className="space-y-5">
           <div className="surface-elevated rounded-xl p-6 space-y-5">
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Build Your AI Call Agent</h1>
-              <p className="text-muted-foreground mt-1">Describe what you want the agent to do. We'll handle the structure.</p>
+              <h1 className="text-2xl font-bold text-foreground">{t.step0Title}</h1>
+              <p className="text-muted-foreground mt-1">{t.step0Sub}</p>
+            </div>
+
+            {/* Language picker */}
+            <div className="space-y-2">
+              <Label>{t.agentLanguageLabel}</Label>
+              <div className="flex flex-wrap gap-2">
+                {LANGUAGES.map((lang) => (
+                  <button
+                    key={lang.code}
+                    onClick={() => setAgentLanguage(lang.code)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors",
+                      agentLanguage === lang.code
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-muted/40 text-muted-foreground hover:border-primary/50 hover:text-foreground"
+                    )}
+                  >
+                    <span>{lang.flag}</span>
+                    <span>{lang.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>{t.agentNameLabel}</Label>
+              <Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder={t.agentNamePlaceholder} />
             </div>
             <div className="space-y-2">
-              <Label>Agent Name</Label>
-              <Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder="e.g. Health Insurance Pre-Qualifier" />
-            </div>
-            <div className="space-y-2">
-              <Label>What should your agent do?</Label>
+              <Label>{t.whatShouldDo}</Label>
               <div className="flex flex-wrap gap-2 mb-2">
                 {EXAMPLE_PROMPTS.map((prompt) => (
                   <button
@@ -228,27 +487,25 @@ export default function CreateAgentPage() {
               <Textarea
                 value={sourceText || description}
                 onChange={(e) => { setSourceText(e.target.value); setDescription(e.target.value); }}
-                placeholder="Describe what your agent should do — e.g. call leads, qualify them, and transfer to a live agent..."
+                placeholder={t.answerPlaceholder}
                 rows={6}
               />
             </div>
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Globe className="h-4 w-4 text-muted-foreground" />
-                Company or product website (optional)
+                {t.websiteLabel}
               </Label>
               <Input
                 value={knowledgeUrl}
                 onChange={(e) => setKnowledgeUrl(e.target.value)}
-                placeholder="https://yourcompany.com/products"
+                placeholder={t.websitePlaceholder}
                 type="url"
               />
-              <p className="text-xs text-muted-foreground">
-                We'll automatically read this page to give your agent product knowledge from day one.
-              </p>
+              <p className="text-xs text-muted-foreground">{t.websiteHint}</p>
             </div>
             <div className="space-y-2">
-              <Label>Or upload a document (.txt, .docx, .pdf)</Label>
+              <Label>{t.uploadLabel}</Label>
               <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-foreground transition-colors">
                 <Upload className="h-4 w-4" />
                 {file ? file.name : "Choose file"}
@@ -257,23 +514,23 @@ export default function CreateAgentPage() {
             </div>
             <Button onClick={handleGenerateSpec} disabled={loading || !agentName.trim()} className="w-full" size="lg">
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-              Generate My Agent
+              {t.generateBtn}
             </Button>
           </div>
         </div>
       )}
 
-      {/* Step 2: Let's Make It Work Perfectly */}
+      {/* Step 2: Clarify Details */}
       {step === 1 && (
         <div className="surface-elevated rounded-xl p-6 space-y-6">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Let's Make It Work Perfectly</h1>
-            <p className="text-muted-foreground mt-1">Answer a few quick questions so your agent performs correctly.</p>
+            <h1 className="text-2xl font-bold text-foreground">{t.step1Title}</h1>
+            <p className="text-muted-foreground mt-1">{t.step1Sub}</p>
           </div>
           {knowledgeExtracted && (
             <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
-              <span>Product knowledge extracted from your website and added to this agent's knowledge base.</span>
+              <span>{t.knowledgeExtracted}</span>
             </div>
           )}
           {questions.map((q, i) => (
@@ -282,20 +539,20 @@ export default function CreateAgentPage() {
               {q.rationale && (
                 <p className="text-xs text-muted-foreground italic flex items-start gap-1">
                   <Shield className="h-3 w-3 mt-0.5 shrink-0" />
-                  <span>Why this matters: {q.rationale}</span>
+                  <span>{t.whyMatters} {q.rationale}</span>
                 </p>
               )}
               <Textarea
                 value={q.answer}
                 onChange={(e) => updateAnswer(i, e.target.value)}
                 rows={2}
-                placeholder="Your answer..."
+                placeholder={t.answerPlaceholder}
               />
             </div>
           ))}
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => setStep(0)}>
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back
+              <ArrowLeft className="mr-2 h-4 w-4" /> {t.backBtn}
             </Button>
             <Button
               variant="outline"
@@ -308,11 +565,11 @@ export default function CreateAgentPage() {
               }}
               disabled={loading}
             >
-              Review Defaults
+              {t.useDefaultsBtn}
             </Button>
             <Button onClick={handleSaveAnswers} disabled={loading} className="flex-1">
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRight className="mr-2 h-4 w-4" />}
-              Confirm & Review
+              {t.confirmBtn}
             </Button>
           </div>
         </div>
@@ -322,8 +579,8 @@ export default function CreateAgentPage() {
       {step === 2 && (
         <div className="space-y-6">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Review & Save Your Agent</h1>
-            <p className="text-muted-foreground mt-1">Here's what your agent will do. Save it, then head to the Test Lab to fine-tune.</p>
+            <h1 className="text-2xl font-bold text-foreground">{t.step2Title}</h1>
+            <p className="text-muted-foreground mt-1">{t.step2Sub}</p>
           </div>
 
           {!showRawSpec && spec && (
@@ -335,8 +592,8 @@ export default function CreateAgentPage() {
               <SummaryCard icon={<ArrowRight className="h-5 w-5" />} title="Transfer logic" value={transferEnabled ? `Transfers to ${transferPhone || "number below"}` : "Ends call normally"} />
               <SummaryCard icon={<Target className="h-5 w-5" />} title="Success definition" value={spec.success_definition || "Complete the call objectives"} />
               <SummaryCard icon={<Mic className="h-5 w-5" />} title="Voice" value={
-                selectedVoice === "custom" 
-                  ? customVoiceId || "No custom ID set" 
+                selectedVoice === "custom"
+                  ? customVoiceId || "No custom ID set"
                   : `${blandVoices.find(v => v.voice_id === selectedVoice)?.name || selectedVoice}`
               } />
             </div>
@@ -458,7 +715,8 @@ export default function CreateAgentPage() {
                 loading={voicesLoading}
                 selectedVoice={selectedVoice}
                 onSelect={setSelectedVoice}
-                sampleText={spec?.opening_line || undefined}
+                sampleText={spec?.opening_line || t.voicePreviewText}
+                defaultLanguageFilter={agentLanguage !== "en" ? agentLanguage : undefined}
               />
               {selectedVoice === "custom" && (
                 <div className="space-y-2">
@@ -523,11 +781,11 @@ export default function CreateAgentPage() {
 
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => setStep(1)}>
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back
+              <ArrowLeft className="mr-2 h-4 w-4" /> {t.backBtn}
             </Button>
             <Button onClick={handleSaveAgent} disabled={saving} className="flex-1" size="lg">
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Save Agent
+              {t.saveBtn}
             </Button>
           </div>
         </div>
