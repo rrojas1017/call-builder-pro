@@ -26,30 +26,61 @@ serve(async (req) => {
         .eq("order_index", ans.order_index);
     }
 
-    // Update agent_specs based on answers
+    // Map answers to agent_specs using keyword detection on the question text
     const updates: Record<string, any> = {};
+    let humanizationNotes: string[] = [];
+
     for (const ans of answers) {
-      if (ans.order_index === 0 && ans.answer) {
-        // Only store as transfer_phone_number if it looks like a phone number
-        const digits = ans.answer.replace(/\D/g, "");
-        if (digits.length >= 10) {
-          updates.transfer_phone_number = digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
-          updates.transfer_required = true;
-        } else {
-          // It's descriptive text, not a phone number — store as a qualification rule
-          updates.qualification_rules = { description: ans.answer };
-        }
+      const q = (ans.question || "").toLowerCase();
+      const a = ans.answer || "";
+      if (!a.trim()) continue;
+
+      // Company/product context → business_rules.company_context
+      if (q.includes("company") || q.includes("product") || q.includes("service") || q.includes("offer") || q.includes("represent")) {
+        updates.business_rules = { ...(updates.business_rules || {}), company_context: a };
       }
-      if (ans.order_index === 1 && ans.answer) updates.disclosure_text = ans.answer;
-      if (ans.order_index === 2 && ans.answer) {
-        updates.qualification_rules = { income_range: ans.answer, eligible_coverage: ["uninsured", "private"] };
+
+      // Target audience → business_rules.target_audience
+      if (q.includes("ideal") || q.includes("audience") || q.includes("target") || q.includes("who") || q.includes("customer")) {
+        updates.business_rules = { ...(updates.business_rules || {}), target_audience: a };
       }
-      if (ans.order_index === 3 && ans.answer) {
-        updates.business_hours = { description: ans.answer, timezone: "America/New_York", start: "09:00", end: "17:00", days: ["mon", "tue", "wed", "thu", "fri"] };
+
+      // Objections → business_rules.objection_handling
+      if (q.includes("objection") || q.includes("pushback") || q.includes("resist")) {
+        updates.business_rules = { ...(updates.business_rules || {}), objection_handling: a };
       }
-      if (ans.order_index === 4 && ans.answer) {
-        updates.disqualification_rules = { description: ans.answer, coverage_types: ["employer", "medicare"], tag_only: ["medicaid"] };
+
+      // Forbidden phrases/topics → humanization_notes
+      if (q.includes("never") || q.includes("avoid") || q.includes("forbidden") || q.includes("don't") || q.includes("not say") || q.includes("not do")) {
+        humanizationNotes.push(`NEVER say or do: ${a}`);
       }
+
+      // Tone/persona → tone_style
+      if (q.includes("tone") || q.includes("persona") || q.includes("personality") || q.includes("style") || q.includes("voice")) {
+        updates.tone_style = a;
+      }
+
+      // Success definition → success_definition
+      if (q.includes("success") || q.includes("true win") || q.includes("outcome") || q.includes("matter")) {
+        updates.success_definition = a;
+      }
+
+      // Compliance/legal → disclosure_text + business_rules.compliance
+      if (q.includes("compliance") || q.includes("legal") || q.includes("regulatory") || q.includes("disclosure") || q.includes("requirement")) {
+        updates.disclosure_text = a;
+        updates.disclosure_required = true;
+        updates.business_rules = { ...(updates.business_rules || {}), compliance_notes: a };
+      }
+
+      // Business hours → business_hours
+      if (q.includes("hour") || q.includes("time") || q.includes("day") || q.includes("calling hour") || q.includes("timezone")) {
+        updates.business_hours = { description: a, timezone: "America/New_York", start: "09:00", end: "18:00", days: ["mon", "tue", "wed", "thu", "fri"] };
+      }
+    }
+
+    // Merge humanization_notes
+    if (humanizationNotes.length > 0) {
+      updates.humanization_notes = humanizationNotes;
     }
 
     if (Object.keys(updates).length > 0) {

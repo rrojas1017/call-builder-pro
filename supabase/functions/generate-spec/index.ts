@@ -33,15 +33,20 @@ serve(async (req) => {
 
     if (LOVABLE_API_KEY) {
       // AI-powered spec generation
-      const systemPrompt = `You are an AI Agent Architect.
+      const systemPrompt = `You are an expert AI Call Agent Architect with deep knowledge of outbound sales, compliance, and voice AI.
 Convert the user's description into a structured Call Agent Specification.
 
 Rules:
-- Ask maximum 5 clarification_questions, each with a "question", "rationale" (why this matters), and "suggested_default".
-- If compliance-sensitive topic (insurance, finance, healthcare), set disclosure_required=true.
+- Ask 6-8 clarification questions that will help build a better, more personalized agent.
+- Questions MUST cover: company/product context, target audience, common caller objections, phrases the agent should NEVER say, tone/persona style, what defines a truly successful call, compliance or legal requirements, and business hours/callback preferences.
+- Do NOT ask for a transfer phone number — that is captured separately in the UI.
+- Do NOT ask about what data to collect — infer sensible defaults from the use case.
+- For compliance-sensitive industries (insurance, finance, healthcare, legal), include a question about disclosures or regulatory constraints.
+- Each question must have a clear rationale explaining why it improves the agent.
+- Provide a suggested_default that is specific and actionable, not just "N/A" or vague.
 - If outbound, set consent_required=true.
-- Infer reasonable defaults when possible.
-- Be specific and actionable in your specification.`;
+- If compliance-sensitive, set disclosure_required=true.
+- Be specific and actionable in your specification — infer reasonable defaults where possible.`;
 
       const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -138,11 +143,46 @@ Rules:
         retry_policy: { max_attempts: 3, spacing_minutes: 60 },
       };
       clarificationQuestions = [
-        { question: "What is the primary goal of each call?", rationale: "Defines the success criteria for the agent.", suggested_default: "Collect information and qualify leads" },
-        { question: "What phone number should qualified leads be transferred to?", rationale: "Required for live transfer functionality.", suggested_default: "" },
-        { question: "What information must be collected on every call?", rationale: "Ensures the agent asks the right questions.", suggested_default: "Name, phone, eligibility status" },
-        { question: "What should disqualify a lead?", rationale: "Prevents wasting time on ineligible contacts.", suggested_default: "Already has coverage through employer" },
-        { question: "What hours should calls be made?", rationale: "Ensures compliance with calling regulations.", suggested_default: "9:00 AM - 5:00 PM ET, Monday through Friday" },
+        {
+          question: "Describe your company and what product or service this agent will be representing.",
+          rationale: "Understanding your company and offer helps the agent speak accurately and confidently about what you provide.",
+          suggested_default: "We help individuals find affordable health insurance plans that fit their budget and needs.",
+        },
+        {
+          question: "Who is the ideal person this agent should be talking to? What are their key characteristics?",
+          rationale: "Knowing the target audience allows the agent to tailor its language, empathy, and qualification questions appropriately.",
+          suggested_default: "Adults 26-64 who are currently uninsured or paying too much for health coverage.",
+        },
+        {
+          question: "What are the most common objections or pushbacks callers give, and how should the agent respond?",
+          rationale: "Pre-programming objection handling makes the agent far more effective and reduces hang-ups.",
+          suggested_default: "\"I already have insurance\" — agent should ask what they're currently paying and if they'd like a free comparison.",
+        },
+        {
+          question: "What should the agent NEVER say, do, or promise? Are there any forbidden phrases or topics?",
+          rationale: "Defining hard boundaries prevents compliance violations and protects your brand reputation.",
+          suggested_default: "Never guarantee specific premium amounts, never mention specific plan names without verification, never pressure the caller.",
+        },
+        {
+          question: "What tone and persona should the agent have? Describe the personality you want callers to experience.",
+          rationale: "A consistent, well-defined persona builds caller trust and makes the agent feel more human.",
+          suggested_default: "Warm, calm, and knowledgeable — like a helpful neighbor who happens to be an insurance expert.",
+        },
+        {
+          question: "What makes a call a TRUE success beyond just completing it? What outcome matters most?",
+          rationale: "Defining real success criteria allows the agent to be optimized for what actually drives business value.",
+          suggested_default: "A qualified lead who agrees to be transferred to a licensed agent for a full consultation.",
+        },
+        {
+          question: "Are there any compliance, legal, or regulatory requirements this agent must follow?",
+          rationale: "Embedding compliance rules from the start prevents legal exposure and ensures proper disclosures.",
+          suggested_default: "Must state that we are not a licensed insurer, calls may be recorded, and caller can opt-out at any time.",
+        },
+        {
+          question: "What are the preferred calling hours and days? Any geographic or timezone considerations?",
+          rationale: "Restricting calls to acceptable hours ensures compliance with TCPA regulations and maximizes contact rates.",
+          suggested_default: "Monday–Friday, 9 AM to 6 PM in the caller's local time zone.",
+        },
       ];
     }
 
@@ -170,8 +210,8 @@ Rules:
     const { error: specErr } = await supabase.from("agent_specs").upsert(specRow, { onConflict: "project_id" });
     if (specErr) throw specErr;
 
-    // Build wizard questions with rationale
-    const questions = clarificationQuestions.slice(0, 5).map((cq: any, i: number) => ({
+    // Build wizard questions with rationale — up to 8
+    const questions = clarificationQuestions.slice(0, 8).map((cq: any, i: number) => ({
       project_id,
       question: cq.question,
       rationale: cq.rationale,
