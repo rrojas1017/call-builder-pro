@@ -128,8 +128,10 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
     }
   }
 
-  // Inject email collection near end if not already present
-  if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('email'))) {
+  // Only inject email collection for English agents (not Spanish/other languages)
+  const lang = (spec.language || "en").toLowerCase();
+  const isEnglish = lang === "en" || lang === "en-us";
+  if (isEnglish && fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('email'))) {
     const insertAt = Math.max(fields.length - 1, 0);
     fields.splice(insertAt, 0, "What's the best email address to reach you at? We'll send you a quick summary of what we covered and any next steps.");
   }
@@ -174,7 +176,10 @@ RULES:
 
   if (fields.length > 0) {
     prompt += `\n\nCOLLECT (in order):\n${fields.map((f, i) => `${i + 1}. ${f}`).join("\n")}`;
-    prompt += `\nZIP CODE: Must be exactly 5 digits. After caller says it, repeat it back: "Just to confirm, that's [zip], correct?" If unclear or fewer/more than 5 digits, ask again: "I want to make sure I have that right -- could you repeat your zip code?"`;
+    // Only inject ZIP code validation for US English agents
+    if (isEnglish && fields.some((f: string) => f.toLowerCase().includes('zip'))) {
+      prompt += `\nZIP CODE: Must be exactly 5 digits. After caller says it, repeat it back: "Just to confirm, that's [zip], correct?" If unclear or fewer/more than 5 digits, ask again: "I want to make sure I have that right -- could you repeat your zip code?"`;
+    }
   }
 
   // Health-specific compact rules
