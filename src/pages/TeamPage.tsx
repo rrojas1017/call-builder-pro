@@ -32,7 +32,7 @@ interface Invitation {
 
 export default function TeamPage() {
   const { user } = useAuth();
-  const { activeOrgId } = useOrgContext();
+  const { activeOrgId, isSuperAdmin } = useOrgContext();
   const { toast } = useToast();
   const { isAdmin } = useUserRole();
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -263,6 +263,7 @@ export default function TeamPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        {isSuperAdmin && <SelectItem value="super_admin">super_admin</SelectItem>}
                         <SelectItem value="admin">admin</SelectItem>
                         <SelectItem value="analyst">analyst</SelectItem>
                         <SelectItem value="viewer">viewer</SelectItem>
