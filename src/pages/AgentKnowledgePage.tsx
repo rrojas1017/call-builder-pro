@@ -56,6 +56,7 @@ const sourceTypeBadge = (type: string) => {
   if (type === "success_learning") return <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/20">Success</Badge>;
   if (type === "document") return <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-400 border-blue-500/20">Document</Badge>;
   if (type === "url") return <Badge variant="outline" className="text-xs bg-violet-500/10 text-violet-400 border-violet-500/20">URL</Badge>;
+  if (type === "transfer_recording") return <Badge variant="outline" className="text-xs bg-orange-500/10 text-orange-400 border-orange-500/20">🎙️ Recording</Badge>;
   return <Badge variant="outline" className="text-xs bg-green-500/10 text-green-400 border-green-500/20">Manual</Badge>;
 };
 
@@ -98,6 +99,7 @@ function LearningProgressBar({ entries, projectId }: { entries: KnowledgeEntry[]
   const evalCount = entries.filter(e => e.source_type === "evaluation").length;
   const successCount = entries.filter(e => e.source_type === "success_learning" || e.category === "winning_pattern").length;
   const manualCount = entries.filter(e => e.source_type === "manual").length;
+  const recordingCount = entries.filter(e => e.source_type === "transfer_recording").length;
 
   // Score trend
   const validScores = snapshots.filter(s => s.avg_overall != null).map(s => s.avg_overall!);
@@ -174,6 +176,7 @@ function LearningProgressBar({ entries, projectId }: { entries: KnowledgeEntry[]
                 {evalCount > 0 && <span className="text-[10px] text-muted-foreground">Eval:{evalCount}</span>}
                 {successCount > 0 && <span className="text-[10px] text-muted-foreground">Win:{successCount}</span>}
                 {manualCount > 0 && <span className="text-[10px] text-muted-foreground">Manual:{manualCount}</span>}
+                {recordingCount > 0 && <span className="text-[10px] text-orange-400">🎙️ {recordingCount}</span>}
               </div>
             </div>
           </CardContent>
