@@ -1,94 +1,68 @@
 
-# Fix: Name Handling — Use Caller Name When Available, Ask When Not
+# Super Admin: Create Users with Full Role Selection (Including super_admin)
 
-## The Real Problem
+## What's Missing
 
-There are two separate issues causing the bad name behavior:
+The backend is already well-built:
+- `create-user` edge function: already allows super_admins to create users in any org with any role
+- `manage_team_member_role` RPC: already allows super_admins to assign `super_admin` role
+- `AdminCompanyDetailPage`: already has an "Add User" dialog per-company
 
-### Issue 1 — OPENING GUIDE shows "[caller's name]" literally
+The gaps are purely in the UI:
 
-In `buildTaskPrompt`, line 159:
-```
-const filledGuide = resolvedOpeningLine.replace(/\{\{first_name\}\}/gi, "[caller's name]");
-```
+1. **Role dropdowns never show `super_admin`** — In `AdminCompanyDetailPage` and `CreateUserDialog`, the `<SelectContent>` only lists `admin`, `analyst`, `viewer`. A super_admin creating another super_admin has no way to select that role.
 
-This replaces the `{{first_name}}` placeholder with the literal text `[caller's name]` inside the prompt. The AI sometimes reads this verbatim or gets confused. The fix: the `OPENING GUIDE` section should tell the agent what to do based on whether a name is known or not — but `buildTaskPrompt` doesn't know the contact's actual name at build time.
+2. **The Team page `CreateUserDialog` always passes `orgId` from the current active org** — this works fine for same-org creation, but super_admins should be able to select which org the user belongs to when creating from a cross-org context.
 
-### Issue 2 — No explicit name awareness instruction in the prompt
-
-The prompt gives no instruction like:
-- "The caller's name is Ramón Rojas — use it naturally"
-- OR: "You do NOT have this person's name — ask for it early in the conversation"
-
-The agent is left guessing. This is why sometimes it ignores the name, sometimes asks anyway even when it knows it.
-
-### Issue 3 — `first_sentence` in Bland is the actual opening the agent speaks
-
-In `run-test-run`, line 186:
-```
-const contactFirstSentence = rawFirstSentence ? replaceTemplateVars(rawFirstSentence, contact, spec?.persona_name) : undefined;
-```
-
-This correctly resolves `{{first_name}}` in the `first_sentence` field. BUT — if `contact.name` is empty, `{{first_name}}` resolves to an empty string, so the agent says "¡Hola !" (blank greeting). There's no fallback to ask for the name.
+3. **The role change dropdown in the members table** (`TeamPage` and `AdminCompanyDetailPage`) never shows `super_admin` as a selectable option for existing members, even when the logged-in user is a super_admin.
 
 ---
 
-## The Fix
+## What We'll Fix
 
-### Fix 1 — Pass caller name context into `buildTaskPrompt`
+### Fix 1 — Add `super_admin` to the role selector in `CreateUserDialog`
 
-Add an optional `callerName` parameter to `buildTaskPrompt`. When present, inject a `CALLER` section at the top of the prompt:
+In `src/components/CreateUserDialog.tsx`, when the creator is a super_admin, add `super_admin` as a selectable role option. We need to pass a `isSuperAdmin` prop (or detect it inside the component using `useOrgContext`).
 
+**Before:**
 ```
-CALLER: The person you are calling is [Ramón Rojas]. Use their name naturally during the call.
-```
-
-When absent (name is empty), inject instead:
-```
-CALLER: You do NOT have this person's name yet. Ask for their name early and naturally — do NOT skip this.
+<SelectItem value="admin">Admin</SelectItem>
+<SelectItem value="analyst">Analyst</SelectItem>
+<SelectItem value="viewer">Viewer</SelectItem>
 ```
 
-This gives the AI explicit, unambiguous instructions.
-
-### Fix 2 — Remove the confusing "[caller's name]" literal from the OPENING GUIDE
-
-Instead of replacing `{{first_name}}` with `[caller's name]` (which the AI sometimes reads out loud), replace it with either the actual name (if known) or the instruction `(caller's name — ask if unknown)`.
-
-### Fix 3 — Fix the `first_sentence` blank name fallback
-
-In both `run-test-run` and `tick-campaign`, when resolving the `first_sentence`, if the contact name is empty, fall back to a neutral opening that naturally flows into asking for the name:
-
+**After (when caller is super_admin):**
 ```
-// If no name, use a neutral opening
-const firstName = contact.name?.trim().split(/\s+/)[0] || "";
-const contactFirstSentence = firstName 
-  ? replaceTemplateVars(rawFirstSentence, contact, spec?.persona_name)
-  : rawFirstSentence.replace(/\{\{first_name\}\}[,!]?\s*/gi, "").trim() + " ¿Con quién tengo el gusto?";
+<SelectItem value="super_admin">Super Admin</SelectItem>
+<SelectItem value="admin">Admin</SelectItem>
+<SelectItem value="analyst">Analyst</SelectItem>
+<SelectItem value="viewer">Viewer</SelectItem>
 ```
 
-This way the agent never opens with "¡Hola !" when the name is missing.
+### Fix 2 — Add `super_admin` to the role dropdown in `AdminCompanyDetailPage`
+
+The "Add User" dialog in `AdminCompanyDetailPage` hardcodes the same 3 roles. Add `super_admin` as a top option since this page is exclusively accessible to super_admins.
+
+### Fix 3 — Add `super_admin` to the role change dropdown for existing members (both pages)
+
+In `TeamPage` (the role `<Select>` per member row) and `AdminCompanyDetailPage` (same), when the currently logged-in user `isSuperAdmin`, show `super_admin` as a selectable role in the dropdown so existing users can be promoted.
 
 ---
 
-## Files Changed
+## Files to Change
 
 | File | Change |
 |------|--------|
-| `supabase/functions/_shared/buildTaskPrompt.ts` | Add optional `callerName` param; inject CALLER section; fix OPENING GUIDE placeholder |
-| `supabase/functions/run-test-run/index.ts` | Pass `contact.name` to `buildTaskPrompt`; fix blank-name `first_sentence` fallback |
-| `supabase/functions/tick-campaign/index.ts` | Same blank-name `first_sentence` fallback fix |
-| `src/lib/buildTaskPrompt.ts` | Mirror the `buildTaskPrompt` signature change for client-side preview |
+| `src/components/CreateUserDialog.tsx` | Read `isSuperAdmin` from `useOrgContext`; conditionally show `super_admin` role option |
+| `src/pages/AdminCompanyDetailPage.tsx` | Add `super_admin` option to both the "Add User" dialog role selector and the per-member role change selector |
+| `src/pages/TeamPage.tsx` | Read `isSuperAdmin` from `useOrgContext`; show `super_admin` option in per-member role change selector |
+
+No backend changes needed — the `create-user` function and `manage_team_member_role` RPC already handle super_admin role assignment correctly and securely (server-side role check is enforced in both).
 
 ---
 
-## What the Agent Will Do After This Fix
+## Security Notes
 
-**When contact name IS provided (e.g. "Ramón Rojas"):**
-- Prompt contains: `CALLER: The person you are calling is Ramón Rojas. Use their name naturally.`
-- First sentence: `¡Hola Ramón! Soy María de Alivia Labs...`
-- Agent greets by name, uses it throughout — never asks for it again
-
-**When contact name is NOT provided (blank):**
-- Prompt contains: `CALLER: You do NOT have this person's name yet. Ask for it early and naturally.`
-- First sentence: `¡Hola! Soy María de Alivia Labs... ¿Con quién tengo el gusto?`
-- Agent opens neutrally and asks for the name on the first turn — exactly as expected
+- The super_admin option is only shown in the UI when the caller's role is `super_admin` — it is decorative gating only
+- True security enforcement is server-side: `manage_team_member_role` rejects `super_admin` role assignments from non-super_admins with: `"Only super_admins can assign super_admin role"`
+- `create-user` edge function likewise validates at the server level — no client-side bypass is possible
