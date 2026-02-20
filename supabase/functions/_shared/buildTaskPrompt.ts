@@ -94,8 +94,21 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
     try { const p = JSON.parse(rawFields); if (Array.isArray(p)) fields = p; } catch { /* skip */ }
   }
 
+  const qualRules = spec.qualification_rules
+    ? (typeof spec.qualification_rules === "string" ? spec.qualification_rules : JSON.stringify(spec.qualification_rules, null, 2))
+    : null;
+  const disqualRules = spec.disqualification_rules
+    ? (typeof spec.disqualification_rules === "string" ? spec.disqualification_rules : JSON.stringify(spec.disqualification_rules, null, 2))
+    : null;
+
+  const personaName = spec.persona_name?.trim() || null;
+
+  // Substitute {{agent_name}} in opening_line before building the prompt
+  const resolvedOpeningLine = spec.opening_line
+    ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, personaName || "")
+    : null;
+
   // If opening_line already addresses the caller by name or asks for it, do NOT re-inject a name question.
-  // Only inject a soft note so the agent knows name should already be known.
   const openingAsksForName = resolvedOpeningLine
     ? /nombre|name|\{\{first_name\}\}/i.test(resolvedOpeningLine)
     : false;
@@ -120,20 +133,6 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
     const insertAt = Math.max(fields.length - 1, 0);
     fields.splice(insertAt, 0, "What's the best email address to reach you at? We'll send you a quick summary of what we covered and any next steps.");
   }
-
-  const qualRules = spec.qualification_rules
-    ? (typeof spec.qualification_rules === "string" ? spec.qualification_rules : JSON.stringify(spec.qualification_rules, null, 2))
-    : null;
-  const disqualRules = spec.disqualification_rules
-    ? (typeof spec.disqualification_rules === "string" ? spec.disqualification_rules : JSON.stringify(spec.disqualification_rules, null, 2))
-    : null;
-
-  const personaName = spec.persona_name?.trim() || null;
-
-  // Substitute {{agent_name}} in opening_line before building the prompt
-  const resolvedOpeningLine = spec.opening_line
-    ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, personaName || "")
-    : null;
 
   let prompt = `You are a REAL PERSON on a phone call — not AI, not a robot.`;
 
