@@ -1,158 +1,56 @@
 
-# Recording Intelligence: Upload Post-Transfer Call Recordings as Agent Training Data
+# Fix Agent Redundancy: Eliminate Double Name Request and Double Disclosure
 
-## What the User Wants
+## Root Cause Analysis
 
-After a successful transfer (agent qualifies someone and hands them off to a human closer/agent), there is a second conversation between the human agent and the prospect. That second recording — the "after-transfer" conversation — contains high-value signals:
+The session replay reveals three specific sources of redundancy in the AliviaLabs Spanish agent:
 
-- How does the human agent open the conversation after the handoff?
-- What objections come up that the AI agent did NOT handle?
-- What language closes effectively?
-- Where does the human agent re-qualify or lose the lead?
+**Redundancy #1 — Name asked twice:**
+- The `opening_line` template already asks: *"¿Podría confirmar su nombre completo, por favor?"*
+- Then `buildTaskPrompt` auto-injects `"Can I confirm your full name?"` into `must_collect_fields` right after consent
+- Result: agent asks for name in the opening → user says "sí" to consent → agent asks for name **again**
 
-Uploading these recordings and having the system transcribe + extract knowledge from them provides the AI agent with direct, battle-tested intelligence from real successful conversion conversations.
+**Redundancy #2 — Disclosure read twice:**
+- The agent naturally mentioned the recording disclosure during its opening
+- The prompt has `DISCLOSURE (read at start): "..."` which triggers the agent to **re-read** the disclosure text again after consent
+- Result: "Esta llamada está siendo grabada para fines de calidad." appears **twice** in the conversation
 
----
-
-## How It Works — The Full Pipeline
-
-```text
-User uploads .mp3 / .mp4 / .wav recording
-         ↓
-File stored in agent_knowledge_sources bucket
-         ↓
-New edge function: transcribe-and-ingest
-         ↓
-Calls Bland AI /v1/audio/transcribe (or converts to text via AI)
-         ↓
-Claude Sonnet 4 analyzes transcript for insights
-(What happened after transfer? What closed the deal?)
-         ↓
-Knowledge entries saved to agent_knowledge table
-with source_type = "transfer_recording"
-and categories: objection_handling, winning_pattern,
-conversation_technique
-         ↓
-Agent picks up these entries in next buildTaskPrompt call
-```
+**Redundancy #3 — Re-introduction after consent:**
+- After getting consent, the agent said "Soy un asesor de bienestar de Alivia Labs" — re-introducing itself unnecessarily because the prompt structure doesn't tell it that the introduction already happened in the opening
 
 ---
 
-## Bland API — Transcription Capability
+## The Fixes
 
-From the Bland API docs, each call returns:
-- `recording_url` — URL to call audio if `record: true`
-- `concatenated_transcript` — full text transcript of the call
-- `warm_transfer_call` — contains transfer metadata (state = MERGED means transfer happened)
+### Fix 1: Remove auto-injected name field when opening_line already asks for name
 
-However, the recordings to upload here are NOT Bland calls — they are recordings made by the human agent or recorded by the user's own telephony platform (e.g. a CRM export). These are external audio files.
+In `supabase/functions/_shared/buildTaskPrompt.ts`, the auto-injection logic at lines 97-105 currently **always** adds a name confirmation step. This needs to be suppressed when the `opening_line` already contains a name request.
 
-For transcription, we will use Gemini's multimodal capability via the AI gateway — it supports audio-to-text natively in Gemini 2.5 Flash, meaning no additional API key is needed.
+**Change**: Skip the name injection entirely when the `opening_line` contains `{{first_name}}` OR contains common name-ask patterns (the opening is already asking for the caller by name). Since the opening line serves as the opener that naturally collects the name, we don't need it again in the collect sequence.
 
----
+A cleaner approach: instead of injecting a full question, simply add a note in the COLLECT section: *"(Name should already be known from opening — confirm naturally if still unclear, do not re-ask)"*.
 
-## Database Changes
+### Fix 2: Change DISCLOSURE from "read at start" to "mention once, conversationally"
 
-### New `source_type` value: `"transfer_recording"`
+The current instruction `DISCLOSURE (read at start): "..."` causes the agent to read this as a formal announcement even after it already came up naturally in conversation.
 
-No schema change required — the `source_type` column in `agent_knowledge` already accepts any text value. We simply add `"transfer_recording"` as a new badge in the UI.
-
-### New storage path
-
-Recordings are uploaded to the existing `agent_knowledge_sources` bucket under a `recordings/` sub-path:
-```
-recordings/{project_id}/{timestamp}_{filename}.mp3
-```
-
----
-
-## New Edge Function: `transcribe-and-ingest`
-
-This is a new edge function that handles the two-step pipeline:
-
-**Step 1 — Transcription using Gemini 2.5 Flash (audio input)**
-
-Gemini 2.5 Flash supports audio as a base64 part in the messages array via the OpenAI-compatible gateway. We download the audio file from storage, base64-encode it, and send it to the AI with a prompt asking for a full transcript. This costs no additional API keys — uses the existing `LOVABLE_API_KEY` via the Lovable AI Gateway.
+**Change**: Reword the disclosure instruction to make it clear it should be woven into the opening naturally, not re-read as a formal block:
 
 ```
-POST to ai.gateway.lovable.dev/v1/chat/completions
-Model: google/gemini-2.5-flash
-Messages: [
-  {
-    role: "user",
-    content: [
-      {
-        type: "input_audio",
-        input_audio: { data: <base64>, format: "mp3" }
-      },
-      {
-        type: "text",
-        text: "Transcribe this call recording verbatim. Include speaker labels if possible. This is a sales call recording."
-      }
-    ]
-  }
-]
+DISCLOSURE (mention once, naturally during opening — do NOT repeat): "[text]"
 ```
 
-**Step 2 — Knowledge Extraction using Claude Sonnet 4**
+This prevents the agent from reciting the disclosure again after already mentioning it.
 
-Once the transcript is available, Claude Sonnet 4 (already used for high-reasoning tasks in this system) analyzes it specifically as a post-transfer conversation:
+### Fix 3: Add an "already-said" awareness rule to the RULES block
 
-```
-System: You are analyzing a recording of a sales conversation that happened AFTER a qualified prospect was transferred from an AI pre-qualifier. Extract insights that would help the AI pre-qualifier do a better job — specifically: objections that emerged after transfer, phrases the human agent used to close, rapport techniques, any re-qualification that was needed, and patterns that seemed to lead to success or failure.
-
-Return a JSON array of knowledge entries with categories:
-- "objection_handling": objections that appeared or persisted after transfer
-- "winning_pattern": specific phrases, transitions, or techniques that worked
-- "conversation_technique": pacing, rapport, or conversational structure insights
-- "product_knowledge": any product/service details that were clarified post-transfer
-```
-
----
-
-## UI Changes
-
-### 1. `UploadSourcesDialog.tsx` — New "Recording" tab
-
-Add a third tab: `🎙️ Post-Transfer Recording`
+Add a clear rule that prevents the agent from re-introducing itself or re-asking anything already covered in the opening exchange:
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│  Upload Files  |  Paste URL  |  🎙️ Call Recording        │
-├──────────────────────────────────────────────────────────┤
-│                                                          │
-│   [ Drop recording here or browse ]                      │
-│   Supports .mp3, .wav, .mp4, .m4a — up to 20MB         │
-│                                                          │
-│   Label (optional)                                       │
-│   [ "Closing call with John - Jan 2026" __________ ]    │
-│                                                          │
-│   💡 Upload recordings from successful calls that       │
-│      happened AFTER your agent transferred a prospect.  │
-│      We'll transcribe and extract sales insights.        │
-│                                                          │
-│   [ Process Recording ]                                  │
-└──────────────────────────────────────────────────────────┘
+- NEVER re-introduce yourself or re-state company name after the opening — it was already said.
+- NEVER re-ask for information the caller already provided earlier in the call.
+- If you already mentioned the recording disclosure in your opening, do NOT repeat it.
 ```
-
-The flow:
-1. User drops an audio file
-2. File uploads to `agent_knowledge_sources` bucket under `recordings/` path
-3. `transcribe-and-ingest` edge function is called with `{ project_id, file_path, source_label }`
-4. A progress indicator shows: "Transcribing..." → "Extracting insights..." → "Done! X insights added"
-
-### 2. `AgentKnowledgePage.tsx` — New badge for `transfer_recording` source type
-
-Add a new badge in the `sourceTypeBadge` function:
-```tsx
-if (type === "transfer_recording") return (
-  <Badge className="bg-orange-500/10 text-orange-400 border-orange-500/20">
-    🎙️ Recording
-  </Badge>
-);
-```
-
-Also update the stats counter in `LearningProgressBar` to count recording-sourced entries separately from other types.
 
 ---
 
@@ -160,37 +58,22 @@ Also update the stats counter in `LearningProgressBar` to count recording-source
 
 | File | Change |
 |------|--------|
-| `supabase/functions/transcribe-and-ingest/index.ts` | New edge function: download audio from storage, transcribe with Gemini 2.5 Flash, extract knowledge with Claude Sonnet 4, insert into `agent_knowledge` as `transfer_recording` |
-| `supabase/config.toml` | Add `[functions.transcribe-and-ingest]` with `verify_jwt = false` |
-| `src/components/UploadSourcesDialog.tsx` | Add third "Call Recording" tab with audio file upload, label field, progress states, and call to `transcribe-and-ingest` |
-| `src/pages/AgentKnowledgePage.tsx` | Add `transfer_recording` badge and recording count in stats |
+| `supabase/functions/_shared/buildTaskPrompt.ts` | (1) Replace hard-injected name question with a soft note; (2) Change `DISCLOSURE (read at start)` to `DISCLOSURE (mention once during opening, do NOT repeat)`; (3) Add anti-redundancy rules to the RULES block |
+| `src/lib/buildTaskPrompt.ts` | Mirror the same three changes (client-side copy used for prompt preview) |
 
 ---
 
-## Technical Notes
+## What the Agent Will Do Differently After This Fix
 
-### Audio format handling
-Gemini 2.5 Flash via the gateway supports inline base64 audio in the `input_audio` content part type. We support .mp3, .wav, .m4a, and .mp4 (audio-only). Max file size 20MB (already enforced by storage).
+**Before:**
+1. "Hola, mi nombre es María... ¿Podría confirmar su nombre completo?" ← opening asks name
+2. User: "Sí"
+3. "Esta llamada está siendo grabada..." ← disclosure re-read
+4. "¿Me podrías decir tu nombre completo para empezar?" ← name asked AGAIN
 
-### Truncation strategy
-If audio exceeds what Gemini can handle in a single call (unlikely for typical sales calls of 5-20 min), the edge function will:
-1. First attempt the full audio
-2. If the response is an error about content limits, truncate to the first 10 minutes (roughly first 10MB of audio)
+**After:**
+1. "Hola {{first_name}}, mi nombre es {{agent_name}} y le llamo de parte de Alivia Labs. Esta llamada se grabará para calidad — ¿tiene un momento?" ← single natural opening with name + disclosure woven in
+2. User: "Sí, soy Ramón Rojas"
+3. "Perfecto, Ramón. ¿Cuál es su malestar principal?" ← moves straight to collecting data
 
-### Token budget
-A 15-minute call produces ~2,000-4,000 word transcript. Feeding this to Claude Sonnet 4 is well within limits and should produce 8-15 high-quality knowledge entries.
-
-### Progress UX
-Since transcription can take 15-30 seconds for longer recordings, the upload dialog will show three distinct states:
-- "Uploading file..." (storage upload)
-- "Transcribing recording..." (Gemini call)
-- "Extracting insights..." (Claude call)
-- "Done! 12 insights added to knowledge base."
-
-The `onIngested` callback fires at the end so the knowledge list auto-refreshes.
-
-### Why not use Bland's own recording URL?
-Bland's `recording_url` field is only populated for calls where `record: true` was set at call time. The recordings the user wants to upload are the post-transfer conversations that happened in THEIR telephony system (their CRM, Zoom, GoHighLevel, etc.), not the pre-transfer Bland call. This is why manual upload is the right approach.
-
-### Where these insights show up
-Once saved to `agent_knowledge` with category `objection_handling`, `winning_pattern`, or `conversation_technique`, they are automatically included in the next `buildTaskPrompt` call via `buildCompactKnowledge()`. No additional wiring needed — the knowledge system already pulls all entries regardless of source_type.
+The fix is purely in the prompt — no database changes, no schema changes, no UI changes needed. Both copies of `buildTaskPrompt` (shared edge function version and client-side preview version) will be updated to stay in sync.
