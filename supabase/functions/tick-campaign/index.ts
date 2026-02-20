@@ -144,25 +144,14 @@ serve(async (req) => {
       spec.humanization_notes = [...currentNotes, ...newGlobal];
     }
 
-    // Build task prompt using shared builder (now consumes qualification_rules, humanization_notes, knowledge)
-    let task = buildTaskPrompt(spec, [], knowledgeBriefing);
-
-    // Inject HIPAA compliance guardrails when enabled
-    if (campaign.hipaa_enabled) {
-      task += `\n\n=== HIPAA COMPLIANCE RULES ===
+    // Inject HIPAA compliance guardrails when enabled (applied per-contact inside loop)
+    const hipaaAppendix = campaign.hipaa_enabled ? `\n\n=== HIPAA COMPLIANCE RULES ===
 - This call is recorded. You MUST disclose this at the start: "This call may be recorded for quality and compliance purposes."
 - NEVER read back full SSN, date of birth, or policy/member ID numbers. Only confirm last 4 digits.
 - Do NOT repeat or store specific medical diagnoses, conditions, or medication names in conversation summaries.
 - You MUST obtain explicit verbal consent before collecting any health-related information.
 - If leaving a voicemail: leave ONLY a callback number and a generic message. Do NOT include any health information, names of conditions, or reason for calling.
-- Minimize collection of Protected Health Information (PHI) to only what is strictly necessary for the conversation objective.`;
-    }
-
-    const MAX_TASK_LENGTH = 28000;
-    if (task.length > MAX_TASK_LENGTH) {
-      console.warn(`Campaign prompt too long (${task.length} chars), truncating`);
-      task = task.substring(0, MAX_TASK_LENGTH) + "\n\n[Trimmed for length]";
-    }
+- Minimize collection of Protected Health Information (PHI) to only what is strictly necessary for the conversation objective.` : "";
 
     const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
     const voiceProvider = spec.voice_provider || "bland";
@@ -230,15 +219,29 @@ serve(async (req) => {
     } else {
       // ===== BLAND AI BRANCH =====
       const personaName = spec.persona_name || "";
+      const MAX_TASK_LENGTH = 28000;
+      const lang = (spec.language || "en").toLowerCase();
       const callObjects = contacts.map((contact: any) => {
-        const contactTask = replaceTemplateVars(task, contact, personaName);
+        // Build per-contact prompt with caller name context
+        let perContactTask = buildTaskPrompt(spec, [], knowledgeBriefing, contact.name?.trim() || "") + hipaaAppendix;
+        if (perContactTask.length > MAX_TASK_LENGTH) perContactTask = perContactTask.substring(0, MAX_TASK_LENGTH) + "\n\n[Trimmed for length]";
+        const contactTask = replaceTemplateVars(perContactTask, contact, personaName);
         const rawOpening = spec.opening_line
           ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, personaName)
           : "Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at.";
+        // Fix blank-name fallback
+        const firstName = contact.name?.trim().split(/\s+/)[0] || "";
+        let firstSentence: string;
+        if (firstName) {
+          firstSentence = replaceTemplateVars(rawOpening, contact, personaName);
+        } else {
+          const askName = lang.startsWith("es") ? " ¿Con quién tengo el gusto?" : " May I ask who I'm speaking with?";
+          firstSentence = rawOpening.replace(/\{\{first_name\}\}[,!]?\s*/gi, "").trim() + askName;
+        }
         return {
           phone_number: contact.phone,
           task: contactTask,
-          first_sentence: replaceTemplateVars(rawOpening, contact, personaName),
+          first_sentence: firstSentence,
           metadata: {
             org_id: campaign.agent_projects.org_id,
             project_id: campaign.project_id,
