@@ -111,14 +111,6 @@ serve(async (req) => {
     }
 
     const voiceProvider = spec?.voice_provider || "bland";
-    let baseTask = testRun.agent_instructions_text || (spec ? buildTaskPrompt(spec, [], knowledgeBriefing) : "Conduct a professional outbound call.");
-
-    // Smart guard: progressively trim if over limit
-    const MAX_TASK_LENGTH = 28000;
-    if (baseTask.length > MAX_TASK_LENGTH) {
-      console.warn(`Prompt too long (${baseTask.length} chars), truncating to ${MAX_TASK_LENGTH}`);
-      baseTask = baseTask.substring(0, MAX_TASK_LENGTH) + "\n\n[Trimmed for length]";
-    }
 
     const callIds: string[] = [];
 
@@ -179,11 +171,30 @@ serve(async (req) => {
 
       for (const contact of queuedContacts) {
         try {
-          const contactTask = replaceTemplateVars(baseTask, contact, spec?.persona_name);
+          // Build per-contact prompt with caller name context
+          const perContactTask = testRun.agent_instructions_text
+            ? replaceTemplateVars(testRun.agent_instructions_text, contact, spec?.persona_name)
+            : (spec ? buildTaskPrompt(spec, [], knowledgeBriefing, contact.name?.trim() || "") : "Conduct a professional outbound call.");
+          const contactTask = perContactTask.length > 28000
+            ? perContactTask.substring(0, 28000) + "\n\n[Trimmed for length]"
+            : perContactTask;
+
           const rawFirstSentence = spec?.opening_line
             ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, spec?.persona_name || "")
             : undefined;
-          const contactFirstSentence = rawFirstSentence ? replaceTemplateVars(rawFirstSentence, contact, spec?.persona_name) : undefined;
+          // Fix blank-name fallback: strip {{first_name}} and ask for name naturally
+          let contactFirstSentence: string | undefined;
+          if (rawFirstSentence) {
+            const firstName = contact.name?.trim().split(/\s+/)[0] || "";
+            if (firstName) {
+              contactFirstSentence = replaceTemplateVars(rawFirstSentence, contact, spec?.persona_name);
+            } else {
+              // Remove {{first_name}} placeholder and append a name-asking phrase
+              const lang = (spec?.language || "en").toLowerCase();
+              const askName = lang.startsWith("es") ? " ¿Con quién tengo el gusto?" : " May I ask who I'm speaking with?";
+              contactFirstSentence = rawFirstSentence.replace(/\{\{first_name\}\}[,!]?\s*/gi, "").trim() + askName;
+            }
+          }
 
           const blandPayload: any = {
             phone_number: contact.phone,

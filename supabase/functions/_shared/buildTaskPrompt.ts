@@ -75,7 +75,7 @@ export function buildCompactStyle(notes: string[]): string {
   return condensed.join(". ") + ".";
 }
 
-export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], knowledgeBriefing?: string): string {
+export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], knowledgeBriefing?: string, callerName?: string): string {
   const purpose = spec.use_case || spec.success_definition || "Conduct a professional outbound call.";
   const discl = spec.disclosure_text || "";
   const tone = spec.tone_style || "Friendly, professional, empathetic";
@@ -142,6 +142,14 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
     prompt += `\n\nPERSONA: Your name is ${personaName}. Always introduce yourself by this name naturally. Do NOT say you are AI, automated, a bot, or a robot.`;
   }
 
+  // Caller name awareness — explicit instruction so AI never guesses
+  const trimmedCallerName = callerName?.trim() || "";
+  if (trimmedCallerName) {
+    prompt += `\n\nCALLER: The person you are calling is ${trimmedCallerName}. Use their name naturally during the conversation — but do NOT ask for it again, you already have it.`;
+  } else {
+    prompt += `\n\nCALLER: You do NOT have this person's name yet. Ask for their name early and naturally in the conversation — do NOT skip this step.`;
+  }
+
   prompt += `\n\nINTERACTION STYLE: ${styleGuide}
 
 PURPOSE: ${purpose}
@@ -156,8 +164,9 @@ RULES:
 - If you already mentioned the recording disclosure in your opening, do NOT repeat it.`;
 
   if (resolvedOpeningLine) {
-    const filledGuide = resolvedOpeningLine.replace(/\{\{first_name\}\}/gi, "[caller's name]");
-    prompt += `\n\nOPENING GUIDE: Start with something like the line below, but adapt it naturally — do NOT read it word-for-word as a script. Ask the caller's name early if you don't already know it.\nOpening guide: "${filledGuide}"`;
+    const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "(caller's name — ask if unknown)";
+    const filledGuide = resolvedOpeningLine.replace(/\{\{first_name\}\}/gi, nameHint);
+    prompt += `\n\nOPENING GUIDE: Start with something like the line below, but adapt it naturally — do NOT read it word-for-word as a script.\nOpening guide: "${filledGuide}"`;
   }
 
   // Knowledge: prefer AI briefing, fallback to compact raw knowledge
