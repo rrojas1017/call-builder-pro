@@ -1,80 +1,94 @@
 
-# Fix AliviaLabs Agent: Remove Address + Align Collect Fields to Transfer Goal
+# Fix: Name Handling — Use Caller Name When Available, Ask When Not
 
-## Root Cause
+## The Real Problem
 
-The problem is in the **agent spec data stored in the database**, not in the prompt builder code. The `must_collect_fields` array for this agent was auto-generated during wizard creation and contains fields that contradict the agent's actual goal.
+There are two separate issues causing the bad name behavior:
 
-**Current `must_collect_fields` (wrong):**
-1. Nombre completo del cliente
-2. Malestar principal identificado
-3. Interés en la oferta (Sí/No)
-4. **Dirección de envío (si acepta)** ← the address — this is for order fulfillment, NOT pre-qualification
-5. Cómo el malestar afecta su vida diaria
-6. ¿Qué ingredientes o componentes específicos te interesan en un suplemento?
-7. ¿Has probado suplementos naturales antes? ¿Cuáles?
+### Issue 1 — OPENING GUIDE shows "[caller's name]" literally
 
-**The stated goal (`success_definition`):** "El cliente acepta la oferta promocional, se recolectan sus datos de envío y muestra una actitud positiva."
+In `buildTaskPrompt`, line 159:
+```
+const filledGuide = resolvedOpeningLine.replace(/\{\{first_name\}\}/gi, "[caller's name]");
+```
 
-**The actual operational goal (what the user wants):** Get the prospect to agree to speak with a specialist — a **warm transfer**, not a full data collection + order process.
+This replaces the `{{first_name}}` placeholder with the literal text `[caller's name]` inside the prompt. The AI sometimes reads this verbatim or gets confused. The fix: the `OPENING GUIDE` section should tell the agent what to do based on whether a name is known or not — but `buildTaskPrompt` doesn't know the contact's actual name at build time.
 
-The shipping address (`dirección de envío`) only makes sense if the agent is closing the sale directly. But this agent should be a pre-qualifier that **transfers to a human specialist** to close.
+### Issue 2 — No explicit name awareness instruction in the prompt
 
----
+The prompt gives no instruction like:
+- "The caller's name is Ramón Rojas — use it naturally"
+- OR: "You do NOT have this person's name — ask for it early in the conversation"
 
-## Two Things to Fix
+The agent is left guessing. This is why sometimes it ignores the name, sometimes asks anyway even when it knows it.
 
-### Fix 1: Update `must_collect_fields` in the database
+### Issue 3 — `first_sentence` in Bland is the actual opening the agent speaks
 
-Remove `"Dirección de envío (si acepta)"` and the deep product-curiosity questions (ingredients, prior supplements) — these belong in the post-transfer human conversation, not the AI pre-qualifier. Keep only the minimum needed to qualify and warm-transfer.
+In `run-test-run`, line 186:
+```
+const contactFirstSentence = rawFirstSentence ? replaceTemplateVars(rawFirstSentence, contact, spec?.persona_name) : undefined;
+```
 
-**New `must_collect_fields` (aligned to transfer goal):**
-1. Consentimiento para grabar la llamada
-2. Nombre completo del cliente
-3. Malestar principal o condición de salud
-4. Interés en hablar con un especialista de Alivia Labs
-
-**New `success_definition`:** "El cliente acepta ser transferido a un especialista de Alivia Labs para recibir una asesoría personalizada."
-
-### Fix 2: Update the `opening_line` to use persona name template
-
-The current `opening_line` is hardcoded as a verbatim script with a specific contact name ("Ramón") baked in — it will say "Ramón" to every caller. It needs to use `{{first_name}}` and `{{agent_name}}` placeholders:
-
-**Current (wrong):**
-> `"¡Hola! Soy María de Alivia Labs. ¿Habló con Ramón? Perfecto. Ramón, le llamo porque..."`
-
-**Fixed:**
-> `"¡Hola {{first_name}}! Soy {{agent_name}} de Alivia Labs. Le llamo porque había mostrado interés en suplementos naturales para la salud, y quería platicarle sobre cómo podemos ayudarle. ¿Tiene unos minutitos? Ah, y por reglamento, ¿me permite grabar la llamada?"`
-
-### Fix 3: Set `persona_name` so `{{agent_name}}` resolves correctly
-
-The current `persona_name` is `null` — so `{{agent_name}}` would be replaced with an empty string. The agent was originally created with "María" as the implied persona. We set `persona_name = 'María'`.
+This correctly resolves `{{first_name}}` in the `first_sentence` field. BUT — if `contact.name` is empty, `{{first_name}}` resolves to an empty string, so the agent says "¡Hola !" (blank greeting). There's no fallback to ask for the name.
 
 ---
 
-## Files / Data Changed
+## The Fix
 
-| What | Change |
+### Fix 1 — Pass caller name context into `buildTaskPrompt`
+
+Add an optional `callerName` parameter to `buildTaskPrompt`. When present, inject a `CALLER` section at the top of the prompt:
+
+```
+CALLER: The person you are calling is [Ramón Rojas]. Use their name naturally during the call.
+```
+
+When absent (name is empty), inject instead:
+```
+CALLER: You do NOT have this person's name yet. Ask for their name early and naturally — do NOT skip this.
+```
+
+This gives the AI explicit, unambiguous instructions.
+
+### Fix 2 — Remove the confusing "[caller's name]" literal from the OPENING GUIDE
+
+Instead of replacing `{{first_name}}` with `[caller's name]` (which the AI sometimes reads out loud), replace it with either the actual name (if known) or the instruction `(caller's name — ask if unknown)`.
+
+### Fix 3 — Fix the `first_sentence` blank name fallback
+
+In both `run-test-run` and `tick-campaign`, when resolving the `first_sentence`, if the contact name is empty, fall back to a neutral opening that naturally flows into asking for the name:
+
+```
+// If no name, use a neutral opening
+const firstName = contact.name?.trim().split(/\s+/)[0] || "";
+const contactFirstSentence = firstName 
+  ? replaceTemplateVars(rawFirstSentence, contact, spec?.persona_name)
+  : rawFirstSentence.replace(/\{\{first_name\}\}[,!]?\s*/gi, "").trim() + " ¿Con quién tengo el gusto?";
+```
+
+This way the agent never opens with "¡Hola !" when the name is missing.
+
+---
+
+## Files Changed
+
+| File | Change |
 |------|--------|
-| `agent_specs` row (DB) | Update `must_collect_fields` → remove address and product-deep questions |
-| `agent_specs` row (DB) | Update `success_definition` → align to transfer goal |
-| `agent_specs` row (DB) | Update `opening_line` → use `{{first_name}}` and `{{agent_name}}` templates |
-| `agent_specs` row (DB) | Set `persona_name = 'María'` |
-
-No code changes needed — only the stored spec data needs to be corrected. The prompt builder, edge functions, and UI all already handle these fields correctly.
+| `supabase/functions/_shared/buildTaskPrompt.ts` | Add optional `callerName` param; inject CALLER section; fix OPENING GUIDE placeholder |
+| `supabase/functions/run-test-run/index.ts` | Pass `contact.name` to `buildTaskPrompt`; fix blank-name `first_sentence` fallback |
+| `supabase/functions/tick-campaign/index.ts` | Same blank-name `first_sentence` fallback fix |
+| `src/lib/buildTaskPrompt.ts` | Mirror the `buildTaskPrompt` signature change for client-side preview |
 
 ---
 
-## How the Agent Will Behave After This Fix
+## What the Agent Will Do After This Fix
 
-**Before:**
-1. Opens with hardcoded "Ramón" regardless of who answers
-2. Collects: name → condition → interest → **shipping address** → ingredient preferences → supplement history
-3. Agent tries to close an order, not transfer
+**When contact name IS provided (e.g. "Ramón Rojas"):**
+- Prompt contains: `CALLER: The person you are calling is Ramón Rojas. Use their name naturally.`
+- First sentence: `¡Hola Ramón! Soy María de Alivia Labs...`
+- Agent greets by name, uses it throughout — never asks for it again
 
-**After:**
-1. Opens naturally: "¡Hola [caller's name]! Soy María de Alivia Labs..."
-2. Collects: consent → name → main health concern → interest in speaking with specialist
-3. If interested → **transfers to specialist** who handles the rest (address, order, etc.)
-
-The collect sequence goes from 7 deep fields down to 4 qualification fields — much faster, less friction, and correctly scoped to the pre-qualifier role.
+**When contact name is NOT provided (blank):**
+- Prompt contains: `CALLER: You do NOT have this person's name yet. Ask for it early and naturally.`
+- First sentence: `¡Hola! Soy María de Alivia Labs... ¿Con quién tengo el gusto?`
+- Agent opens neutrally and asks for the name on the first turn — exactly as expected
