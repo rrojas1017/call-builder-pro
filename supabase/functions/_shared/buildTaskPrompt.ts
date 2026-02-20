@@ -94,13 +94,24 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
     try { const p = JSON.parse(rawFields); if (Array.isArray(p)) fields = p; } catch { /* skip */ }
   }
 
-  // Inject name confirmation after consent if not already present
-  if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('confirm') && f.toLowerCase().includes('name'))) {
-    const consentIdx = fields.findIndex((f: string) => f.toLowerCase().includes('consent'));
-    if (consentIdx >= 0) {
-      fields.splice(consentIdx + 1, 0, "Can I confirm your full name?");
+  // If opening_line already addresses the caller by name or asks for it, do NOT re-inject a name question.
+  // Only inject a soft note so the agent knows name should already be known.
+  const openingAsksForName = resolvedOpeningLine
+    ? /nombre|name|\{\{first_name\}\}/i.test(resolvedOpeningLine)
+    : false;
+
+  if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('name'))) {
+    if (openingAsksForName) {
+      const consentIdx = fields.findIndex((f: string) => f.toLowerCase().includes('consent'));
+      const insertAt = consentIdx >= 0 ? consentIdx + 1 : 0;
+      fields.splice(insertAt, 0, "(Caller's name should already be known from the opening — confirm naturally only if still unclear, do NOT re-ask)");
     } else {
-      fields.unshift("Can I confirm your full name?");
+      const consentIdx = fields.findIndex((f: string) => f.toLowerCase().includes('consent'));
+      if (consentIdx >= 0) {
+        fields.splice(consentIdx + 1, 0, "Can I confirm your full name?");
+      } else {
+        fields.unshift("Can I confirm your full name?");
+      }
     }
   }
 
@@ -138,7 +149,10 @@ RULES:
 - Tone: ${tone}
 - Sound natural: vary sentence length, react genuinely, use casual transitions ("Gotcha", "Makes sense").
 - Use caller's name occasionally. Acknowledge each answer before the next question.
-- Never guess or assume answers.`;
+- Never guess or assume answers.
+- NEVER re-introduce yourself or re-state company name after the opening — it was already said.
+- NEVER re-ask for information the caller already provided earlier in the call.
+- If you already mentioned the recording disclosure in your opening, do NOT repeat it.`;
 
   if (resolvedOpeningLine) {
     const filledGuide = resolvedOpeningLine.replace(/\{\{first_name\}\}/gi, "[caller's name]");
@@ -156,7 +170,7 @@ RULES:
   }
 
   if (discl) {
-    prompt += `\n\nDISCLOSURE (read at start): "${discl}"`;
+    prompt += `\n\nDISCLOSURE (mention once, naturally during opening — do NOT repeat): "${discl}"`;
   }
 
   if (fields.length > 0) {
