@@ -1,0 +1,1 @@
+ALTER TABLE public.agent_specs ADD COLUMN IF NOT EXISTS persona_name TEXT NULL;

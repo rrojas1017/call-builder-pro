@@ -27,6 +27,7 @@ export default function EditAgentPage() {
   const [description, setDescription] = useState("");
   const [openingLine, setOpeningLine] = useState("");
   const [toneStyle, setToneStyle] = useState("");
+  const [personaName, setPersonaName] = useState("");
   const [selectedVoice, setSelectedVoice] = useState("");
   const [transferEnabled, setTransferEnabled] = useState(false);
   const [transferPhone, setTransferPhone] = useState("");
@@ -41,7 +42,7 @@ export default function EditAgentPage() {
     const load = async () => {
       const [{ data: project }, { data: spec }] = await Promise.all([
         supabase.from("agent_projects").select("name, description").eq("id", id).single(),
-        supabase.from("agent_specs").select("voice_id, opening_line, tone_style, transfer_required, transfer_phone_number, background_track, voice_provider, retell_agent_id, from_number, voicemail_message").eq("project_id", id).single(),
+        supabase.from("agent_specs").select("voice_id, opening_line, tone_style, persona_name, transfer_required, transfer_phone_number, background_track, voice_provider, retell_agent_id, from_number, voicemail_message").eq("project_id", id).single(),
       ]);
       if (project) {
         setName(project.name);
@@ -51,6 +52,7 @@ export default function EditAgentPage() {
         setSelectedVoice(spec.voice_id || "");
         setOpeningLine(spec.opening_line || "");
         setToneStyle(spec.tone_style || "");
+        setPersonaName((spec as any).persona_name || "");
         setTransferEnabled(!!spec.transfer_required);
         setTransferPhone(spec.transfer_phone_number || "");
         setBackgroundTrack((spec as any).background_track || null);
@@ -84,6 +86,7 @@ export default function EditAgentPage() {
           voice_id: selectedVoice || null,
           opening_line: openingLine || null,
           tone_style: toneStyle || null,
+          persona_name: personaName.trim() || null,
           transfer_required: transferEnabled,
           transfer_phone_number: formattedPhone,
           background_track: backgroundTrack,
@@ -168,8 +171,14 @@ export default function EditAgentPage() {
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground">Script</h3>
         <div className="space-y-2">
-          <Label>Opening Line</Label>
-          <Textarea value={openingLine} onChange={(e) => setOpeningLine(e.target.value)} rows={2} placeholder="What the agent says first..." />
+          <Label>Agent Persona Name</Label>
+          <Input value={personaName} onChange={(e) => setPersonaName(e.target.value)} placeholder="e.g. Sofia, Alex, Carlos" />
+          <p className="text-xs text-muted-foreground">The name your agent introduces itself as on the call. Used to fill in <code className="bg-muted px-1 rounded">{"{{agent_name}}"}</code> in your opening line.</p>
+        </div>
+        <div className="space-y-2">
+          <Label>Opening Line Template</Label>
+          <Textarea value={openingLine} onChange={(e) => setOpeningLine(e.target.value)} rows={2} placeholder='e.g. "Hey {{first_name}}, this is {{agent_name}} calling — do you have a quick second?"' />
+          <p className="text-xs text-muted-foreground">Use <code className="bg-muted px-1 rounded">{"{{first_name}}"}</code> and <code className="bg-muted px-1 rounded">{"{{agent_name}}"}</code> as placeholders. This is a guide, not a verbatim script.</p>
         </div>
         <div className="space-y-2">
           <Label>Tone / Style</Label>

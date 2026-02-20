@@ -13,6 +13,8 @@ interface AgentSpec {
   success_definition?: string | null;
   humanization_notes?: string[] | null;
   mode?: string | null;
+  opening_line?: string | null;
+  persona_name?: string | null;
 }
 
 interface KnowledgeEntry {
@@ -70,9 +72,15 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[] = [
   const transferNum = spec.transfer_phone_number || "";
   const transferDigits = transferNum.replace(/\D/g, "");
   const isHealth = shouldIncludeFplTable(spec.use_case);
+  const personaName = spec.persona_name?.trim() || null;
 
   const humanNotes = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
   const styleGuide = buildCompactStyle(humanNotes);
+
+  // Substitute {{agent_name}} in opening_line
+  const resolvedOpeningLine = spec.opening_line
+    ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, personaName || "")
+    : null;
 
   // Parse fields
   const rawFields = spec.must_collect_fields;
@@ -106,9 +114,13 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[] = [
     ? (typeof spec.disqualification_rules === "string" ? spec.disqualification_rules : JSON.stringify(spec.disqualification_rules, null, 2))
     : null;
 
-  let prompt = `You are a REAL PERSON on a phone call — not AI, not a robot.
+  let prompt = `You are a REAL PERSON on a phone call — not AI, not a robot.`;
 
-INTERACTION STYLE: ${styleGuide}
+  if (personaName) {
+    prompt += `\n\nPERSONA: Your name is ${personaName}. Always introduce yourself by this name naturally. Do NOT say you are AI, automated, a bot, or a robot.`;
+  }
+
+  prompt += `\n\nINTERACTION STYLE: ${styleGuide}
 
 PURPOSE: ${purpose}
 
@@ -117,6 +129,11 @@ RULES:
 - Sound natural: vary sentence length, react genuinely, use casual transitions ("Gotcha", "Makes sense").
 - Use caller's name occasionally. Acknowledge each answer before the next question.
 - Never guess or assume answers.`;
+
+  if (resolvedOpeningLine) {
+    const filledGuide = resolvedOpeningLine.replace(/\{\{first_name\}\}/gi, "[caller's name]");
+    prompt += `\n\nOPENING GUIDE: Start with something like the line below, but adapt it naturally — do NOT read it word-for-word as a script. Ask the caller's name early if you don't already know it.\nOpening guide: "${filledGuide}"`;
+  }
 
   if (knowledgeBriefing) {
     prompt += `\n\nKNOWLEDGE BRIEFING:\n${knowledgeBriefing}`;

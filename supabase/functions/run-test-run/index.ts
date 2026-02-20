@@ -179,8 +179,11 @@ serve(async (req) => {
 
       for (const contact of queuedContacts) {
         try {
-          const contactTask = replaceTemplateVars(baseTask, contact);
-          const contactFirstSentence = spec?.opening_line ? replaceTemplateVars(spec.opening_line, contact) : undefined;
+          const contactTask = replaceTemplateVars(baseTask, contact, spec?.persona_name);
+          const rawFirstSentence = spec?.opening_line
+            ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, spec?.persona_name || "")
+            : undefined;
+          const contactFirstSentence = rawFirstSentence ? replaceTemplateVars(rawFirstSentence, contact, spec?.persona_name) : undefined;
 
           const blandPayload: any = {
             phone_number: contact.phone,
