@@ -1,55 +1,158 @@
 
-# Agent Persona Name + Dynamic Natural Greeting
+# Recording Intelligence: Upload Post-Transfer Call Recordings as Agent Training Data
 
-## What's Wrong Right Now
+## What the User Wants
 
-The `opening_line` field is treated as a verbatim script that gets read word-for-word. The Bland AI `first_sentence` parameter is populated directly from this stored string. This means:
+After a successful transfer (agent qualifies someone and hands them off to a human closer/agent), there is a second conversation between the human agent and the prospect. That second recording — the "after-transfer" conversation — contains high-value signals:
 
-- The agent reads "Hi, I'm calling on behalf of our team…" exactly as typed — robotic and scripted.
-- There is no agent persona name (like "Sofia" or "Carlos") — the agent has no identity to introduce itself with.
-- The agent never naturally says its own name OR asks for the caller's name in the opening greeting.
-- For Spanish agents: `"Hola, mi nombre es [nombre] y le llamo de parte de [empresa]"` is impossible because there's no `[nombre]` to fill in.
+- How does the human agent open the conversation after the handoff?
+- What objections come up that the AI agent did NOT handle?
+- What language closes effectively?
+- Where does the human agent re-qualify or lose the lead?
 
-## The Fix — Three Connected Changes
+Uploading these recordings and having the system transcribe + extract knowledge from them provides the AI agent with direct, battle-tested intelligence from real successful conversion conversations.
 
-### 1. Add `persona_name` field to `agent_specs` (database migration)
-A new `persona_name` text column (nullable) on `agent_specs`. This is the human name the agent introduces itself as — e.g. "Sofia", "Carlos", "Alex". It is separate from the agent project name (which is an internal label like "Health Insurance Pre-Qualifier").
+---
 
-### 2. Add "Agent Persona Name" input to wizard + Edit Agent page
+## How It Works — The Full Pipeline
 
-**In `CreateAgentPage.tsx` — Step 0:**
-Add a "Your agent's name" input field right after "Agent Name" (the internal label). A short hint: *"This is the name your agent will introduce itself as on the call — e.g. Sofia, Alex, Carlos."*
+```text
+User uploads .mp3 / .mp4 / .wav recording
+         ↓
+File stored in agent_knowledge_sources bucket
+         ↓
+New edge function: transcribe-and-ingest
+         ↓
+Calls Bland AI /v1/audio/transcribe (or converts to text via AI)
+         ↓
+Claude Sonnet 4 analyzes transcript for insights
+(What happened after transfer? What closed the deal?)
+         ↓
+Knowledge entries saved to agent_knowledge table
+with source_type = "transfer_recording"
+and categories: objection_handling, winning_pattern,
+conversation_technique
+         ↓
+Agent picks up these entries in next buildTaskPrompt call
+```
 
-**In `EditAgentPage.tsx`:**
-Add the same `persona_name` field so it can be changed after creation.
+---
 
-**Translations** in `TRANSLATIONS` map for all 6 languages.
+## Bland API — Transcription Capability
 
-### 3. Rewrite `opening_line` from static script to dynamic template + update `buildTaskPrompt`
+From the Bland API docs, each call returns:
+- `recording_url` — URL to call audio if `record: true`
+- `concatenated_transcript` — full text transcript of the call
+- `warm_transfer_call` — contains transfer metadata (state = MERGED means transfer happened)
 
-**`generate-spec/index.ts`** — change the AI system prompt to instruct:
-- `opening_line` must be a **natural-sounding template** (not verbatim), using the placeholder `{{agent_name}}` for the agent's self-introduction and `{{first_name}}` for the caller's name.
-- Example English: `"Hey {{first_name}}, this is {{agent_name}} calling on behalf of [Company] — you got a quick second?"`
-- Example Spanish: `"Hola {{first_name}}, mi nombre es {{agent_name}} y le llamo de parte de [Empresa] — ¿tiene un momento?"`
-- The `opening_line` is a **starting point template**, not a word-for-word read.
+However, the recordings to upload here are NOT Bland calls — they are recordings made by the human agent or recorded by the user's own telephony platform (e.g. a CRM export). These are external audio files.
 
-**`_shared/buildTaskPrompt.ts`** (and the copy in `src/lib/buildTaskPrompt.ts`) — update `buildTaskPrompt` to:
-- Add a new `persona_name` field to the `AgentSpec` interface.
-- Inject into the prompt a `PERSONA` section:
-  ```
-  PERSONA: Your name is {{agent_name}}. When you introduce yourself, always use this name naturally. Do NOT say you are AI, a bot, or automated.
-  ```
-- Replace `{{agent_name}}` in the `opening_line` with the actual `persona_name` before building the prompt (just like `replaceTemplateVars` already does for `{{first_name}}`).
-- Add explicit instructions that the **opening is a natural guide, not a script** — the agent should ask for the caller's name early if it doesn't already know it, not read the opening_line verbatim.
+For transcription, we will use Gemini's multimodal capability via the AI gateway — it supports audio-to-text natively in Gemini 2.5 Flash, meaning no additional API key is needed.
 
-**`run-test-run/index.ts` and `tick-campaign/index.ts`** — wherever `spec.opening_line` is passed to Bland as `first_sentence`, also substitute `{{agent_name}}` with `spec.persona_name` before sending.
+---
 
-**`replaceTemplateVars`** — extend to also replace `{{agent_name}}` with the persona name.
+## Database Changes
 
-### 4. Update the `generate-spec` fallback defaults
-The hardcoded fallback `opening_line` becomes a template:
-- English: `"Hey {{first_name}}, this is {{agent_name}} calling — do you have a quick moment?"`
-- Spanish: `"Hola {{first_name}}, mi nombre es {{agent_name}} y le llamo para ayudarle — ¿tiene un minuto?"`
+### New `source_type` value: `"transfer_recording"`
+
+No schema change required — the `source_type` column in `agent_knowledge` already accepts any text value. We simply add `"transfer_recording"` as a new badge in the UI.
+
+### New storage path
+
+Recordings are uploaded to the existing `agent_knowledge_sources` bucket under a `recordings/` sub-path:
+```
+recordings/{project_id}/{timestamp}_{filename}.mp3
+```
+
+---
+
+## New Edge Function: `transcribe-and-ingest`
+
+This is a new edge function that handles the two-step pipeline:
+
+**Step 1 — Transcription using Gemini 2.5 Flash (audio input)**
+
+Gemini 2.5 Flash supports audio as a base64 part in the messages array via the OpenAI-compatible gateway. We download the audio file from storage, base64-encode it, and send it to the AI with a prompt asking for a full transcript. This costs no additional API keys — uses the existing `LOVABLE_API_KEY` via the Lovable AI Gateway.
+
+```
+POST to ai.gateway.lovable.dev/v1/chat/completions
+Model: google/gemini-2.5-flash
+Messages: [
+  {
+    role: "user",
+    content: [
+      {
+        type: "input_audio",
+        input_audio: { data: <base64>, format: "mp3" }
+      },
+      {
+        type: "text",
+        text: "Transcribe this call recording verbatim. Include speaker labels if possible. This is a sales call recording."
+      }
+    ]
+  }
+]
+```
+
+**Step 2 — Knowledge Extraction using Claude Sonnet 4**
+
+Once the transcript is available, Claude Sonnet 4 (already used for high-reasoning tasks in this system) analyzes it specifically as a post-transfer conversation:
+
+```
+System: You are analyzing a recording of a sales conversation that happened AFTER a qualified prospect was transferred from an AI pre-qualifier. Extract insights that would help the AI pre-qualifier do a better job — specifically: objections that emerged after transfer, phrases the human agent used to close, rapport techniques, any re-qualification that was needed, and patterns that seemed to lead to success or failure.
+
+Return a JSON array of knowledge entries with categories:
+- "objection_handling": objections that appeared or persisted after transfer
+- "winning_pattern": specific phrases, transitions, or techniques that worked
+- "conversation_technique": pacing, rapport, or conversational structure insights
+- "product_knowledge": any product/service details that were clarified post-transfer
+```
+
+---
+
+## UI Changes
+
+### 1. `UploadSourcesDialog.tsx` — New "Recording" tab
+
+Add a third tab: `🎙️ Post-Transfer Recording`
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Upload Files  |  Paste URL  |  🎙️ Call Recording        │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│   [ Drop recording here or browse ]                      │
+│   Supports .mp3, .wav, .mp4, .m4a — up to 20MB         │
+│                                                          │
+│   Label (optional)                                       │
+│   [ "Closing call with John - Jan 2026" __________ ]    │
+│                                                          │
+│   💡 Upload recordings from successful calls that       │
+│      happened AFTER your agent transferred a prospect.  │
+│      We'll transcribe and extract sales insights.        │
+│                                                          │
+│   [ Process Recording ]                                  │
+└──────────────────────────────────────────────────────────┘
+```
+
+The flow:
+1. User drops an audio file
+2. File uploads to `agent_knowledge_sources` bucket under `recordings/` path
+3. `transcribe-and-ingest` edge function is called with `{ project_id, file_path, source_label }`
+4. A progress indicator shows: "Transcribing..." → "Extracting insights..." → "Done! X insights added"
+
+### 2. `AgentKnowledgePage.tsx` — New badge for `transfer_recording` source type
+
+Add a new badge in the `sourceTypeBadge` function:
+```tsx
+if (type === "transfer_recording") return (
+  <Badge className="bg-orange-500/10 text-orange-400 border-orange-500/20">
+    🎙️ Recording
+  </Badge>
+);
+```
+
+Also update the stats counter in `LearningProgressBar` to count recording-sourced entries separately from other types.
 
 ---
 
@@ -57,37 +160,37 @@ The hardcoded fallback `opening_line` becomes a template:
 
 | File | Change |
 |------|--------|
-| Database migration | Add `persona_name TEXT` column to `agent_specs` |
-| `supabase/functions/generate-spec/index.ts` | Instruct AI to generate `opening_line` as a natural template with `{{agent_name}}` and `{{first_name}}` placeholders; update fallback defaults |
-| `supabase/functions/_shared/buildTaskPrompt.ts` | Add `persona_name` to `AgentSpec` interface; inject `PERSONA` section into prompt; substitute `{{agent_name}}` in opening_line; clarify opening is a guide not a script |
-| `src/lib/buildTaskPrompt.ts` | Same as above (client-side copy) |
-| `supabase/functions/run-test-run/index.ts` | Substitute `{{agent_name}}` in `first_sentence` before sending to Bland |
-| `supabase/functions/tick-campaign/index.ts` | Same — substitute `{{agent_name}}` before Bland call |
-| `src/pages/CreateAgentPage.tsx` | Add `personaName` state + input field in Step 0 with translations; pass to `agent_specs` on save |
-| `src/pages/EditAgentPage.tsx` | Add `personaName` field + save it |
+| `supabase/functions/transcribe-and-ingest/index.ts` | New edge function: download audio from storage, transcribe with Gemini 2.5 Flash, extract knowledge with Claude Sonnet 4, insert into `agent_knowledge` as `transfer_recording` |
+| `supabase/config.toml` | Add `[functions.transcribe-and-ingest]` with `verify_jwt = false` |
+| `src/components/UploadSourcesDialog.tsx` | Add third "Call Recording" tab with audio file upload, label field, progress states, and call to `transcribe-and-ingest` |
+| `src/pages/AgentKnowledgePage.tsx` | Add `transfer_recording` badge and recording count in stats |
 
 ---
 
-## How the Opening Line Works After This Change
+## Technical Notes
 
-The `opening_line` stored in the database is now a **template with intent**, not a teleprompter script. For example:
+### Audio format handling
+Gemini 2.5 Flash via the gateway supports inline base64 audio in the `input_audio` content part type. We support .mp3, .wav, .m4a, and .mp4 (audio-only). Max file size 20MB (already enforced by storage).
 
-**English template:**
-> `"Hey {{first_name}}, this is {{agent_name}} calling on behalf of Alivia Labs — you got a quick second?"`
+### Truncation strategy
+If audio exceeds what Gemini can handle in a single call (unlikely for typical sales calls of 5-20 min), the edge function will:
+1. First attempt the full audio
+2. If the response is an error about content limits, truncate to the first 10 minutes (roughly first 10MB of audio)
 
-**What actually gets sent to Bland (after substitution):**
-> `"Hey Maria, this is Sofia calling on behalf of Alivia Labs — you got a quick second?"`
+### Token budget
+A 15-minute call produces ~2,000-4,000 word transcript. Feeding this to Claude Sonnet 4 is well within limits and should produce 8-15 high-quality knowledge entries.
 
-And in the `buildTaskPrompt`, the prompt now also says:
-```
-PERSONA: Your name is Sofia. Introduce yourself naturally by name. Do not say you are AI, automated, or a robot.
-OPENING GUIDE: Start with something like the opening below, but adapt it naturally — do not read it word-for-word as a script. Ask the caller's name early if you don't already know it.
-Opening guide: "Hey {{first_name}}, this is Sofia calling on behalf of Alivia Labs..."
-```
+### Progress UX
+Since transcription can take 15-30 seconds for longer recordings, the upload dialog will show three distinct states:
+- "Uploading file..." (storage upload)
+- "Transcribing recording..." (Gemini call)
+- "Extracting insights..." (Claude call)
+- "Done! 12 insights added to knowledge base."
 
-This ensures:
-- The agent knows its own name and uses it
-- The agent introduces itself naturally (not robotically)
-- The agent can ask "Can I get your name?" if the contact name is unknown
-- Spanish agents say "Hola, mi nombre es Sofia y le llamo de parte de Alivia Labs"
-- The voice preview in Step 3 uses the actual persona name filled in (if provided)
+The `onIngested` callback fires at the end so the knowledge list auto-refreshes.
+
+### Why not use Bland's own recording URL?
+Bland's `recording_url` field is only populated for calls where `record: true` was set at call time. The recordings the user wants to upload are the post-transfer conversations that happened in THEIR telephony system (their CRM, Zoom, GoHighLevel, etc.), not the pre-transfer Bland call. This is why manual upload is the right approach.
+
+### Where these insights show up
+Once saved to `agent_knowledge` with category `objection_handling`, `winning_pattern`, or `conversation_technique`, they are automatically included in the next `buildTaskPrompt` call via `buildCompactKnowledge()`. No additional wiring needed — the knowledge system already pulls all entries regardless of source_type.
