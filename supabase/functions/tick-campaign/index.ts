@@ -229,15 +229,16 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     } else {
       // ===== BLAND AI BRANCH =====
+      const personaName = spec.persona_name || "";
       const callObjects = contacts.map((contact: any) => {
-        const contactTask = replaceTemplateVars(task, contact);
+        const contactTask = replaceTemplateVars(task, contact, personaName);
+        const rawOpening = spec.opening_line
+          ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, personaName)
+          : "Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at.";
         return {
           phone_number: contact.phone,
           task: contactTask,
-          first_sentence: replaceTemplateVars(
-            spec.opening_line || "Hey {{first_name}}, you got a quick minute? I'm calling about the health coverage thing you looked at.",
-            contact
-          ),
+          first_sentence: replaceTemplateVars(rawOpening, contact, personaName),
           metadata: {
             org_id: campaign.agent_projects.org_id,
             project_id: campaign.project_id,
@@ -247,9 +248,13 @@ serve(async (req) => {
         };
       });
 
+      const resolvedGlobalFirstSentence = spec.opening_line
+        ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, personaName).replace(/\{\{first_name\}\}/gi, "")
+        : "Hey there, you got a quick minute?";
+
       const globalSettings: any = {
         task: task,
-        first_sentence: spec.opening_line || "Hey there, you got a quick minute?",
+        first_sentence: resolvedGlobalFirstSentence,
         record: true, webhook: webhookUrl,
         summary_prompt: "Return JSON with: consent (bool), caller_name, state, age (int), household_size (int), income_est_annual (int), coverage_type, qualified (bool), disqual_reason, transfer_attempted (bool), transfer_completed (bool)",
         model: "base", language: spec.language || "en",

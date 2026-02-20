@@ -30,6 +30,9 @@ const TRANSLATIONS: Record<LangCode, {
   step0Sub: string;
   agentNameLabel: string;
   agentNamePlaceholder: string;
+  personaNameLabel: string;
+  personaNamePlaceholder: string;
+  personaNameHint: string;
   whatShouldDo: string;
   websiteLabel: string;
   websitePlaceholder: string;
@@ -55,6 +58,9 @@ const TRANSLATIONS: Record<LangCode, {
     step0Sub: "Describe what you want the agent to do. We'll handle the structure.",
     agentNameLabel: "Agent Name",
     agentNamePlaceholder: "e.g. Health Insurance Pre-Qualifier",
+    personaNameLabel: "Agent Persona Name",
+    personaNamePlaceholder: "e.g. Sofia, Alex, Carlos",
+    personaNameHint: "This is the name your agent will introduce itself as on the call.",
     whatShouldDo: "What should your agent do?",
     websiteLabel: "Company or product website (optional)",
     websitePlaceholder: "https://yourcompany.com/products",
@@ -80,6 +86,9 @@ const TRANSLATIONS: Record<LangCode, {
     step0Sub: "Describe lo que quieres que haga el agente. Nosotros nos encargamos de la estructura.",
     agentNameLabel: "Nombre del Agente",
     agentNamePlaceholder: "ej. Pre-calificador de Seguros de Salud",
+    personaNameLabel: "Nombre de Persona del Agente",
+    personaNamePlaceholder: "ej. Sofía, Alejandro, Carlos",
+    personaNameHint: "Este es el nombre con el que el agente se presentará en la llamada.",
     whatShouldDo: "¿Qué debe hacer tu agente?",
     websiteLabel: "Sitio web de la empresa o producto (opcional)",
     websitePlaceholder: "https://tuempresa.com/productos",
@@ -105,6 +114,9 @@ const TRANSLATIONS: Record<LangCode, {
     step0Sub: "Décrivez ce que vous voulez que l'agent fasse. Nous gérons la structure.",
     agentNameLabel: "Nom de l'Agent",
     agentNamePlaceholder: "ex. Pré-qualificateur d'Assurance Santé",
+    personaNameLabel: "Nom de Persona de l'Agent",
+    personaNamePlaceholder: "ex. Sophie, Alex, Pierre",
+    personaNameHint: "C'est le nom que votre agent utilisera pour se présenter lors de l'appel.",
     whatShouldDo: "Que doit faire votre agent ?",
     websiteLabel: "Site web de l'entreprise ou du produit (optionnel)",
     websitePlaceholder: "https://votreentreprise.com/produits",
@@ -130,6 +142,9 @@ const TRANSLATIONS: Record<LangCode, {
     step0Sub: "Descreva o que você quer que o agente faça. Nós cuidamos da estrutura.",
     agentNameLabel: "Nome do Agente",
     agentNamePlaceholder: "ex. Pré-qualificador de Seguro Saúde",
+    personaNameLabel: "Nome de Persona do Agente",
+    personaNamePlaceholder: "ex. Sofia, Alex, Carlos",
+    personaNameHint: "Este é o nome com que o agente se apresentará na chamada.",
     whatShouldDo: "O que seu agente deve fazer?",
     websiteLabel: "Site da empresa ou produto (opcional)",
     websitePlaceholder: "https://suaempresa.com.br/produtos",
@@ -155,6 +170,9 @@ const TRANSLATIONS: Record<LangCode, {
     step0Sub: "Beschreiben Sie, was der Agent tun soll. Wir kümmern uns um die Struktur.",
     agentNameLabel: "Agentenname",
     agentNamePlaceholder: "z.B. Krankenversicherungs-Vorqualifizierer",
+    personaNameLabel: "Persona-Name des Agenten",
+    personaNamePlaceholder: "z.B. Sofia, Alex, Klaus",
+    personaNameHint: "Dies ist der Name, mit dem sich Ihr Agent im Anruf vorstellt.",
     whatShouldDo: "Was soll Ihr Agent tun?",
     websiteLabel: "Unternehmens- oder Produktwebsite (optional)",
     websitePlaceholder: "https://ihrfirma.de/produkte",
@@ -180,6 +198,9 @@ const TRANSLATIONS: Record<LangCode, {
     step0Sub: "Descrivi cosa vuoi che l'agente faccia. Noi gestiamo la struttura.",
     agentNameLabel: "Nome dell'Agente",
     agentNamePlaceholder: "es. Pre-qualificatore Assicurazione Sanitaria",
+    personaNameLabel: "Nome Persona dell'Agente",
+    personaNamePlaceholder: "es. Sofia, Alex, Marco",
+    personaNameHint: "Questo è il nome con cui il tuo agente si presenterà durante la chiamata.",
     whatShouldDo: "Cosa deve fare il tuo agente?",
     websiteLabel: "Sito web dell'azienda o del prodotto (opzionale)",
     websitePlaceholder: "https://tuaazienda.it/prodotti",
@@ -289,6 +310,7 @@ export default function CreateAgentPage() {
   const [retellAgentId, setRetellAgentId] = useState("");
   const [agentMode, setAgentMode] = useState<"outbound" | "inbound" | "hybrid">("outbound");
   const [agentLanguage, setAgentLanguage] = useState<LangCode>("en");
+  const [personaName, setPersonaName] = useState("");
 
   const t = TRANSLATIONS[agentLanguage];
   const STEPS = STEPS_BY_LANG[agentLanguage];
@@ -402,6 +424,7 @@ export default function CreateAgentPage() {
         retell_agent_id: voiceProvider === "retell" ? retellAgentId || null : null,
         mode: agentMode,
         language: agentLanguage,
+        persona_name: personaName.trim() || null,
       } as any).eq("project_id", projectId);
       toast({ title: "Agent saved!", description: "Run test calls to fine-tune voice and delivery." });
       navigate("/agents");
@@ -470,6 +493,11 @@ export default function CreateAgentPage() {
             <div className="space-y-2">
               <Label>{t.agentNameLabel}</Label>
               <Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder={t.agentNamePlaceholder} />
+            </div>
+            <div className="space-y-2">
+              <Label>{t.personaNameLabel}</Label>
+              <Input value={personaName} onChange={(e) => setPersonaName(e.target.value)} placeholder={t.personaNamePlaceholder} />
+              <p className="text-xs text-muted-foreground">{t.personaNameHint}</p>
             </div>
             <div className="space-y-2">
               <Label>{t.whatShouldDo}</Label>

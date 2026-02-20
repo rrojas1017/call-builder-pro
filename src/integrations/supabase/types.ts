@@ -114,6 +114,7 @@ export type Database = {
           mode: string | null
           must_collect_fields: Json | null
           opening_line: string | null
+          persona_name: string | null
           project_id: string
           pronunciation_guide: Json | null
           qualification_rules: Json | null
@@ -151,6 +152,7 @@ export type Database = {
           mode?: string | null
           must_collect_fields?: Json | null
           opening_line?: string | null
+          persona_name?: string | null
           project_id: string
           pronunciation_guide?: Json | null
           qualification_rules?: Json | null
@@ -188,6 +190,7 @@ export type Database = {
           mode?: string | null
           must_collect_fields?: Json | null
           opening_line?: string | null
+          persona_name?: string | null
           project_id?: string
           pronunciation_guide?: Json | null
           qualification_rules?: Json | null

@@ -49,7 +49,10 @@ Convert the user's description into a structured Call Agent Specification.
 
 CRITICAL LANGUAGE REQUIREMENT:
 - The agent will operate in ${languageLabel}. You MUST write ALL questions, suggested_default answers, opening_line, tone_style, success_definition, and all text fields in ${languageLabel}. NOT in English (unless ${languageLabel} is English).
-- The opening_line must be a natural-sounding greeting in ${languageLabel} that a real person would say on the phone.
+- The opening_line MUST be a natural-sounding TEMPLATE — NOT a verbatim script. It must use the placeholder {{agent_name}} where the agent introduces itself, and {{first_name}} where the caller's name is used.
+- Example English opening_line: "Hey {{first_name}}, this is {{agent_name}} calling on behalf of [Company] — you got a quick second?"
+- Example Spanish opening_line: "Hola {{first_name}}, mi nombre es {{agent_name}} y le llamo de parte de [Empresa] — ¿tiene un momento?"
+- The opening_line is a STARTING POINT GUIDE the agent should adapt naturally — not a teleprompter script to read verbatim.
 - The suggested_default answers must be written in ${languageLabel} so the user can read and understand them.
 - Every question must be phrased in ${languageLabel}.
 
@@ -142,11 +145,14 @@ Rules:
 
     // Fallback to sensible defaults if AI didn't work
     if (!spec) {
+      const fallbackOpeningLine = lang === "es"
+        ? "Hola {{first_name}}, mi nombre es {{agent_name}} y le llamo para ayudarle — ¿tiene un minuto?"
+        : "Hey {{first_name}}, this is {{agent_name}} calling — do you have a quick moment?";
       spec = {
         use_case: "general_outbound",
         mode: "outbound",
         tone_style: "Friendly, professional, empathetic",
-        opening_line: "Hi, I'm calling on behalf of our team to help you with some quick questions.",
+        opening_line: fallbackOpeningLine,
         disclosure_required: true,
         disclosure_text: "This call is being recorded for quality and compliance purposes.",
         consent_required: true,

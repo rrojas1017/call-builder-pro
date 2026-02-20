@@ -10,6 +10,7 @@ export interface AgentSpec {
   tone_style?: string | null;
   language?: string | null;
   opening_line?: string | null;
+  persona_name?: string | null;
   transfer_required?: boolean | null;
   mode?: string | null;
   use_case?: string | null;
@@ -116,9 +117,20 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
     ? (typeof spec.disqualification_rules === "string" ? spec.disqualification_rules : JSON.stringify(spec.disqualification_rules, null, 2))
     : null;
 
-  let prompt = `You are a REAL PERSON on a phone call — not AI, not a robot.
+  const personaName = spec.persona_name?.trim() || null;
 
-INTERACTION STYLE: ${styleGuide}
+  // Substitute {{agent_name}} in opening_line before building the prompt
+  const resolvedOpeningLine = spec.opening_line
+    ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, personaName || "")
+    : null;
+
+  let prompt = `You are a REAL PERSON on a phone call — not AI, not a robot.`;
+
+  if (personaName) {
+    prompt += `\n\nPERSONA: Your name is ${personaName}. Always introduce yourself by this name naturally. Do NOT say you are AI, automated, a bot, or a robot.`;
+  }
+
+  prompt += `\n\nINTERACTION STYLE: ${styleGuide}
 
 PURPOSE: ${purpose}
 
@@ -127,6 +139,11 @@ RULES:
 - Sound natural: vary sentence length, react genuinely, use casual transitions ("Gotcha", "Makes sense").
 - Use caller's name occasionally. Acknowledge each answer before the next question.
 - Never guess or assume answers.`;
+
+  if (resolvedOpeningLine) {
+    const filledGuide = resolvedOpeningLine.replace(/\{\{first_name\}\}/gi, "[caller's name]");
+    prompt += `\n\nOPENING GUIDE: Start with something like the line below, but adapt it naturally — do NOT read it word-for-word as a script. Ask the caller's name early if you don't already know it.\nOpening guide: "${filledGuide}"`;
+  }
 
   // Knowledge: prefer AI briefing, fallback to compact raw knowledge
   if (knowledgeBriefing) {
@@ -169,11 +186,12 @@ RULES:
   return prompt;
 }
 
-export function replaceTemplateVars(text: string, contact: { name: string; phone: string }): string {
+export function replaceTemplateVars(text: string, contact: { name: string; phone: string }, personaName?: string | null): string {
   const parts = (contact.name || "").trim().split(/\s+/);
   const firstName = parts[0] || "";
   const lastName = parts.length > 1 ? parts[parts.length - 1] : "";
   return text
+    .replace(/\{\{agent_name\}\}/gi, personaName || "")
     .replace(/\{\{first_name\}\}/gi, firstName)
     .replace(/\{\{last_name\}\}/gi, lastName)
     .replace(/\{\{name\}\}/gi, contact.name || "")
