@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useOrgContext } from "@/hooks/useOrgContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +18,7 @@ interface CreateUserDialogProps {
 
 export default function CreateUserDialog({ open, onOpenChange, orgId, onSuccess }: CreateUserDialogProps) {
   const { toast } = useToast();
+  const { isSuperAdmin } = useOrgContext();
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
@@ -107,6 +109,7 @@ export default function CreateUserDialog({ open, onOpenChange, orgId, onSuccess 
               <Select value={role} onValueChange={setRole}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  {isSuperAdmin && <SelectItem value="super_admin">Super Admin</SelectItem>}
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="analyst">Analyst</SelectItem>
                   <SelectItem value="viewer">Viewer</SelectItem>

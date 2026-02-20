@@ -207,6 +207,7 @@ export default function AdminCompanyDetailPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="super_admin">super_admin</SelectItem>
                         <SelectItem value="admin">admin</SelectItem>
                         <SelectItem value="analyst">analyst</SelectItem>
                         <SelectItem value="viewer">viewer</SelectItem>
@@ -247,6 +248,7 @@ export default function AdminCompanyDetailPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="super_admin">Super Admin</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="analyst">Analyst</SelectItem>
                   <SelectItem value="viewer">Viewer</SelectItem>
