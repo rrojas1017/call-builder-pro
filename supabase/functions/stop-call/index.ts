@@ -10,26 +10,47 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { call_id, contact_id } = await req.json();
+    const { call_id, contact_id, provider } = await req.json();
     if (!call_id) throw new Error("call_id is required");
 
-    const BLAND_API_KEY = Deno.env.get("BLAND_API_KEY");
-    if (!BLAND_API_KEY) throw new Error("BLAND_API_KEY not configured");
+    const effectiveProvider = provider || "bland";
 
-    // Call Bland AI stop endpoint
-    const stopRes = await fetch(`https://us.api.bland.ai/v1/calls/${call_id}/stop`, {
-      method: "POST",
-      headers: {
-        "Authorization": BLAND_API_KEY,
-        "Content-Type": "application/json",
-      },
-    });
+    if (effectiveProvider === "retell") {
+      const RETELL_API_KEY = Deno.env.get("RETELL_API_KEY");
+      if (!RETELL_API_KEY) throw new Error("RETELL_API_KEY not configured");
 
-    const stopData = await stopRes.json();
-    console.log("Bland stop response:", JSON.stringify(stopData));
+      const stopRes = await fetch(`https://api.retellai.com/v2/end-call/${call_id}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${RETELL_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      });
 
-    if (!stopRes.ok) {
-      throw new Error(`Bland API error: ${stopData.message || stopRes.statusText}`);
+      if (!stopRes.ok) {
+        const stopData = await stopRes.json().catch(() => ({}));
+        console.error("Retell stop response:", JSON.stringify(stopData));
+        throw new Error(`Retell API error: ${stopData.message || stopData.error_message || stopRes.statusText}`);
+      }
+      console.log("Retell call stopped:", call_id);
+    } else {
+      const BLAND_API_KEY = Deno.env.get("BLAND_API_KEY");
+      if (!BLAND_API_KEY) throw new Error("BLAND_API_KEY not configured");
+
+      const stopRes = await fetch(`https://us.api.bland.ai/v1/calls/${call_id}/stop`, {
+        method: "POST",
+        headers: {
+          Authorization: BLAND_API_KEY,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const stopData = await stopRes.json();
+      console.log("Bland stop response:", JSON.stringify(stopData));
+
+      if (!stopRes.ok) {
+        throw new Error(`Bland API error: ${stopData.message || stopRes.statusText}`);
+      }
     }
 
     // Update test_run_contacts status to cancelled if contact_id provided

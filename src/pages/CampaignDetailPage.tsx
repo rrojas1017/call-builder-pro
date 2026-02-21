@@ -247,11 +247,11 @@ export default function CampaignDetailPage() {
 
   const liveCalls = contacts.filter((c) => c.status === "calling");
 
-  const handleStopCall = async (callId: string, contactId: string) => {
+  const handleStopCall = async (callId: string, contactId: string, provider: string = "bland") => {
     setStoppingCalls((prev) => new Set(prev).add(contactId));
     try {
       const { error } = await supabase.functions.invoke("stop-call", {
-        body: { call_id: callId, contact_id: contactId },
+        body: { call_id: callId, contact_id: contactId, provider },
       });
       if (error) throw error;
       setContacts((prev) =>
@@ -300,8 +300,10 @@ export default function CampaignDetailPage() {
 
   const handleStopAll = async () => {
     for (const c of liveCalls) {
-      if (c.bland_call_id) {
-        handleStopCall(c.bland_call_id, c.id);
+      const activeCallId = (c as any).retell_call_id || c.bland_call_id;
+      const callProvider = (c as any).retell_call_id ? "retell" : "bland";
+      if (activeCallId) {
+        handleStopCall(activeCallId, c.id, callProvider);
       } else {
         handleForceCancel(c.id);
       }
@@ -546,7 +548,11 @@ export default function CampaignDetailPage() {
                       size="sm"
                       variant="destructive"
                       disabled={stoppingCalls.has(c.id)}
-                      onClick={() => handleStopCall(c.bland_call_id, c.id)}
+                      onClick={() => {
+                        const activeCallId = (c as any).retell_call_id || c.bland_call_id;
+                        const callProvider = (c as any).retell_call_id ? "retell" : "bland";
+                        handleStopCall(activeCallId, c.id, callProvider);
+                      }}
                     >
                       {stoppingCalls.has(c.id) ? (
                         <Loader2 className="h-3 w-3 animate-spin" />

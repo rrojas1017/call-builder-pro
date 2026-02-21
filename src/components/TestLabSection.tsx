@@ -175,7 +175,7 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
   };
 
   const handleStopAll = async () => {
-    const withCallId = activeContacts.filter((c) => c.bland_call_id);
+    const withCallId = activeContacts.filter((c) => c.bland_call_id || c.retell_call_id);
     if (!withCallId.length) {
       toast({ title: "No active calls", description: "No calls with active connections to stop.", variant: "destructive" });
       return;
@@ -183,11 +183,13 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
     setStopping(true);
     try {
       await Promise.all(
-        withCallId.map((c) =>
-          supabase.functions.invoke("stop-call", {
-            body: { call_id: c.bland_call_id, contact_id: c.id },
-          })
-        )
+        withCallId.map((c) => {
+          const activeCallId = c.retell_call_id || c.bland_call_id;
+          const callProvider = c.retell_call_id ? "retell" : "bland";
+          return supabase.functions.invoke("stop-call", {
+            body: { call_id: activeCallId, contact_id: c.id, provider: callProvider },
+          });
+        })
       );
       setRunning(false);
       setActiveContacts([]);

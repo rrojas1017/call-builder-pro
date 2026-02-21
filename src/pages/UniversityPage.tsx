@@ -424,8 +424,10 @@ export default function UniversityPage() {
             onClick={async () => {
               setStopping(true);
               try {
+                const activeCallId = contact.retell_call_id || contact.bland_call_id;
+                const callProvider = contact.retell_call_id ? "retell" : "bland";
                 const { error } = await supabase.functions.invoke("stop-call", {
-                  body: { call_id: contact.bland_call_id, contact_id: contact.id },
+                  body: { call_id: activeCallId, contact_id: contact.id, provider: callProvider },
                 });
                 if (error) throw error;
                 setRunning(false);
