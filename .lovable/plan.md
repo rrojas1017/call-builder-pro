@@ -1,36 +1,43 @@
 
 
-# Fix: Retry Outbound Call After Transfer Agent Auto-Switch
+# Fix Transfer Agent Issue -- Patch the Agent, Not Just the LLM
 
 ## Problem
-The 2-second delay after auto-switching from transfer to outbound is not enough for Retell's API to propagate the change. The `create-phone-call` endpoint still sees the old agent state and rejects the call.
+Two issues discovered:
+
+1. **Transfer agent still broken**: All previous fix attempts patched the LLM (`is_transfer_llm: false`) but Retell has a **separate** `is_transfer_agent` flag on the agent object itself. This agent-level flag is what blocks outbound calls, and it remains `true`.
+
+2. **Agent not visible in Retell UI**: The agent has `is_published: false`. This may cause it to be hidden in some Retell dashboard views.
 
 ## Solution
-Add a retry loop around the Retell `create-phone-call` API call. If it fails with "Transfer agents cannot be used for outbound calls", wait 3 seconds and retry up to 3 times. This handles Retell's eventual consistency without blocking unnecessarily on calls that work the first time.
 
-## Changes
+### 1. Fix `manage-retell-agent` -- `switch_to_outbound` action
+Update the existing `switch_to_outbound` action to ALSO patch the agent with `is_transfer_agent: false` (not just the LLM). This is a one-line addition to the existing PATCH call in the function.
 
-### 1. Update `run-test-run` edge function (Retell branch)
-Wrap the `create-phone-call` fetch in a retry loop inside the per-contact loop:
+### 2. Fix `run-test-run` -- pre-flight auto-switch
+Update the pre-flight check to patch the **agent** directly with `PATCH /update-agent/{agent_id}` setting `{ is_transfer_agent: false }`, instead of (or in addition to) patching the LLM.
 
-```text
-For each contact:
-  1. Build retellPayload (unchanged)
-  2. Attempt create-phone-call (up to 3 times)
-     - If response contains "Transfer agents cannot be used for outbound calls":
-       - Log warning with attempt number
-       - Wait 3 seconds
-       - Retry
-     - If success or different error: proceed as normal
-```
-
-### 2. No other files changed
-The retry logic is entirely within the existing per-contact loop in the Retell branch.
+### 3. No UI changes needed
 
 ## Technical Details
 
-The retry wraps only the `fetch` to `create-phone-call` and the response handling. The pre-flight auto-switch and 2-second initial delay remain in place. The retry adds resilience for cases where propagation takes longer than 2 seconds (up to ~11 seconds total: 2s initial + 3 retries x 3s each).
+### manage-retell-agent changes
+In the `switch_to_outbound` action, after patching the LLM, also patch the agent:
+```text
+PATCH /update-agent/{agent_id}  with { is_transfer_agent: false }
+```
+
+### run-test-run pre-flight changes
+Replace the current LLM patch with an agent-level patch:
+```text
+if (agentCheckData.is_transfer_agent === true) {
+  PATCH /update-agent/{agent_id} with { is_transfer_agent: false }
+  // Also patch LLM if llm_id exists (keep existing logic)
+  wait 2 seconds for propagation
+}
+```
 
 ## Files Changed
-- **Modified**: `supabase/functions/run-test-run/index.ts` -- add retry loop around Retell create-phone-call
+- **Modified**: `supabase/functions/manage-retell-agent/index.ts` -- add agent-level patch in `switch_to_outbound`
+- **Modified**: `supabase/functions/run-test-run/index.ts` -- add agent-level patch in pre-flight check
 
