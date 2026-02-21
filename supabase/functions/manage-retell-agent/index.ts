@@ -25,10 +25,6 @@ serve(async (req) => {
         agent_name: config?.agent_name || "Appendify Agent",
         voice_id: config?.voice_id || undefined,
         language: config?.language || "en-US",
-        response_engine: {
-          type: "retell-llm",
-          llm_id: config?.llm_id || undefined,
-        },
         webhook_url: webhookUrl,
         post_call_analysis_data: [
           { description: "Whether the lead was qualified", name: "qualified", type: "boolean" },
@@ -36,10 +32,13 @@ serve(async (req) => {
         ],
       };
 
+      // Only include response_engine if we have an llm_id
+      if (config?.llm_id) {
+        body.response_engine = { type: "retell-llm", llm_id: config.llm_id };
+      }
+
       // Remove undefined values
       if (!body.voice_id) delete body.voice_id;
-      const responseEngine = body.response_engine as Record<string, unknown>;
-      if (!responseEngine.llm_id) delete responseEngine.llm_id;
 
       const res = await fetch(`${RETELL_BASE}/create-agent`, {
         method: "POST",
