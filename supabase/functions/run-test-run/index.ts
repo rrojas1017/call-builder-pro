@@ -121,13 +121,18 @@ serve(async (req) => {
       const retellAgentId = spec?.retell_agent_id;
       if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
 
-      // Pre-flight: auto-fix transfer agents so they can make outbound calls
+      // Pre-flight: fetch agent to get llm_id and fix transfer agent flag
+      let agentLlmId: string | null = null;
       try {
         const agentCheckRes = await fetch(`https://api.retellai.com/get-agent/${retellAgentId}`, {
           method: "GET",
           headers: { Authorization: `Bearer ${retellApiKey}` },
         });
         const agentCheckData = await agentCheckRes.json();
+
+        // Extract llm_id for prompt injection
+        agentLlmId = agentCheckData.response_engine?.llm_id || null;
+
         if (agentCheckRes.ok && agentCheckData.is_transfer_agent) {
           // Patch agent-level transfer flag
           const agentPatchRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
@@ -141,16 +146,15 @@ serve(async (req) => {
             console.error("Failed to patch agent is_transfer_agent:", await agentPatchRes.text());
           }
 
-          // Also patch LLM if it exists
-          const llmId = agentCheckData.response_engine?.llm_id;
-          if (llmId) {
-            const llmPatchRes = await fetch(`https://api.retellai.com/update-retell-llm/${llmId}`, {
+          // Also patch LLM transfer flag
+          if (agentLlmId) {
+            const llmPatchRes = await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
               body: JSON.stringify({ is_transfer_llm: false }),
             });
             if (llmPatchRes.ok) {
-              console.log(`Auto-switched LLM ${llmId} is_transfer_llm to false`);
+              console.log(`Auto-switched LLM ${agentLlmId} is_transfer_llm to false`);
             } else {
               console.error("Failed to patch LLM is_transfer_llm:", await llmPatchRes.text());
             }
@@ -162,11 +166,45 @@ serve(async (req) => {
         console.error("Transfer agent pre-flight check failed:", preflight.message);
       }
 
+      // Build the task prompt (same logic as Bland branch)
+      const retellTaskPrompt = testRun.agent_instructions_text
+        ? testRun.agent_instructions_text
+        : (spec ? buildTaskPrompt(spec, [], knowledgeBriefing, "") : "Conduct a professional outbound call.");
+      const trimmedRetellPrompt = retellTaskPrompt.length > 28000
+        ? retellTaskPrompt.substring(0, 28000) + "\n\n[Trimmed for length]"
+        : retellTaskPrompt;
+
+      // Inject prompt into the Retell LLM so the agent follows instructions
+      if (agentLlmId) {
+        try {
+          const llmPromptRes = await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
+            body: JSON.stringify({ general_prompt: trimmedRetellPrompt }),
+          });
+          if (llmPromptRes.ok) {
+            console.log(`Injected task prompt into LLM ${agentLlmId} (${trimmedRetellPrompt.length} chars)`);
+          } else {
+            console.error("Failed to update LLM prompt:", await llmPromptRes.text());
+          }
+        } catch (promptErr: any) {
+          console.error("LLM prompt injection failed:", promptErr.message);
+        }
+      } else {
+        console.warn("No llm_id found on Retell agent – cannot inject task prompt");
+      }
+
       for (const contact of queuedContacts) {
         try {
+          const firstName = contact.name?.trim().split(/\s+/)[0] || "";
           const retellPayload: any = {
             override_agent_id: retellAgentId,
             to_number: contact.phone,
+            retell_llm_dynamic_variables: {
+              first_name: firstName,
+              agent_name: spec?.persona_name || "",
+              contact_name: contact.name?.trim() || "",
+            },
             metadata: {
               test_run_id, test_run_contact_id: contact.id,
               org_id: testRun.org_id, project_id: testRun.project_id,
