@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useBlandVoices } from "@/hooks/useBlandVoices";
 import { VoiceSelector } from "@/components/VoiceSelector";
+import { useOutboundNumbers } from "@/hooks/useOutboundNumbers";
 
 // ─── Translation map ────────────────────────────────────────────────────────
 const LANGUAGES = [
@@ -283,6 +284,7 @@ interface WizardQuestion {
 
 export default function CreateAgentPage() {
   const { voices: blandVoices, loading: voicesLoading } = useBlandVoices();
+  const { numbers: trustedNumbers } = useOutboundNumbers();
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -682,10 +684,21 @@ export default function CreateAgentPage() {
               </button>
             </div>
             {voiceProvider === "retell" && (
-              <div className="space-y-2">
-                <Label>Append Agent ID</Label>
-                <Input value={retellAgentId} onChange={(e) => setRetellAgentId(e.target.value)} placeholder="e.g. agent_abc123" />
-                <p className="text-xs text-muted-foreground">The agent ID from your Append dashboard.</p>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Append Agent ID</Label>
+                  <Input value={retellAgentId} onChange={(e) => setRetellAgentId(e.target.value)} placeholder="e.g. agent_abc123" />
+                  <p className="text-xs text-muted-foreground">The agent ID from your Append dashboard.</p>
+                </div>
+                {trustedNumbers.length === 0 && (
+                  <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
+                    <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">⚠ Outbound number required</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Append (Retell) requires a verified outbound phone number. Add one in{" "}
+                      <span className="font-medium text-foreground">Settings → Phone Numbers</span> before testing.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
