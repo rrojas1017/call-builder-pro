@@ -1,43 +1,48 @@
 
-
-# Fix Transfer Agent Issue -- Patch the Agent, Not Just the LLM
+# Fix: Retell Agent Not Following System Instructions
 
 ## Problem
-Two issues discovered:
-
-1. **Transfer agent still broken**: All previous fix attempts patched the LLM (`is_transfer_llm: false`) but Retell has a **separate** `is_transfer_agent` flag on the agent object itself. This agent-level flag is what blocks outbound calls, and it remains `true`.
-
-2. **Agent not visible in Retell UI**: The agent has `is_published: false`. This may cause it to be hidden in some Retell dashboard views.
+The Retell branch in the `run-test-run` edge function only sends `override_agent_id`, `to_number`, and `from_number` when creating a call. Unlike Bland (where the full prompt is passed per-call via the `task` field), **Retell stores its prompt on the LLM** attached to the agent. Currently, the agent's LLM has no custom prompt set -- it uses Retell's bare default, which is why the call ignored your script entirely.
 
 ## Solution
+Before initiating Retell calls, update the agent's LLM with the full task prompt built from `buildTaskPrompt`. Also pass per-contact dynamic variables (like the caller's name) via `retell_llm_dynamic_variables` on each call.
 
-### 1. Fix `manage-retell-agent` -- `switch_to_outbound` action
-Update the existing `switch_to_outbound` action to ALSO patch the agent with `is_transfer_agent: false` (not just the LLM). This is a one-line addition to the existing PATCH call in the function.
+## Changes
 
-### 2. Fix `run-test-run` -- pre-flight auto-switch
-Update the pre-flight check to patch the **agent** directly with `PATCH /update-agent/{agent_id}` setting `{ is_transfer_agent: false }`, instead of (or in addition to) patching the LLM.
+### 1. Update `run-test-run` edge function (Retell branch)
+
+**Before the per-contact loop**, after loading the spec and building the knowledge briefing:
+- Fetch the Retell agent to get its `llm_id`
+- Build the task prompt using `buildTaskPrompt()` (same as the Bland branch)
+- `PATCH /update-retell-llm/{llm_id}` with `{ general_prompt: taskPrompt }` to inject the system instructions into the agent's LLM
+
+**Inside the per-contact loop**, for each call:
+- Add `retell_llm_dynamic_variables` to the call payload with per-contact data (e.g., `first_name`, `agent_name`) so template variables resolve correctly
+- If `agent_instructions_text` is set on the test run (custom override), use that as the prompt instead of the generated one
+
+### 2. Update `manage-retell-agent` -- set prompt on create
+
+When creating a new Retell agent, if an LLM is auto-created, optionally set an initial `general_prompt` so it's not blank. This is a minor improvement since `run-test-run` will update it before calls anyway.
 
 ### 3. No UI changes needed
 
 ## Technical Details
 
-### manage-retell-agent changes
-In the `switch_to_outbound` action, after patching the LLM, also patch the agent:
 ```text
-PATCH /update-agent/{agent_id}  with { is_transfer_agent: false }
+Flow (Retell branch in run-test-run):
+
+1. Load spec, knowledge, build taskPrompt via buildTaskPrompt()
+2. GET /get-agent/{retellAgentId} -> extract llm_id
+3. PATCH /update-retell-llm/{llm_id} with { general_prompt: taskPrompt }
+4. For each contact:
+   a. Build retellPayload (existing logic)
+   b. Add retell_llm_dynamic_variables: { first_name, agent_name }
+   c. POST /v2/create-phone-call (existing retry logic)
 ```
 
-### run-test-run pre-flight changes
-Replace the current LLM patch with an agent-level patch:
-```text
-if (agentCheckData.is_transfer_agent === true) {
-  PATCH /update-agent/{agent_id} with { is_transfer_agent: false }
-  // Also patch LLM if llm_id exists (keep existing logic)
-  wait 2 seconds for propagation
-}
-```
+The prompt update happens once per test run (not per contact), keeping API calls minimal. Per-contact personalization uses dynamic variables.
+
+If the test run has `agent_instructions_text` (custom instructions override), that text is used as the `general_prompt` instead of the auto-built prompt.
 
 ## Files Changed
-- **Modified**: `supabase/functions/manage-retell-agent/index.ts` -- add agent-level patch in `switch_to_outbound`
-- **Modified**: `supabase/functions/run-test-run/index.ts` -- add agent-level patch in pre-flight check
-
+- **Modified**: `supabase/functions/run-test-run/index.ts` -- add LLM prompt injection before Retell calls, add `retell_llm_dynamic_variables` per contact
