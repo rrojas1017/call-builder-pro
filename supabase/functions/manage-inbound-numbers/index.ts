@@ -33,7 +33,7 @@ serve(async (req) => {
 
       const { data: spec, error: specErr } = await supabase
         .from("agent_specs").select("retell_agent_id").eq("project_id", project_id).single();
-      if (specErr || !spec?.retell_agent_id) throw new Error("Agent has no Retell ID configured");
+      if (specErr || !spec?.retell_agent_id) throw new Error("This agent hasn't been deployed yet. Please open the agent and click 'Create Append Agent' first.");
 
       const retellResp = await fetch(`${RETELL_BASE}/update-phone-number/${encodeURIComponent(num.phone_number)}`, {
         method: "PATCH",
