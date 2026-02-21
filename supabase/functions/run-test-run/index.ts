@@ -138,6 +138,7 @@ serve(async (req) => {
             });
             if (patchRes.ok) {
               console.log(`Auto-switched agent ${retellAgentId} from transfer to outbound`);
+              await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for Retell propagation
             } else {
               console.error("Failed to auto-switch transfer agent:", await patchRes.text());
             }
