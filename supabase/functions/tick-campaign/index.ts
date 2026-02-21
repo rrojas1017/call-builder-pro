@@ -164,57 +164,62 @@ serve(async (req) => {
       if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
       const retellWebhookUrl = `${supabaseUrl}/functions/v1/receive-retell-webhook`;
 
-      const callIds: string[] = [];
-      for (const contact of contacts) {
-        try {
-          const retellPayload: any = {
-            agent_id: retellAgentId,
-            phone_number: contact.phone,
-            metadata: {
-              org_id: campaign.agent_projects.org_id,
-              project_id: campaign.project_id,
-              campaign_id, contact_id: contact.id,
-              version: spec.version,
-            },
-            webhook_url: retellWebhookUrl,
-          };
-          if (spec.from_number) {
-            retellPayload.from_number = spec.from_number;
-          } else if (trustedNumbers && trustedNumbers.length > 0) {
-            const picked = trustedNumbers[trustedNumberIndex % trustedNumbers.length];
-            retellPayload.from_number = picked.phone_number;
-            trustedNumberIndex++;
-            await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
-          }
-
-          const retellResp = await fetch("https://api.retellai.com/v2/create-phone-call", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${RETELL_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify(retellPayload),
-          });
-          const retellData = await retellResp.json();
-          console.log("Retell API response:", retellResp.status, JSON.stringify(retellData));
-
-          if (retellData.call_id) {
-            callIds.push(retellData.call_id);
-            await supabase.from("contacts").update({
-              status: "calling", called_at: new Date().toISOString(),
-            }).eq("id", contact.id);
-          } else {
-            await supabase.from("contacts").update({
-              status: "failed", last_error: retellData.message || JSON.stringify(retellData),
-            }).eq("id", contact.id);
-          }
-        } catch (callErr: any) {
-          console.error("Retell call error:", callErr);
-          await supabase.from("contacts").update({
-            status: "failed", last_error: callErr.message,
-          }).eq("id", contact.id);
-        }
+      // Determine from_number for batch call
+      let fromNumber = spec.from_number || null;
+      if (!fromNumber && trustedNumbers && trustedNumbers.length > 0) {
+        const picked = trustedNumbers[trustedNumberIndex % trustedNumbers.length];
+        fromNumber = picked.phone_number;
+        trustedNumberIndex++;
+        await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
       }
 
+      // Build tasks array for Retell batch API
+      const tasks = contacts.map((contact: any) => ({
+        to_number: contact.phone,
+        retell_llm_dynamic_variables: {
+          contact_name: contact.name || "",
+          ...(contact.extra_data && typeof contact.extra_data === "object" ? contact.extra_data : {}),
+        },
+        metadata: {
+          org_id: campaign.agent_projects.org_id,
+          project_id: campaign.project_id,
+          campaign_id,
+          contact_id: contact.id,
+          version: spec.version,
+        },
+      }));
+
+      const batchPayload: any = {
+        from_number: fromNumber,
+        tasks,
+        agent_id: retellAgentId,
+      };
+
+      const retellResp = await fetch("https://api.retellai.com/create-batch-call", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${RETELL_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify(batchPayload),
+      });
+      const retellData = await retellResp.json();
+      console.log("Retell Batch API response:", retellResp.status, JSON.stringify(retellData));
+
+      if (!retellResp.ok) {
+        throw new Error(`Retell Batch API error [${retellResp.status}]: ${JSON.stringify(retellData)}`);
+      }
+
+      const batchId = retellData.batch_call_id || retellData.id;
+      if (batchId) {
+        await supabase.from("campaigns").update({ retell_batch_id: batchId }).eq("id", campaign_id);
+      }
+
+      // Mark all contacts as calling
+      const contactIds = contacts.map((c: any) => c.id);
+      await supabase.from("contacts").update({
+        status: "calling", called_at: new Date().toISOString(),
+      }).in("id", contactIds);
+
       return new Response(JSON.stringify({
-        provider: "retell", calls_initiated: callIds.length, contacts_dispatched: contacts.length,
+        provider: "retell", batch_id: batchId, contacts_dispatched: contacts.length,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     } else {
       // ===== BLAND AI BRANCH =====

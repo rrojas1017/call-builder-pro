@@ -66,6 +66,68 @@ serve(async (req) => {
       });
     }
 
+    if (action === "retell_transcript") {
+      const RETELL_API_KEY = Deno.env.get("RETELL_API_KEY");
+      if (!RETELL_API_KEY) {
+        return new Response(JSON.stringify({ error: "RETELL_API_KEY not configured", transcripts: [] }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const res = await fetch(`https://api.retellai.com/v2/get-call/${call_id}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${RETELL_API_KEY}` },
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Retell get-call error:", res.status, text);
+        return new Response(JSON.stringify({ error: `Retell API error: ${res.status}`, transcripts: [] }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const data = await res.json();
+      const transcripts: any[] = [];
+
+      // Retell returns transcript as a string "Agent: hi\nUser: hello" or as an array
+      if (typeof data.transcript === "string" && data.transcript.trim()) {
+        const segments = data.transcript.split("\n").filter((s: string) => s.trim());
+        for (let i = 0; i < segments.length; i++) {
+          const seg = segments[i];
+          const colonIdx = seg.indexOf(":");
+          if (colonIdx === -1) continue;
+          const speaker = seg.slice(0, colonIdx).trim().toLowerCase();
+          const text = seg.slice(colonIdx + 1).trim();
+          if (!text) continue;
+          transcripts.push({
+            id: `retell-${i}`,
+            text,
+            role: speaker === "agent" || speaker === "assistant" ? "agent" : "caller",
+          });
+        }
+      } else if (Array.isArray(data.transcript_object)) {
+        for (let i = 0; i < data.transcript_object.length; i++) {
+          const t = data.transcript_object[i];
+          transcripts.push({
+            id: `retell-${i}`,
+            text: t.content || t.text || "",
+            role: t.role === "agent" ? "agent" : "caller",
+          });
+        }
+      }
+
+      return new Response(JSON.stringify({
+        transcripts,
+        status: data.call_status || data.status || null,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (action === "listen") {
       // Get WebSocket URL for live audio
       const res = await fetch(`https://api.bland.ai/v1/calls/${call_id}/listen`, {

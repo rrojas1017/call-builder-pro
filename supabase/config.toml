@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.send-whatsapp-message]
 verify_jwt = false
+
+[functions.list-retell-voices]
+verify_jwt = false
