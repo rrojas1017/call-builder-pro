@@ -205,7 +205,7 @@ export default function InboundNumbersPage() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Purchase Inbound Number</DialogTitle>
-                <DialogDescription>Choose a provider and area code to purchase a new phone number.</DialogDescription>
+                <DialogDescription>Select an area code to purchase a new phone number.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <Select value={areaCode} onValueChange={setAreaCode}>
