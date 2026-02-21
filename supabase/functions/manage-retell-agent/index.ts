@@ -45,7 +45,7 @@ serve(async (req) => {
       // Step 2: Create the agent with the llm_id
       const body: Record<string, unknown> = {
         agent_name: config?.agent_name || "Appendify Agent",
-        voice_id: config?.voice_id || undefined,
+        voice_id: config?.voice_id || "11labs-Adrian",
         language: config?.language || "en-US",
         webhook_url: webhookUrl,
         response_engine: { type: "retell-llm", llm_id: llmId },
@@ -54,9 +54,6 @@ serve(async (req) => {
           { description: "Brief summary of the call", name: "call_summary", type: "string" },
         ],
       };
-
-      // Remove undefined values
-      if (!body.voice_id) delete body.voice_id;
 
       const res = await fetch(`${RETELL_BASE}/create-agent`, {
         method: "POST",
