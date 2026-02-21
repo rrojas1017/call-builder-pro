@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useBlandVoices } from "@/hooks/useBlandVoices";
+import { useRetellVoices } from "@/hooks/useRetellVoices";
 import { useOutboundNumbers } from "@/hooks/useOutboundNumbers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,8 @@ export default function EditAgentPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { voices, loading: voicesLoading } = useBlandVoices();
+  const { voices: blandVoices, loading: blandVoicesLoading } = useBlandVoices();
+  const { voices: retellVoices, loading: retellVoicesLoading } = useRetellVoices();
   const { numbers: trustedNumbers } = useOutboundNumbers();
 
   const [loading, setLoading] = useState(true);
@@ -36,6 +38,9 @@ export default function EditAgentPage() {
   const [retellAgentId, setRetellAgentId] = useState("");
   const [fromNumber, setFromNumber] = useState("auto");
   const [voicemailMessage, setVoicemailMessage] = useState("");
+
+  const voices = voiceProvider === "retell" ? retellVoices : blandVoices;
+  const voicesLoading = voiceProvider === "retell" ? retellVoicesLoading : blandVoicesLoading;
 
   useEffect(() => {
     if (!id) return;
@@ -207,20 +212,18 @@ export default function EditAgentPage() {
         </Select>
       </div>
 
-      {voiceProvider === "bland" && (
-        <div className="surface-elevated rounded-xl p-6 space-y-4">
-          <h3 className="font-semibold text-foreground flex items-center gap-2">
-            <Mic className="h-4 w-4 text-primary" /> Voice
-          </h3>
-          <VoiceSelector
-            voices={voices}
-            loading={voicesLoading}
-            selectedVoice={selectedVoice}
-            onSelect={setSelectedVoice}
-            sampleText={openingLine || undefined}
-          />
-        </div>
-      )}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <Mic className="h-4 w-4 text-primary" /> Voice
+        </h3>
+        <VoiceSelector
+          voices={voices}
+          loading={voicesLoading}
+          selectedVoice={selectedVoice}
+          onSelect={setSelectedVoice}
+          sampleText={openingLine || undefined}
+        />
+      </div>
 
       {/* Transfer */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">

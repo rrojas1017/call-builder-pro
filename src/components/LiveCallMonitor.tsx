@@ -64,51 +64,34 @@ export default function LiveCallMonitor({ blandCallId, retellCallId, contactId, 
     return () => clearInterval(interval);
   }, [isActive, isBland, blandCallId]);
 
-  // Poll transcript for Retell calls from database
+  // Poll transcript for Retell calls via edge function
   useEffect(() => {
-    if (!isActive || !isRetell || !contactId) return;
+    if (!isActive || !isRetell || !retellCallId) return;
 
     const fetchTranscript = async () => {
       try {
-        const { data } = await supabase
-          .from("test_run_contacts")
-          .select("transcript")
-          .eq("id", contactId)
-          .single();
+        const { data, error } = await supabase.functions.invoke("live-call-stream", {
+          body: { call_id: retellCallId, action: "retell_transcript" },
+        });
+        if (error || !data?.transcripts) return;
 
-        if (!data?.transcript) return;
-
-        // Parse concatenated transcript format: "role: text\nrole: text"
-        const parsed: TranscriptLine[] = [];
-        const segments = data.transcript.split("\n").filter((s: string) => s.trim());
-        for (let i = 0; i < segments.length; i++) {
-          const seg = segments[i];
-          const colonIdx = seg.indexOf(":");
-          if (colonIdx === -1) continue;
-
-          const speaker = seg.slice(0, colonIdx).trim().toLowerCase();
-          const text = seg.slice(colonIdx + 1).trim();
-          if (!text) continue;
-
-          parsed.push({
-            id: `retell-${i}`,
-            role: speaker === "agent" || speaker === "assistant" ? "agent" : "caller",
-            text,
-          });
-        }
-
-        if (parsed.length > 0) {
-          setLines(parsed);
-        }
+        const allLines: TranscriptLine[] = data.transcripts
+          .filter((t: any) => t.text?.trim())
+          .map((t: any) => ({
+            id: String(t.id),
+            role: t.role as "agent" | "caller",
+            text: t.text,
+          }));
+        setLines(allLines);
       } catch {
-        // silently retry
+        // silently retry on next poll
       }
     };
 
     fetchTranscript();
-    const interval = setInterval(fetchTranscript, 3000);
+    const interval = setInterval(fetchTranscript, 1500);
     return () => clearInterval(interval);
-  }, [isActive, isRetell, contactId]);
+  }, [isActive, isRetell, retellCallId]);
 
   // Auto-scroll
   useEffect(() => {
@@ -280,7 +263,7 @@ export default function LiveCallMonitor({ blandCallId, retellCallId, contactId, 
 
       {isRetell && (
         <p className="text-xs text-muted-foreground text-center">
-          Live audio not available for this provider. Transcript updates from database.
+          Live audio not available for this provider. Transcript updates in real-time.
         </p>
       )}
     </div>

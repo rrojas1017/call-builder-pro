@@ -9,6 +9,7 @@ export interface BlandVoice {
   language?: string;
   gender?: string;
   accent?: string;
+  preview_url?: string;
 }
 
 const ACCENT_KEYWORDS: Record<string, string> = {

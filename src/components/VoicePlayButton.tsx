@@ -5,11 +5,12 @@ import { useToast } from "@/hooks/use-toast";
 interface VoicePlayButtonProps {
   voiceId: string;
   sampleText?: string;
+  previewUrl?: string;
 }
 
 let activeAudio: HTMLAudioElement | null = null;
 
-export function VoicePlayButton({ voiceId, sampleText }: VoicePlayButtonProps) {
+export function VoicePlayButton({ voiceId, sampleText, previewUrl }: VoicePlayButtonProps) {
   const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
@@ -42,39 +43,48 @@ export function VoicePlayButton({ voiceId, sampleText }: VoicePlayButtonProps) {
 
     setState("loading");
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-voice-sample`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ voice_id: voiceId, text: sampleText }),
-        }
-      );
+      let audio: HTMLAudioElement;
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(errText);
+      if (previewUrl) {
+        // Direct URL playback (e.g. Retell voices)
+        audio = new Audio(previewUrl);
+      } else {
+        // Generate via edge function (Bland voices)
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-voice-sample`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            },
+            body: JSON.stringify({ voice_id: voiceId, text: sampleText }),
+          }
+        );
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(errText);
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        audio = new Audio(url);
       }
 
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
       audioRef.current = audio;
       activeAudio = audio;
 
       audio.onended = () => {
-        URL.revokeObjectURL(url);
+        if (audio.src.startsWith("blob:")) URL.revokeObjectURL(audio.src);
         audioRef.current = null;
         activeAudio = null;
         setState("idle");
       };
 
       audio.onerror = () => {
-        URL.revokeObjectURL(url);
+        if (audio.src.startsWith("blob:")) URL.revokeObjectURL(audio.src);
         audioRef.current = null;
         activeAudio = null;
         setState("idle");

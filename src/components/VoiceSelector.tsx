@@ -262,7 +262,7 @@ function VoiceCard({
     >
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-foreground">{voice.name}</p>
-        <VoicePlayButton voiceId={voice.voice_id} sampleText={sampleText} />
+        <VoicePlayButton voiceId={voice.voice_id} sampleText={sampleText} previewUrl={voice.preview_url} />
       </div>
       {voice.description && <p className="text-xs text-muted-foreground mt-1">{voice.description}</p>}
       <div className="flex gap-1.5 mt-1.5 flex-wrap">
