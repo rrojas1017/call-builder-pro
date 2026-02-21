@@ -1,70 +1,42 @@
 
-# Fix: Route Inbound Number Assignment by Provider (Retell vs Bland)
+
+# Fix: Better Error Handling for Retell Number Purchase
 
 ## Problem
-When assigning an agent to inbound number `+17866997885`, the `manage-inbound-numbers` function always calls Bland's API. This number was purchased through Retell ($2/mo, labeled "Retell 786"), so Bland rejects it with "No inbound number found."
+When purchasing a Retell (Append) inbound number fails (e.g., area code 312 has no available numbers), the error toast shows a generic "Edge Function returned a non-2xx status code" instead of the actual message "No phone numbers of this area code."
+
+This happens because `supabase.functions.invoke` wraps non-2xx responses in a `FunctionsHttpError` whose `.message` is generic. The actual error details are in the response body, which must be extracted separately.
 
 ## Solution
-Detect whether an inbound number is a Retell number (by `monthly_cost_usd = 2` or label prefix) and route the assign/unassign actions to the correct provider API.
-
-## Detection Strategy
-Retell-purchased numbers have `monthly_cost_usd = 2` (vs $15 for Bland). This is the most reliable discriminator since it's set at purchase time. We'll add a simple check in the assign and unassign actions.
+Update the `handlePurchase` function in `InboundNumbersPage.tsx` to extract the actual error message from the edge function response body, similar to the existing `extractEdgeFunctionError` pattern used elsewhere in the project.
 
 ## Changes
 
-**File:** `supabase/functions/manage-inbound-numbers/index.ts`
+**File:** `src/pages/InboundNumbersPage.tsx`
 
-### Assign Action
-After fetching the number from DB, check if it's a Retell number. If so:
-1. Look up the agent spec's `retell_agent_id`
-2. Call Retell's `PATCH /update-phone-number/{phone_number}` with `inbound_agent_id` set to the Retell agent ID
-3. Skip the Bland configuration entirely
+### In the `handlePurchase` function (Retell branch):
+After calling `supabase.functions.invoke`, check if `data` contains an `error` field (which happens when the edge function returns 400 with `{ error: "..." }`). Also handle the `FunctionsHttpError` case by reading its response body.
 
-If it's a Bland number, keep the existing Bland flow unchanged.
+```text
+// For Retell purchase:
+const { data, error } = await supabase.functions.invoke("manage-retell-numbers", { ... });
+if (error) {
+  // Try to extract the body from FunctionsHttpError
+  const body = await error?.context?.json?.().catch(() => null);
+  throw new Error(body?.error || error.message);
+}
+if (data?.error) throw new Error(data.error);
+```
 
-### Unassign Action
-Same detection: if Retell number, call Retell's `PATCH /update-phone-number/{phone_number}` to clear the `inbound_agent_id`. If Bland, keep existing flow.
+Apply the same pattern to the Bland purchase branch and the assign/unassign/release handlers for consistency.
 
 ### Technical Detail
+The Supabase JS client's `functions.invoke()` returns `{ data, error }` where:
+- On 2xx: `data` has the parsed JSON, `error` is null
+- On non-2xx: `error` is a `FunctionsHttpError` with a generic message, but the response body with the real error is accessible via `error.context` (a `Response` object)
 
-```text
-// In "assign" action, after fetching num from DB:
-const isRetell = num.monthly_cost_usd === 2;
-
-if (isRetell) {
-  // Get retell_agent_id from the agent spec
-  const spec = await supabase.from("agent_specs").select("retell_agent_id")
-    .eq("project_id", project_id).single();
-  if (!spec.data?.retell_agent_id) throw new Error("Agent has no Retell ID");
-
-  // Assign via Retell API
-  await fetch(RETELL_BASE + "/update-phone-number/" + encodeURIComponent(num.phone_number), {
-    method: "PATCH",
-    headers: { Authorization: "Bearer " + RETELL_API_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ inbound_agent_id: spec.data.retell_agent_id }),
-  });
-  // Update DB
-  await supabase.from("inbound_numbers").update({ project_id }).eq("id", number_id);
-} else {
-  // Existing Bland flow (unchanged)
-}
-```
-
-### Unassign for Retell
-```text
-if (isRetell) {
-  await fetch(RETELL_BASE + "/update-phone-number/" + encodeURIComponent(num.phone_number), {
-    method: "PATCH",
-    headers: { Authorization: "Bearer " + RETELL_API_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ inbound_agent_id: null }),
-  });
-  await supabase.from("inbound_numbers").update({ project_id: null }).eq("id", number_id);
-}
-```
+We need to read `error.context.json()` to get the actual error message from our edge function.
 
 ## Files Modified
-- `supabase/functions/manage-inbound-numbers/index.ts` -- add Retell API routing in assign and unassign actions
+- `src/pages/InboundNumbersPage.tsx` -- improve error extraction in purchase, assign, unassign, and release handlers
 
-## No Other Changes Needed
-- The frontend (`InboundNumbersPage.tsx`) already calls `manage-inbound-numbers` for assign/unassign -- no changes needed there
-- The `manage-retell-numbers` function stays as-is (used only for purchase/release)
