@@ -177,13 +177,26 @@ serve(async (req) => {
             continue;
           }
 
-          const retellResp = await fetch("https://api.retellai.com/v2/create-phone-call", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${retellApiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify(retellPayload),
-          });
-          const retellData = await retellResp.json();
-          console.log("Retell API response:", retellResp.status, JSON.stringify(retellData));
+          // Retry loop for transfer agent propagation delay
+          let retellData: any = {};
+          const maxRetries = 3;
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            const retellResp = await fetch("https://api.retellai.com/v2/create-phone-call", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${retellApiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify(retellPayload),
+            });
+            retellData = await retellResp.json();
+            console.log(`Retell API response (attempt ${attempt}):`, retellResp.status, JSON.stringify(retellData));
+
+            const errMsg = retellData.message || retellData.error || "";
+            if (typeof errMsg === "string" && errMsg.includes("Transfer agents cannot be used for outbound calls") && attempt < maxRetries) {
+              console.warn(`Transfer agent not yet propagated, retrying in 3s (attempt ${attempt}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              continue;
+            }
+            break;
+          }
 
           if (retellData.call_id) {
             callIds.push(retellData.call_id);
