@@ -1,125 +1,62 @@
 
-# Remove Bland AI -- Migrate Everything to Retell
 
-## Overview
-Remove all Bland AI references, code paths, and edge functions from the entire codebase. Retell (branded as "Append" in the UI) becomes the sole telephony provider. The voice provider toggle in agent creation/editing is removed since there's only one option now.
+# Fix: Remove Remaining Bland AI References
 
-## Scope Summary
+## Problem
+The previous migration was incomplete -- there are still many Bland references across frontend files and one edge function that need to be cleaned up.
 
-**Edge Functions to DELETE entirely (4 functions):**
-1. `supabase/functions/list-bland-voices/` -- no longer needed
-2. `supabase/functions/generate-voice-sample/` -- uses Bland TTS API, Retell voices have hosted preview URLs instead
-3. `supabase/functions/receive-bland-webhook/` -- replaced by `receive-retell-webhook`
-4. `supabase/functions/live-call-stream/` -- the "transcript" and "listen" actions use Bland API; the "retell_transcript" action can be kept but simplified
+## Changes Required
 
-**Edge Functions to MODIFY (remove Bland branches):**
-5. `supabase/functions/run-test-run/index.ts` -- remove entire Bland branch (lines 267-370), remove `BLAND_API_KEY` requirement, make Retell the only path
-6. `supabase/functions/tick-campaign/index.ts` -- remove entire Bland branch (lines 288-425), remove `BLAND_API_KEY` requirement, remove `webhookUrl` for Bland, make Retell the only path
-7. `supabase/functions/stop-call/index.ts` -- remove Bland branch, keep only Retell stop logic, default provider to "retell"
-8. `supabase/functions/manage-inbound-numbers/index.ts` -- remove Bland purchase, assign, unassign, sync actions; all actions now go through Retell (via `manage-retell-numbers`). Simplify to only handle Retell numbers
-9. `supabase/functions/live-call-stream/index.ts` -- remove Bland "transcript" and "listen" actions, keep only "retell_transcript" (renamed to just "transcript")
+### 1. `src/pages/CreateAgentPage.tsx`
+- **Line 311**: Remove `backgroundTrack` state variable
+- **Line 312**: Change `voiceProvider` default from `"bland"` to `"retell"`, then simplify type to just `string` or remove entirely
+- **Lines 689-714**: Remove the entire "Voice Provider" toggle section (the Voz/Append two-button grid)
+- **Lines 715-752**: The Retell agent manager block currently gated behind `voiceProvider === "retell"` -- make it always visible (remove the condition)
+- **Lines 778-804**: The voice selection section gated behind `voiceProvider === "bland"` -- change to always show (this section now uses `retellVoices` so it's correct)
+- **Lines 806-841**: Remove entire "Background Audio" section (Bland-only feature)
+- **Line 453**: Remove `background_track: backgroundTrack` from spec save
+- **Line 454**: Hardcode `voice_provider: "retell"` instead of using variable
+- **Line 455**: Simplify to always set `retell_agent_id: finalRetellAgentId || null`
+- **Line 424**: Remove the `voiceProvider === "retell"` condition for auto-creating Retell agents -- always create
 
-**Frontend Files to MODIFY:**
-10. `src/pages/CreateAgentPage.tsx` -- remove `useBlandVoices` import, remove voice provider toggle (default to "retell"), remove "Voz" option, remove `backgroundTrack` state (Bland-only feature), always use Retell voices
-11. `src/pages/EditAgentPage.tsx` -- same as above: remove Bland voices, provider toggle, background audio section
-12. `src/pages/InboundNumbersPage.tsx` -- remove provider toggle in purchase dialog (always Retell), remove Bland purchase path, always call `manage-retell-numbers` for purchase
-13. `src/components/LiveCallMonitor.tsx` -- remove Bland polling/listen logic, keep only Retell transcript polling
-14. `src/components/VoiceSelector.tsx` -- update to use Retell voice type instead of `BlandVoice`
-15. `src/components/VoicePlayButton.tsx` -- remove Bland TTS fallback, use only Retell preview URLs
-16. `src/pages/UniversityPage.tsx` -- remove `bland_call_id` references, use `retell_call_id` only
-17. `src/pages/CallsPage.tsx` -- remove `bland_call_id` from interface
-18. `src/pages/CampaignDetailPage.tsx` -- remove `bland_call_id` references
+### 2. `src/pages/EditAgentPage.tsx`
+- **Line 36**: Remove `backgroundTrack` state
+- **Line 37**: Remove `voiceProvider` state (or hardcode to `"retell"`)
+- **Lines 63-64**: Remove loading `background_track` and `voice_provider` from DB into state
+- **Line 97-98**: Hardcode `background_track: null` and `voice_provider: "retell"` in save handler
+- **Line 99**: Simplify `retell_agent_id` to always save (remove condition)
+- **Lines 140-165**: Remove the entire Voice Provider toggle UI
+- **Lines 166+**: Make the Retell agent manager always visible
+- **Lines 288-323**: Remove entire Background Audio section
 
-**Frontend Files to DELETE:**
-19. `src/hooks/useBlandVoices.ts` -- no longer needed
+### 3. `src/pages/InboundNumbersPage.tsx`
+- **Line 60**: Remove `provider` state
+- **Lines 118-132**: Simplify `handlePurchase` to always use `manage-retell-numbers` (remove the `if/else` branches)
+- **Lines 220-241**: Remove the provider toggle grid in the purchase dialog
+- **Line 256**: Simplify cost text to always show "$2.00 billed through Append"
 
-**Config to UPDATE:**
-20. `supabase/config.toml` -- remove entries for deleted functions (`list-bland-voices`, `generate-voice-sample`, `receive-bland-webhook`)
+### 4. `src/pages/UniversityPage.tsx`
+- **Line 34**: Remove `bland_call_id` from interface
+- **Lines 419, 427-428, 449**: Replace `bland_call_id` references with just `retell_call_id`
+- **Line 428**: Remove provider detection logic, always pass `provider: "retell"`
 
-## Important Notes
+### 5. `src/pages/CampaignDetailPage.tsx`
+- **Line 250**: Change default provider param from `"bland"` to `"retell"`
+- **Lines 303-304**: Simplify to use `retell_call_id` only
+- **Lines 546, 552-554**: Replace `bland_call_id` checks with `retell_call_id`
 
-**Database columns are NOT removed** -- columns like `bland_call_id`, `bland_batch_id` on tables `calls`, `contacts`, `campaigns`, `test_run_contacts` will remain in the database to preserve historical data. They simply won't be written to anymore. The `voice_provider` column on `agent_specs` will default to `'retell'` for all new records. No schema migration is needed.
+### 6. `src/pages/CallsPage.tsx`
+- **Line 25**: Remove `bland_call_id` from the `Call` interface
 
-**The `receive-retell-webhook` function already exists** and handles the same flows (test lab, campaign, inbound) that `receive-bland-webhook` handled. No duplication needed.
+### 7. `src/pages/TrainingAuditPage.tsx`
+- **Lines 41, 50, 83**: Rename `bland_config` to `voice_config` in interfaces and UI label (changing "Bland AI Config" to "Voice AI Config")
 
-**The `manage-retell-numbers` function already exists** and handles purchase, list, assign_agent, and release for Retell numbers. The `manage-inbound-numbers` function's purchase action can be removed since purchasing now always goes through `manage-retell-numbers`.
+### 8. `supabase/functions/audit-training-pipeline/index.ts`
+- Rename all `bland_config` references to `voice_config`
+- Update the system prompt text to say "voice AI" instead of "Bland AI"
+- Update category references in the prompt and schema
 
-## Technical Details by File
+## Notes
+- Database columns (`bland_call_id`, etc.) are intentionally kept for historical data
+- The `TrainingAuditPage` and `audit-training-pipeline` changes are cosmetic renames to avoid confusing the user with "Bland" branding
 
-### Edge Functions
-
-**`run-test-run/index.ts`:**
-- Remove line 19-20 (`BLAND_API_KEY` requirement)
-- Remove the `if (voiceProvider === "retell")` condition -- make the Retell branch the only code path
-- Delete lines 267-370 (entire Bland branch)
-- Remove `voiceProvider` variable -- always use Retell
-
-**`tick-campaign/index.ts`:**
-- Remove line 17-18 (`BLAND_API_KEY` requirement)
-- Remove line 156 (`webhookUrl` for Bland)
-- Remove the `if (voiceProvider === "retell")` condition -- make the Retell branch the only code path
-- Delete lines 288-425 (entire Bland branch including batch API call and call ID resolution)
-
-**`stop-call/index.ts`:**
-- Remove the Bland branch (lines 36-53)
-- Default to Retell, remove provider parameter logic
-- Keep only the Retell stop call logic
-
-**`manage-inbound-numbers/index.ts`:**
-- Remove "purchase" action (Bland purchase) -- purchases now go through `manage-retell-numbers`
-- In "assign" action: remove `isRetell` check and Bland flow -- always use Retell assign
-- In "unassign" action: remove Bland flow -- always use Retell unassign
-- Remove "sync" action (Bland-specific)
-- Remove `BLAND_API_KEY` references
-- Keep: assign (Retell only), unassign (Retell only), release, update_label
-
-**`live-call-stream/index.ts`:**
-- Remove `BLAND_API_KEY` requirement
-- Remove "transcript" action (Bland)
-- Remove "listen" action (Bland WebSocket)
-- Rename "retell_transcript" to "transcript"
-- This becomes a Retell-only transcript fetcher
-
-### Frontend
-
-**`CreateAgentPage.tsx`:**
-- Remove `useBlandVoices` import and usage
-- Use `useRetellVoices` instead (already imported indirectly via VoiceSelector)
-- Remove `voiceProvider` state -- hardcode to "retell"
-- Remove voice provider toggle UI (the two-button grid)
-- Remove `backgroundTrack` state and related UI
-- Always pass `voice_provider: "retell"` when saving spec
-
-**`EditAgentPage.tsx`:**
-- Remove `useBlandVoices` import
-- Remove `voiceProvider` state and toggle UI
-- Remove Background Audio section (lines 289-330)
-- Always use Retell voices
-- Always save `voice_provider: "retell"`
-
-**`InboundNumbersPage.tsx`:**
-- Remove `provider` state
-- Remove the two-button provider toggle in purchase dialog
-- Always call `manage-retell-numbers` for purchase
-- Update cost text to always show "$2.00"
-
-**`LiveCallMonitor.tsx`:**
-- Remove `blandCallId` prop
-- Remove `isBland` logic
-- Remove Bland transcript polling effect
-- Remove "listen" (WebSocket) functionality (Bland-only)
-- Keep only Retell transcript polling via DB or edge function
-
-**`VoiceSelector.tsx`:**
-- Rename `BlandVoice` type reference to a generic `Voice` type (or use Retell voice type)
-
-**`VoicePlayButton.tsx`:**
-- Remove the Bland TTS fallback (generate-voice-sample call)
-- Only use `previewUrl` from Retell voices
-
-## Execution Order
-1. Delete Bland-only edge functions and remove from config.toml
-2. Modify remaining edge functions to remove Bland branches
-3. Delete `useBlandVoices.ts` hook
-4. Update frontend pages and components
-5. Deploy modified edge functions
