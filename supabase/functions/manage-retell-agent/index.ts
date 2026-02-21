@@ -21,18 +21,38 @@ serve(async (req) => {
     const { action, agent_id, config } = await req.json();
 
     if (action === "create") {
+      // Step 1: Ensure we have an llm_id. If not provided, create a Retell LLM first.
+      let llmId = config?.llm_id;
+      if (!llmId) {
+        const llmBody: Record<string, unknown> = {};
+        if (config?.general_prompt) {
+          const trimmedPrompt = config.general_prompt.length > 28000
+            ? config.general_prompt.substring(0, 28000) + "\n\n[Trimmed for length]"
+            : config.general_prompt;
+          llmBody.general_prompt = trimmedPrompt;
+        }
+        const llmRes = await fetch(`${RETELL_BASE}/create-retell-llm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify(llmBody),
+        });
+        const llmData = await llmRes.json();
+        if (!llmRes.ok) throw new Error(`Failed to create LLM: ${llmData.error_message || JSON.stringify(llmData)}`);
+        llmId = llmData.llm_id;
+        console.log(`Created Retell LLM: ${llmId}`);
+      }
+
+      // Step 2: Create the agent with the llm_id
       const body: Record<string, unknown> = {
         agent_name: config?.agent_name || "Appendify Agent",
         voice_id: config?.voice_id || undefined,
         language: config?.language || "en-US",
         webhook_url: webhookUrl,
+        response_engine: { type: "retell-llm", llm_id: llmId },
         post_call_analysis_data: [
           { description: "Whether the lead was qualified", name: "qualified", type: "boolean" },
           { description: "Brief summary of the call", name: "call_summary", type: "string" },
         ],
-        response_engine: config?.llm_id
-          ? { type: "retell-llm", llm_id: config.llm_id }
-          : { type: "retell-llm" },
       };
 
       // Remove undefined values
@@ -50,21 +70,21 @@ serve(async (req) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error_message || data.message || JSON.stringify(data));
 
-      // Inject general_prompt into the auto-created LLM if provided
-      const llmId = data.response_engine?.llm_id;
-      if (llmId && config?.general_prompt) {
+      // If llm_id was provided (not auto-created), inject prompt into existing LLM
+      if (config?.llm_id && config?.general_prompt) {
+        const finalLlmId = data.response_engine?.llm_id || config.llm_id;
         const trimmedPrompt = config.general_prompt.length > 28000
           ? config.general_prompt.substring(0, 28000) + "\n\n[Trimmed for length]"
           : config.general_prompt;
         try {
-          const llmRes = await fetch(`${RETELL_BASE}/update-retell-llm/${llmId}`, {
+          const llmRes = await fetch(`${RETELL_BASE}/update-retell-llm/${finalLlmId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
             body: JSON.stringify({ general_prompt: trimmedPrompt }),
           });
           const llmData = await llmRes.json();
           if (!llmRes.ok) console.error("Failed to set LLM prompt:", llmData);
-          else console.log(`Injected prompt into LLM ${llmId} (${trimmedPrompt.length} chars)`);
+          else console.log(`Injected prompt into LLM ${finalLlmId} (${trimmedPrompt.length} chars)`);
         } catch (promptErr) {
           console.error("LLM prompt injection failed:", promptErr);
         }
