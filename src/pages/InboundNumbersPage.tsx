@@ -88,6 +88,11 @@ export default function InboundNumbersPage() {
     if (user && orgId) loadData();
   }, [user, orgId]);
 
+  const extractError = async (error: any): Promise<string> => {
+    const body = await error?.context?.json?.().catch(() => null);
+    return body?.error || error?.message || "Unknown error";
+  };
+
   const handlePurchase = async () => {
     if (!areaCode || !orgId) return;
     setPurchasing(true);
@@ -96,13 +101,15 @@ export default function InboundNumbersPage() {
         const { data, error } = await supabase.functions.invoke("manage-retell-numbers", {
           body: { action: "purchase", area_code: areaCode, org_id: orgId },
         });
-        if (error) throw error;
+        if (error) throw new Error(await extractError(error));
+        if (data?.error) throw new Error(data.error);
         toast({ title: "Number Purchased (Append)", description: `${data.number?.phone_number || "Number"} is now active.` });
       } else {
         const { data, error } = await supabase.functions.invoke("manage-inbound-numbers", {
           body: { action: "purchase", area_code: areaCode, org_id: orgId },
         });
-        if (error) throw error;
+        if (error) throw new Error(await extractError(error));
+        if (data?.error) throw new Error(data.error);
         toast({ title: "Number Purchased", description: `${data.number.phone_number} is now active.` });
       }
       setBuyOpen(false);
@@ -122,8 +129,9 @@ export default function InboundNumbersPage() {
       const payload: any = { action, number_id: numberId };
       if (action === "assign") payload.project_id = projectId;
 
-      const { error } = await supabase.functions.invoke("manage-inbound-numbers", { body: payload });
-      if (error) throw error;
+      const { data, error } = await supabase.functions.invoke("manage-inbound-numbers", { body: payload });
+      if (error) throw new Error(await extractError(error));
+      if (data?.error) throw new Error(data.error);
       toast({ title: action === "assign" ? "Agent Assigned" : "Agent Unassigned" });
       loadData();
     } catch (err: any) {
@@ -135,10 +143,11 @@ export default function InboundNumbersPage() {
 
   const handleRelease = async (numberId: string) => {
     try {
-      const { error } = await supabase.functions.invoke("manage-inbound-numbers", {
+      const { data, error } = await supabase.functions.invoke("manage-inbound-numbers", {
         body: { action: "release", number_id: numberId },
       });
-      if (error) throw error;
+      if (error) throw new Error(await extractError(error));
+      if (data?.error) throw new Error(data.error);
       toast({ title: "Number Released" });
       loadData();
     } catch (err: any) {
@@ -153,7 +162,8 @@ export default function InboundNumbersPage() {
       const { data, error } = await supabase.functions.invoke("manage-inbound-numbers", {
         body: { action: "sync", org_id: orgId },
       });
-      if (error) throw error;
+      if (error) throw new Error(await extractError(error));
+      if (data?.error) throw new Error(data.error);
       toast({ title: "Sync Complete", description: `${data.synced} numbers synced.` });
       loadData();
     } catch (err: any) {
