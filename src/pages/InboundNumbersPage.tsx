@@ -57,7 +57,7 @@ export default function InboundNumbersPage() {
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [callCounts, setCallCounts] = useState<Record<string, number>>({});
   const [orgId, setOrgId] = useState<string | null>(null);
-  const [provider, setProvider] = useState<"bland" | "retell">("bland");
+  
 
   useEffect(() => {
     if (!user) return;
@@ -115,21 +115,12 @@ export default function InboundNumbersPage() {
     if (!areaCode || !orgId) return;
     setPurchasing(true);
     try {
-      if (provider === "retell") {
-        const { data, error } = await supabase.functions.invoke("manage-retell-numbers", {
-          body: { action: "purchase", area_code: areaCode, org_id: orgId },
-        });
-        if (error) throw new Error(await extractError(error));
-        if (data?.error) throw new Error(data.error);
-        toast({ title: "Number Purchased (Append)", description: `${data.number?.phone_number || "Number"} is now active.` });
-      } else {
-        const { data, error } = await supabase.functions.invoke("manage-inbound-numbers", {
-          body: { action: "purchase", area_code: areaCode, org_id: orgId },
-        });
-        if (error) throw new Error(await extractError(error));
-        if (data?.error) throw new Error(data.error);
-        toast({ title: "Number Purchased", description: `${data.number.phone_number} is now active.` });
-      }
+      const { data, error } = await supabase.functions.invoke("manage-retell-numbers", {
+        body: { action: "purchase", area_code: areaCode, org_id: orgId },
+      });
+      if (error) throw new Error(await extractError(error));
+      if (data?.error) throw new Error(data.error);
+      toast({ title: "Number Purchased", description: `${data.number?.phone_number || "Number"} is now active.` });
       setBuyOpen(false);
       setAreaCode("");
       loadData();
@@ -217,29 +208,6 @@ export default function InboundNumbersPage() {
                 <DialogDescription>Choose a provider and area code to purchase a new phone number.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                <div className="grid gap-2 grid-cols-2">
-                  <button
-                    onClick={() => setProvider("bland")}
-                    className={cn(
-                      "rounded-lg border p-3 text-left transition-colors",
-                      provider === "bland" ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
-                    )}
-                  >
-                    <p className="text-sm font-medium text-foreground">Voz</p>
-                    <p className="text-xs text-muted-foreground">$15/mo per number</p>
-                  </button>
-                  <button
-                    onClick={() => setProvider("retell")}
-                    className={cn(
-                      "rounded-lg border p-3 text-left transition-colors",
-                      provider === "retell" ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
-                    )}
-                  >
-                    <p className="text-sm font-medium text-foreground">Append</p>
-                    <p className="text-xs text-muted-foreground">$2/mo per number</p>
-                  </button>
-                </div>
-
                 <Select value={areaCode} onValueChange={setAreaCode}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select an area code..." />
@@ -253,7 +221,7 @@ export default function InboundNumbersPage() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Monthly cost: {provider === "retell" ? "$2.00" : "$15.00"} billed through {provider === "retell" ? "Append (Retell)" : "Bland AI"}
+                  Monthly cost: $2.00 billed through Append
                 </p>
               </div>
               <DialogFooter>
