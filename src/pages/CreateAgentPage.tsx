@@ -308,8 +308,7 @@ export default function CreateAgentPage() {
   const [saving, setSaving] = useState(false);
   const [transferEnabled, setTransferEnabled] = useState(false);
   const [transferPhone, setTransferPhone] = useState("");
-  const [backgroundTrack, setBackgroundTrack] = useState<string | null>("office");
-  const [voiceProvider, setVoiceProvider] = useState<"bland" | "retell">("bland");
+  
   const [retellAgentId, setRetellAgentId] = useState("");
   const [agentMode, setAgentMode] = useState<"outbound" | "inbound" | "hybrid">("outbound");
   const [agentLanguage, setAgentLanguage] = useState<LangCode>("en");
@@ -419,9 +418,9 @@ export default function CreateAgentPage() {
         ? (phoneDigits.startsWith("1") ? `+${phoneDigits}` : `+1${phoneDigits}`)
         : null;
 
-      // Auto-create Retell agent if provider is Append and no agent exists yet
+      // Auto-create Retell agent if no agent exists yet
       let finalRetellAgentId = retellAgentId;
-      if (voiceProvider === "retell" && !retellAgentId) {
+      if (!retellAgentId) {
         try {
           const { data: retellData, error: retellErr } = await supabase.functions.invoke("manage-retell-agent", {
             body: {
@@ -450,9 +449,9 @@ export default function CreateAgentPage() {
         voice_id: voiceId || undefined,
         transfer_required: transferEnabled,
         transfer_phone_number: formattedPhone,
-        background_track: backgroundTrack,
-        voice_provider: voiceProvider,
-        retell_agent_id: voiceProvider === "retell" ? finalRetellAgentId || null : null,
+        background_track: null,
+        voice_provider: "retell",
+        retell_agent_id: finalRetellAgentId || null,
         mode: agentMode,
         language: agentLanguage,
         persona_name: personaName.trim() || null,
@@ -686,52 +685,28 @@ export default function CreateAgentPage() {
             </div>
           </div>
 
-          {/* Voice Provider */}
+          {/* Voice Provider (Retell/Append) */}
           <div className="surface-elevated rounded-xl p-6 space-y-4">
             <h3 className="font-semibold text-foreground">Voice Provider</h3>
-            <p className="text-xs text-muted-foreground">Choose which AI voice provider powers this agent's calls.</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <button
-                onClick={() => setVoiceProvider("bland")}
-                className={cn(
-                  "rounded-lg border p-3 text-left transition-colors",
-                  voiceProvider === "bland" ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
-                )}
-              >
-                <p className="text-sm font-medium text-foreground">Voz</p>
-                <p className="text-xs text-muted-foreground">Primary provider with voice selection & background audio</p>
-              </button>
-              <button
-                onClick={() => setVoiceProvider("retell")}
-                className={cn(
-                  "rounded-lg border p-3 text-left transition-colors",
-                  voiceProvider === "retell" ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
-                )}
-              >
-                <p className="text-sm font-medium text-foreground">Append</p>
-                <p className="text-xs text-muted-foreground">Alternative provider — configure voice in the Append dashboard</p>
-              </button>
+            <p className="text-xs text-muted-foreground">Your agent is powered by Append.</p>
+            <div className="space-y-3">
+              <RetellAgentManager
+                retellAgentId={retellAgentId}
+                onAgentIdChange={setRetellAgentId}
+                personaName={personaName}
+                voiceId={selectedVoice !== "maya" ? selectedVoice : undefined}
+                language={agentLanguage}
+              />
+              {trustedNumbers.length === 0 && (
+                <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
+                  <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">⚠ Outbound number required</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Append (Retell) requires a verified outbound phone number. Add one in{" "}
+                    <span className="font-medium text-foreground">Settings → Phone Numbers</span> before testing.
+                  </p>
+                </div>
+              )}
             </div>
-            {voiceProvider === "retell" && (
-              <div className="space-y-3">
-                <RetellAgentManager
-                  retellAgentId={retellAgentId}
-                  onAgentIdChange={setRetellAgentId}
-                  personaName={personaName}
-                  voiceId={selectedVoice !== "maya" ? selectedVoice : undefined}
-                  language={agentLanguage}
-                />
-                {trustedNumbers.length === 0 && (
-                  <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
-                    <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">⚠ Outbound number required</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Append (Retell) requires a verified outbound phone number. Add one in{" "}
-                      <span className="font-medium text-foreground">Settings → Phone Numbers</span> before testing.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Call Ending / Transfer */}
@@ -775,70 +750,31 @@ export default function CreateAgentPage() {
             )}
           </div>
 
-          {/* Voice Selection (Voz only) */}
-          {voiceProvider === "bland" && (
-            <div className="surface-elevated rounded-xl p-6 space-y-4">
-              <h3 className="font-semibold text-foreground flex items-center gap-2">
-                <Mic className="h-4 w-4 text-primary" /> Voice Selection
-              </h3>
-              <p className="text-xs text-muted-foreground">Choose a voice for your agent.</p>
-              <VoiceSelector
-                voices={retellVoices}
-                loading={voicesLoading}
-                selectedVoice={selectedVoice}
-                onSelect={setSelectedVoice}
-                sampleText={spec?.opening_line || t.voicePreviewText}
-                defaultLanguageFilter={agentLanguage !== "en" ? agentLanguage : undefined}
-              />
-              {selectedVoice === "custom" && (
-                <div className="space-y-2">
-                  <Label>Custom Voice Clone ID</Label>
-                  <Input
-                    value={customVoiceId}
-                    onChange={(e) => setCustomVoiceId(e.target.value)}
-                    placeholder="e.g. abc123-voice-clone-id"
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Background Audio (Bland only) */}
-          {voiceProvider === "bland" && (
-            <div className="surface-elevated rounded-xl p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-foreground flex items-center gap-2">
-                  <Volume2 className="h-4 w-4 text-primary" /> Background Audio
-                </h3>
-                <Switch
-                  checked={!!backgroundTrack}
-                  onCheckedChange={(checked) => setBackgroundTrack(checked ? "office" : null)}
+          {/* Voice Selection */}
+          <div className="surface-elevated rounded-xl p-6 space-y-4">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <Mic className="h-4 w-4 text-primary" /> Voice Selection
+            </h3>
+            <p className="text-xs text-muted-foreground">Choose a voice for your agent.</p>
+            <VoiceSelector
+              voices={retellVoices}
+              loading={voicesLoading}
+              selectedVoice={selectedVoice}
+              onSelect={setSelectedVoice}
+              sampleText={spec?.opening_line || t.voicePreviewText}
+              defaultLanguageFilter={agentLanguage !== "en" ? agentLanguage : undefined}
+            />
+            {selectedVoice === "custom" && (
+              <div className="space-y-2">
+                <Label>Custom Voice Clone ID</Label>
+                <Input
+                  value={customVoiceId}
+                  onChange={(e) => setCustomVoiceId(e.target.value)}
+                  placeholder="e.g. abc123-voice-clone-id"
                 />
               </div>
-              <p className="text-xs text-muted-foreground">Add ambient background noise to make your agent sound like it's calling from a real environment.</p>
-              {backgroundTrack && (
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {([
-                    { value: "office", label: "Office", desc: "Keyboard clicks, phone rings, ambient chatter" },
-                    { value: "cafe", label: "Cafe", desc: "Coffee shop ambiance, background murmur" },
-                    { value: "restaurant", label: "Restaurant", desc: "Dining sounds, background conversation" },
-                  ] as const).map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setBackgroundTrack(opt.value)}
-                      className={cn(
-                        "rounded-lg border p-3 text-left transition-colors",
-                        backgroundTrack === opt.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
-                      )}
-                    >
-                      <p className="text-sm font-medium text-foreground">{opt.label}</p>
-                      <p className="text-xs text-muted-foreground">{opt.desc}</p>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
 
           {showRawSpec && (
             <div className="surface-elevated rounded-xl p-4">

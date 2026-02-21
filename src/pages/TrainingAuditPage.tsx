@@ -38,7 +38,7 @@ interface UnifiedCategoryResult {
 interface AuditResults {
   prompt_engineering: CategoryResult;
   evaluation_loop: CategoryResult;
-  bland_config: CategoryResult;
+  voice_config: CategoryResult;
   knowledge_pipeline: CategoryResult;
   feedback_loop: CategoryResult;
   missed_opportunities: CategoryResult;
@@ -47,7 +47,7 @@ interface AuditResults {
 interface UnifiedAuditResults {
   prompt_engineering: UnifiedCategoryResult;
   evaluation_loop: UnifiedCategoryResult;
-  bland_config: UnifiedCategoryResult;
+  voice_config: UnifiedCategoryResult;
   knowledge_pipeline: UnifiedCategoryResult;
   feedback_loop: UnifiedCategoryResult;
   missed_opportunities: UnifiedCategoryResult;
@@ -80,7 +80,7 @@ interface AgentProject {
 const CATEGORY_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
   prompt_engineering: { label: "Prompt Engineering", icon: <Brain className="h-4 w-4" /> },
   evaluation_loop: { label: "Evaluation Loop", icon: <CheckCircle2 className="h-4 w-4" /> },
-  bland_config: { label: "Bland AI Config", icon: <Zap className="h-4 w-4" /> },
+  voice_config: { label: "Voice AI Config", icon: <Zap className="h-4 w-4" /> },
   knowledge_pipeline: { label: "Knowledge Pipeline", icon: <Brain className="h-4 w-4" /> },
   feedback_loop: { label: "Feedback Loop", icon: <History className="h-4 w-4" /> },
   missed_opportunities: { label: "Missed Opportunities", icon: <AlertTriangle className="h-4 w-4" /> },

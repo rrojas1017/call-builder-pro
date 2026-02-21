@@ -31,7 +31,6 @@ interface TestContact {
   recording_url?: string | null;
   created_at?: string;
   test_run_id?: string;
-  bland_call_id?: string | null;
   retell_call_id?: string | null;
 }
 
@@ -416,7 +415,7 @@ export default function UniversityPage() {
           )}
         </Button>
 
-        {running && (contact?.bland_call_id || contact?.retell_call_id) && (
+        {running && contact?.retell_call_id && (
           <Button
             variant="destructive"
             className="w-full"
@@ -424,10 +423,8 @@ export default function UniversityPage() {
             onClick={async () => {
               setStopping(true);
               try {
-                const activeCallId = contact.retell_call_id || contact.bland_call_id;
-                const callProvider = contact.retell_call_id ? "retell" : "bland";
                 const { error } = await supabase.functions.invoke("stop-call", {
-                  body: { call_id: activeCallId, contact_id: contact.id, provider: callProvider },
+                  body: { call_id: contact.retell_call_id, contact_id: contact.id, provider: "retell" },
                 });
                 if (error) throw error;
                 setRunning(false);
@@ -446,7 +443,7 @@ export default function UniversityPage() {
       </div>
 
       {/* Live Call Monitor */}
-      {running && (contact?.bland_call_id || contact?.retell_call_id) && (
+      {running && contact?.retell_call_id && (
         <LiveCallMonitor
           retellCallId={contact.retell_call_id}
           contactId={contact.id}

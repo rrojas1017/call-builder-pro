@@ -22,7 +22,6 @@ import { formatDistanceToNow } from "date-fns";
 
 interface Call {
   id: string;
-  bland_call_id: string | null;
   retell_call_id: string | null;
   voice_provider: string;
   direction: string;

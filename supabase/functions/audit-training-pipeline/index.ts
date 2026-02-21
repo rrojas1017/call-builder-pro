@@ -19,7 +19,7 @@ const AUDIT_TOOL = {
     parameters: {
       type: "object",
       properties: Object.fromEntries(
-        ["prompt_engineering", "evaluation_loop", "bland_config", "knowledge_pipeline", "feedback_loop", "missed_opportunities"].map((cat) => [
+        ["prompt_engineering", "evaluation_loop", "voice_config", "knowledge_pipeline", "feedback_loop", "missed_opportunities"].map((cat) => [
           cat,
           {
             type: "object",
@@ -32,7 +32,7 @@ const AUDIT_TOOL = {
           },
         ])
       ),
-      required: ["prompt_engineering", "evaluation_loop", "bland_config", "knowledge_pipeline", "feedback_loop", "missed_opportunities"],
+      required: ["prompt_engineering", "evaluation_loop", "voice_config", "knowledge_pipeline", "feedback_loop", "missed_opportunities"],
     },
   },
 };
@@ -76,19 +76,19 @@ const MERGE_TOOL = {
     parameters: {
       type: "object",
       properties: Object.fromEntries(
-        ["prompt_engineering", "evaluation_loop", "bland_config", "knowledge_pipeline", "feedback_loop", "missed_opportunities"].map((cat) => [
+        ["prompt_engineering", "evaluation_loop", "voice_config", "knowledge_pipeline", "feedback_loop", "missed_opportunities"].map((cat) => [
           cat,
           mergedCategorySchema,
         ])
       ),
-      required: ["prompt_engineering", "evaluation_loop", "bland_config", "knowledge_pipeline", "feedback_loop", "missed_opportunities"],
+      required: ["prompt_engineering", "evaluation_loop", "voice_config", "knowledge_pipeline", "feedback_loop", "missed_opportunities"],
     },
   },
 };
 
 // ── Prompts ──
 
-const SYSTEM_PROMPT = `You are an expert AI training pipeline auditor specializing in voice AI agents built on Bland AI.
+const SYSTEM_PROMPT = `You are an expert AI training pipeline auditor specializing in voice AI agents.
 
 You are reviewing the FULL training pipeline of a voice AI agent — from prompt engineering, through call execution, evaluation, and iterative improvement.
 
@@ -100,13 +100,13 @@ Evaluate these 6 categories (1-10 each):
 
 2. EVALUATION LOOP — Is the scoring rubric catching the right issues? Are improvements actually improving scores? Is anti-repetition working? Are evaluations language-appropriate?
 
-3. BLAND AI CONFIGURATION — Are temperature, interruption_threshold, speaking_speed optimal for the use case? Is the model choice right? Are pronunciation guides helping?
+3. VOICE AI CONFIGURATION — Are temperature, interruption_threshold, speaking_speed optimal for the use case? Is the model choice right? Are pronunciation guides helping?
 
 4. KNOWLEDGE PIPELINE — Is auto-research producing useful knowledge? Is summarization losing critical details? Are winning patterns being extracted effectively? Is knowledge categorization correct?
 
 5. TRAINING FEEDBACK LOOP — Is the evaluate->improve->re-test cycle converging? Are there bottlenecks? Circular improvements? Score regressions between versions?
 
-6. MISSED OPPORTUNITIES — What Bland AI features aren't being used? What prompt techniques could help? Any architectural improvements?
+6. MISSED OPPORTUNITIES — What voice AI features aren't being used? What prompt techniques could help? Any architectural improvements?
 
 Use the submit_audit tool to return your structured findings.`;
 
@@ -308,7 +308,7 @@ Merge these into a single unified audit using the submit_merged_audit tool.`;
 
     // Calculate merged score from unified results (or fallback to raw average)
     let mergedScore: number | null = null;
-    const categories = ["prompt_engineering", "evaluation_loop", "bland_config", "knowledge_pipeline", "feedback_loop", "missed_opportunities"];
+    const categories = ["prompt_engineering", "evaluation_loop", "voice_config", "knowledge_pipeline", "feedback_loop", "missed_opportunities"];
 
     if (unifiedResults) {
       let total = 0, count = 0;
