@@ -1,41 +1,70 @@
 
-
-# Fix: Bulk Sync — Add response_engine Back + Handle Multi-Language
+# Fix: Route Inbound Number Assignment by Provider (Retell vs Bland)
 
 ## Problem
-Two issues preventing all 8 agents from syncing:
+When assigning an agent to inbound number `+17866997885`, the `manage-inbound-numbers` function always calls Bland's API. This number was purchased through Retell ($2/mo, labeled "Retell 786"), so Bland rejects it with "No inbound number found."
 
-1. **response_engine is required by Retell API** — removing it entirely was wrong. The working `manage-retell-agent` function sends `response_engine: { type: "retell-llm" }` without an `llm_id`, which triggers Retell to auto-create the LLM. The bulk-sync function needs to do the same.
+## Solution
+Detect whether an inbound number is a Retell number (by `monthly_cost_usd = 2` or label prefix) and route the assign/unassign actions to the correct provider API.
 
-2. **Trip Easy Agent has language "en, es"** — this isn't a valid Retell language code. The function needs to detect multi-language values and map them to `"multi"`.
+## Detection Strategy
+Retell-purchased numbers have `monthly_cost_usd = 2` (vs $15 for Bland). This is the most reliable discriminator since it's set at purchase time. We'll add a simple check in the assign and unassign actions.
 
 ## Changes
 
-**File:** `supabase/functions/bulk-sync-retell-agents/index.ts`
+**File:** `supabase/functions/manage-inbound-numbers/index.ts`
 
-### Change 1: Add response_engine back
-Add `response_engine: { type: "retell-llm" }` to the `createBody` object (matching the pattern in `manage-retell-agent`).
+### Assign Action
+After fetching the number from DB, check if it's a Retell number. If so:
+1. Look up the agent spec's `retell_agent_id`
+2. Call Retell's `PATCH /update-phone-number/{phone_number}` with `inbound_agent_id` set to the Retell agent ID
+3. Skip the Bland configuration entirely
 
-### Change 2: Handle multi-language
-Before the language mapping, check if the language string contains a comma or multiple codes. If so, use `"multi"`. Otherwise, apply the existing `LANG_MAP` lookup with a fallback to `"en-US"`.
+If it's a Bland number, keep the existing Bland flow unchanged.
 
-```
-// Pseudocode
-const lang = spec.language || "en";
-let retellLang: string;
-if (lang.includes(",")) {
-  retellLang = "multi";
+### Unassign Action
+Same detection: if Retell number, call Retell's `PATCH /update-phone-number/{phone_number}` to clear the `inbound_agent_id`. If Bland, keep existing flow.
+
+### Technical Detail
+
+```text
+// In "assign" action, after fetching num from DB:
+const isRetell = num.monthly_cost_usd === 2;
+
+if (isRetell) {
+  // Get retell_agent_id from the agent spec
+  const spec = await supabase.from("agent_specs").select("retell_agent_id")
+    .eq("project_id", project_id).single();
+  if (!spec.data?.retell_agent_id) throw new Error("Agent has no Retell ID");
+
+  // Assign via Retell API
+  await fetch(RETELL_BASE + "/update-phone-number/" + encodeURIComponent(num.phone_number), {
+    method: "PATCH",
+    headers: { Authorization: "Bearer " + RETELL_API_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ inbound_agent_id: spec.data.retell_agent_id }),
+  });
+  // Update DB
+  await supabase.from("inbound_numbers").update({ project_id }).eq("id", number_id);
 } else {
-  retellLang = LANG_MAP[lang.trim()] || lang;
-  // If still not a valid Retell format (no dash), default to en-US
-  if (!retellLang.includes("-") && retellLang !== "multi") {
-    retellLang = "en-US";
-  }
+  // Existing Bland flow (unchanged)
 }
 ```
 
-## Files
-- **Modified**: `supabase/functions/bulk-sync-retell-agents/index.ts`
+### Unassign for Retell
+```text
+if (isRetell) {
+  await fetch(RETELL_BASE + "/update-phone-number/" + encodeURIComponent(num.phone_number), {
+    method: "PATCH",
+    headers: { Authorization: "Bearer " + RETELL_API_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ inbound_agent_id: null }),
+  });
+  await supabase.from("inbound_numbers").update({ project_id: null }).eq("id", number_id);
+}
+```
 
-## After Fix
-Redeploy, then invoke again to provision all 8 agents. Then run a test call on one.
+## Files Modified
+- `supabase/functions/manage-inbound-numbers/index.ts` -- add Retell API routing in assign and unassign actions
+
+## No Other Changes Needed
+- The frontend (`InboundNumbersPage.tsx`) already calls `manage-inbound-numbers` for assign/unassign -- no changes needed there
+- The `manage-retell-numbers` function stays as-is (used only for purchase/release)
