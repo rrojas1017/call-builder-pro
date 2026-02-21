@@ -448,7 +448,6 @@ export default function UniversityPage() {
       {/* Live Call Monitor */}
       {running && (contact?.bland_call_id || contact?.retell_call_id) && (
         <LiveCallMonitor
-          blandCallId={contact.bland_call_id}
           retellCallId={contact.retell_call_id}
           contactId={contact.id}
           isActive={running}

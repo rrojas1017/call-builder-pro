@@ -4,13 +4,12 @@ import { useToast } from "@/hooks/use-toast";
 
 interface VoicePlayButtonProps {
   voiceId: string;
-  sampleText?: string;
   previewUrl?: string;
 }
 
 let activeAudio: HTMLAudioElement | null = null;
 
-export function VoicePlayButton({ voiceId, sampleText, previewUrl }: VoicePlayButtonProps) {
+export function VoicePlayButton({ voiceId, previewUrl }: VoicePlayButtonProps) {
   const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { toast } = useToast();
@@ -19,7 +18,6 @@ export function VoicePlayButton({ voiceId, sampleText, previewUrl }: VoicePlayBu
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
-      URL.revokeObjectURL(audioRef.current.src);
       audioRef.current = null;
     }
     setState("idle");
@@ -33,58 +31,31 @@ export function VoicePlayButton({ voiceId, sampleText, previewUrl }: VoicePlayBu
       return;
     }
 
+    if (!previewUrl) {
+      toast({ title: "No preview available", description: "This voice doesn't have a preview URL.", variant: "destructive" });
+      return;
+    }
+
     // Stop any other playing sample
     if (activeAudio) {
       activeAudio.pause();
       activeAudio.currentTime = 0;
-      URL.revokeObjectURL(activeAudio.src);
       activeAudio = null;
     }
 
     setState("loading");
     try {
-      let audio: HTMLAudioElement;
-
-      if (previewUrl) {
-        // Direct URL playback (e.g. Retell voices)
-        audio = new Audio(previewUrl);
-      } else {
-        // Generate via edge function (Bland voices)
-        const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-voice-sample`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-              Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-            },
-            body: JSON.stringify({ voice_id: voiceId, text: sampleText }),
-          }
-        );
-
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(errText);
-        }
-
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        audio = new Audio(url);
-      }
-
+      const audio = new Audio(previewUrl);
       audioRef.current = audio;
       activeAudio = audio;
 
       audio.onended = () => {
-        if (audio.src.startsWith("blob:")) URL.revokeObjectURL(audio.src);
         audioRef.current = null;
         activeAudio = null;
         setState("idle");
       };
 
       audio.onerror = () => {
-        if (audio.src.startsWith("blob:")) URL.revokeObjectURL(audio.src);
         audioRef.current = null;
         activeAudio = null;
         setState("idle");
@@ -96,14 +67,14 @@ export function VoicePlayButton({ voiceId, sampleText, previewUrl }: VoicePlayBu
     } catch (err: any) {
       console.error("Voice sample error:", err);
       setState("idle");
-      toast({ title: "Could not generate sample", description: err.message, variant: "destructive" });
+      toast({ title: "Could not play sample", description: err.message, variant: "destructive" });
     }
   };
 
   return (
     <button
       onClick={play}
-      disabled={state === "loading"}
+      disabled={state === "loading" || !previewUrl}
       className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
       title={state === "playing" ? "Stop" : "Preview voice"}
     >

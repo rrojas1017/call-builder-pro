@@ -47,7 +47,7 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
   const [testRunId, setTestRunId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const [activeContacts, setActiveContacts] = useState<{ id: string; bland_call_id: string | null; retell_call_id: string | null }[]>([]);
+  const [activeContacts, setActiveContacts] = useState<{ id: string; retell_call_id: string | null }[]>([]);
   const [showResults, setShowResults] = useState(false);
 
   // Voice tuning state
@@ -113,18 +113,18 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
     }
   };
 
-  // Poll active contacts for bland_call_ids when running
+  // Poll active contacts for retell_call_ids when running
   useEffect(() => {
     if (!running || !testRunId) return;
     const poll = async () => {
       const { data } = await supabase
         .from("test_run_contacts")
-        .select("id, bland_call_id, retell_call_id, status")
+        .select("id, retell_call_id, status")
         .eq("test_run_id", testRunId);
       if (data) {
         const active = data
           .filter((c: any) => ["queued", "calling"].includes(c.status))
-          .map((c: any) => ({ id: c.id, bland_call_id: c.bland_call_id, retell_call_id: c.retell_call_id }));
+          .map((c: any) => ({ id: c.id, retell_call_id: c.retell_call_id }));
         setActiveContacts(active);
         if (active.length === 0 && data.every((c: any) => !["queued", "calling"].includes(c.status))) {
           setRunning(false);
@@ -175,7 +175,7 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
   };
 
   const handleStopAll = async () => {
-    const withCallId = activeContacts.filter((c) => c.bland_call_id || c.retell_call_id);
+    const withCallId = activeContacts.filter((c) => c.retell_call_id);
     if (!withCallId.length) {
       toast({ title: "No active calls", description: "No calls with active connections to stop.", variant: "destructive" });
       return;
@@ -184,10 +184,8 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
     try {
       await Promise.all(
         withCallId.map((c) => {
-          const activeCallId = c.retell_call_id || c.bland_call_id;
-          const callProvider = c.retell_call_id ? "retell" : "bland";
           return supabase.functions.invoke("stop-call", {
-            body: { call_id: activeCallId, contact_id: c.id, provider: callProvider },
+            body: { call_id: c.retell_call_id, contact_id: c.id, provider: "retell" },
           });
         })
       );
@@ -290,10 +288,9 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
         )}
 
         {/* Live Call Monitor for active calls */}
-        {running && activeContacts.filter(c => c.bland_call_id || c.retell_call_id).map((c) => (
+        {running && activeContacts.filter(c => c.retell_call_id).map((c) => (
           <LiveCallMonitor
             key={c.id}
-            blandCallId={c.bland_call_id}
             retellCallId={c.retell_call_id}
             contactId={c.id}
             isActive={running}

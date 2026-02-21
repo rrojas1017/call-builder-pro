@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useBlandVoices } from "@/hooks/useBlandVoices";
+
 import { useRetellVoices } from "@/hooks/useRetellVoices";
 import { useOutboundNumbers } from "@/hooks/useOutboundNumbers";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ export default function EditAgentPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { voices: blandVoices, loading: blandVoicesLoading } = useBlandVoices();
+  const { voices: retellVoices, loading: retellVoicesLoading } = useRetellVoices();
   const { voices: retellVoices, loading: retellVoicesLoading } = useRetellVoices();
   const { numbers: trustedNumbers } = useOutboundNumbers();
 
@@ -40,8 +40,8 @@ export default function EditAgentPage() {
   const [fromNumber, setFromNumber] = useState("auto");
   const [voicemailMessage, setVoicemailMessage] = useState("");
 
-  const voices = voiceProvider === "retell" ? retellVoices : blandVoices;
-  const voicesLoading = voiceProvider === "retell" ? retellVoicesLoading : blandVoicesLoading;
+  const voices = retellVoices;
+  const voicesLoading = retellVoicesLoading;
 
   useEffect(() => {
     if (!id) return;
