@@ -100,6 +100,53 @@ serve(async (req) => {
       });
     }
 
+    // ===== SYNC =====
+    if (action === "sync") {
+      const { org_id } = body;
+      if (!org_id) throw new Error("org_id required");
+
+      // Fetch all phone numbers from Retell
+      const retellResp = await fetch(`${RETELL_BASE}/list-phone-numbers`, {
+        method: "GET",
+        headers: { "Authorization": `Bearer ${RETELL_API_KEY}` },
+      });
+      if (!retellResp.ok) {
+        const errData = await retellResp.text();
+        throw new Error(`Retell list error: ${errData}`);
+      }
+      const retellNumbers = await retellResp.json();
+
+      // Get existing DB numbers for this org
+      const { data: dbNumbers } = await supabase
+        .from("inbound_numbers")
+        .select("phone_number")
+        .eq("org_id", org_id)
+        .neq("status", "released");
+
+      const existingSet = new Set((dbNumbers || []).map((n: any) => n.phone_number));
+      let synced = 0;
+
+      // Retell returns an array of phone number objects
+      for (const rn of (retellNumbers || [])) {
+        const phoneNumber = rn.phone_number;
+        if (!phoneNumber || existingSet.has(phoneNumber)) continue;
+        // Only sync numbers that aren't already tracked
+        await supabase.from("inbound_numbers").insert({
+          org_id,
+          phone_number: phoneNumber,
+          area_code: phoneNumber.replace(/\D/g, "").slice(1, 4),
+          label: rn.nickname || `Retell ${phoneNumber.replace(/\D/g, "").slice(1, 4)}`,
+          monthly_cost_usd: 2,
+          status: "active",
+        });
+        synced++;
+      }
+
+      return new Response(JSON.stringify({ success: true, synced }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     throw new Error(`Unknown action: ${action}`);
   } catch (err) {
     console.error("manage-inbound-numbers error:", err);
