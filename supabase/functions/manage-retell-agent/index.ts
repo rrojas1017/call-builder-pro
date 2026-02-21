@@ -130,6 +130,18 @@ serve(async (req) => {
       const llmData = await llmRes.json();
       if (!llmRes.ok) throw new Error(llmData.error_message || llmData.message || JSON.stringify(llmData));
 
+      // 2b. Patch agent-level transfer flag
+      const agentPatchRes = await fetch(`${RETELL_BASE}/update-agent/${agent_id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ is_transfer_agent: false }),
+      });
+      const agentPatchData = await agentPatchRes.json();
+      if (!agentPatchRes.ok) throw new Error(agentPatchData.error_message || agentPatchData.message || JSON.stringify(agentPatchData));
+
       // 3. Re-fetch agent to return updated config
       const refreshRes = await fetch(`${RETELL_BASE}/get-agent/${agent_id}`, {
         method: "GET",

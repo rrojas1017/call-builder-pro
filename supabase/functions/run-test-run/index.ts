@@ -129,20 +129,34 @@ serve(async (req) => {
         });
         const agentCheckData = await agentCheckRes.json();
         if (agentCheckRes.ok && agentCheckData.is_transfer_agent) {
+          // Patch agent-level transfer flag
+          const agentPatchRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
+            body: JSON.stringify({ is_transfer_agent: false }),
+          });
+          if (agentPatchRes.ok) {
+            console.log(`Auto-switched agent ${retellAgentId} is_transfer_agent to false`);
+          } else {
+            console.error("Failed to patch agent is_transfer_agent:", await agentPatchRes.text());
+          }
+
+          // Also patch LLM if it exists
           const llmId = agentCheckData.response_engine?.llm_id;
           if (llmId) {
-            const patchRes = await fetch(`https://api.retellai.com/update-retell-llm/${llmId}`, {
+            const llmPatchRes = await fetch(`https://api.retellai.com/update-retell-llm/${llmId}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
               body: JSON.stringify({ is_transfer_llm: false }),
             });
-            if (patchRes.ok) {
-              console.log(`Auto-switched agent ${retellAgentId} from transfer to outbound`);
-              await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for Retell propagation
+            if (llmPatchRes.ok) {
+              console.log(`Auto-switched LLM ${llmId} is_transfer_llm to false`);
             } else {
-              console.error("Failed to auto-switch transfer agent:", await patchRes.text());
+              console.error("Failed to patch LLM is_transfer_llm:", await llmPatchRes.text());
             }
           }
+
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for Retell propagation
         }
       } catch (preflight: any) {
         console.error("Transfer agent pre-flight check failed:", preflight.message);
