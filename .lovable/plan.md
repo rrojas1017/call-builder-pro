@@ -1,41 +1,38 @@
 
 
-# Add "Switch to Outbound" Button for Transfer Agents
+# Auto-Fix Transfer Agents Before Outbound Calls
 
 ## Problem
-When a Retell agent is configured as a "transfer agent," it can't make outbound calls. Currently, users see a warning but have no way to fix it without leaving the app.
+The "Switch to Outbound" button exists on the Edit Agent page, but when a user runs a test call from the University page, the Retell API rejects the call with "Transfer agents cannot be used for outbound calls." Users shouldn't have to remember to manually fix this first.
 
 ## Solution
-Add a "Switch to Outbound" button directly in the transfer agent warning banner. Clicking it will call the Retell API to set `is_transfer_llm: false` on the agent's LLM, then refresh the agent config to confirm the change.
+Add a pre-flight check in the `run-test-run` edge function that detects transfer agents and automatically switches them to outbound before attempting the call.
 
 ## Changes
 
-### 1. Update the backend function (`manage-retell-agent`)
-Add a new `"switch_to_outbound"` action that:
-- Takes the `agent_id`, fetches the agent to get its `llm_id` from `response_engine`
-- Calls `PATCH https://api.retellai.com/update-retell-llm/{llm_id}` with `{ is_transfer_llm: false }`
-- Returns the updated agent config
+### 1. Update `run-test-run` edge function
+In the Retell branch (line ~117), before making calls:
+- Call `GET /get-agent/{retellAgentId}` to check if the agent is a transfer agent
+- If `is_transfer_agent` is true, extract the `llm_id` from `response_engine` and call `PATCH /update-retell-llm/{llm_id}` with `{ is_transfer_llm: false }`
+- Log the auto-fix and proceed with the call
+- This reuses the same logic already in `manage-retell-agent`'s `switch_to_outbound` action
 
-### 2. Update the hook (`useRetellAgent`)
-Add a `switchToOutbound(agentId)` function that invokes the new action and refreshes the local state.
-
-### 3. Update the UI component (`RetellAgentManager`)
-- Add a "Switch to Outbound" button inside the yellow transfer agent warning banner
-- On click, calls `switchToOutbound`, shows a toast on success, and the warning disappears as the agent is no longer a transfer agent
+### 2. No UI changes needed
+The fix happens transparently in the backend. The test call will just work.
 
 ## Technical Details
 
-### API call flow
+### Pre-flight check flow
 ```text
-1. User clicks "Switch to Outbound"
-2. Edge function receives { action: "switch_to_outbound", agent_id: "agent_xxx" }
-3. Function calls GET /get-agent/{agent_id} to get the llm_id
-4. Function calls PATCH /update-retell-llm/{llm_id} with { is_transfer_llm: false }
-5. Function calls GET /get-agent/{agent_id} again and returns refreshed config
-6. UI updates, transfer warning disappears
+1. run-test-run receives request for Retell agent
+2. GET https://api.retellai.com/get-agent/{agent_id}
+3. If response.is_transfer_agent === true:
+   a. Extract llm_id from response.response_engine.llm_id
+   b. PATCH https://api.retellai.com/update-retell-llm/{llm_id} with { is_transfer_llm: false }
+   c. Log "Auto-switched agent {id} from transfer to outbound"
+4. Proceed with create-phone-call as normal
 ```
 
 ## Files Changed
-- **Modified**: `supabase/functions/manage-retell-agent/index.ts` -- add `switch_to_outbound` action
-- **Modified**: `src/hooks/useRetellAgent.ts` -- add `switchToOutbound` method
-- **Modified**: `src/components/RetellAgentManager.tsx` -- add button in warning banner
+- **Modified**: `supabase/functions/run-test-run/index.ts` -- add transfer agent pre-flight check in the Retell branch
+
