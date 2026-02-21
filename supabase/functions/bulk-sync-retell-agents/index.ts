@@ -56,7 +56,6 @@ serve(async (req) => {
         const createBody: Record<string, unknown> = {
           agent_name: projectName,
           language: retellLang,
-          response_engine: { type: "retell-llm" },
           webhook_url: webhookUrl,
           post_call_analysis_data: [
             { description: "Whether the lead was qualified", name: "qualified", type: "boolean" },
