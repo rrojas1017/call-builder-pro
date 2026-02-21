@@ -162,7 +162,59 @@ serve(async (req) => {
       if (!RETELL_API_KEY) throw new Error("RETELL_API_KEY not configured");
       const retellAgentId = spec.retell_agent_id;
       if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
-      const retellWebhookUrl = `${supabaseUrl}/functions/v1/receive-retell-webhook`;
+
+      // --- Pre-flight: fetch agent, extract llm_id, fix transfer flags ---
+      let agentLlmId: string | null = null;
+      try {
+        const agentCheckRes = await fetch(`https://api.retellai.com/get-agent/${retellAgentId}`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${RETELL_API_KEY}` },
+        });
+        const agentCheckData = await agentCheckRes.json();
+        agentLlmId = agentCheckData.response_engine?.llm_id || null;
+
+        if (agentCheckRes.ok && agentCheckData.is_transfer_agent) {
+          await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
+            body: JSON.stringify({ is_transfer_agent: false }),
+          });
+          if (agentLlmId) {
+            await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
+              body: JSON.stringify({ is_transfer_llm: false }),
+            });
+          }
+          console.log(`Auto-fixed transfer flags on agent ${retellAgentId}`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      } catch (preflight: any) {
+        console.error("Transfer agent pre-flight check failed:", preflight.message);
+      }
+
+      // --- Inject task prompt into Retell LLM ---
+      if (agentLlmId) {
+        const personaName = spec.persona_name || "";
+        let taskPrompt = buildTaskPrompt(spec, [], knowledgeBriefing, "") + hipaaAppendix;
+        if (taskPrompt.length > 28000) taskPrompt = taskPrompt.substring(0, 28000) + "\n\n[Trimmed for length]";
+        try {
+          const llmPromptRes = await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
+            body: JSON.stringify({ general_prompt: taskPrompt }),
+          });
+          if (llmPromptRes.ok) {
+            console.log(`Injected campaign prompt into LLM ${agentLlmId} (${taskPrompt.length} chars)`);
+          } else {
+            console.error("Failed to update LLM prompt:", await llmPromptRes.text());
+          }
+        } catch (promptErr: any) {
+          console.error("LLM prompt injection failed:", promptErr.message);
+        }
+      } else {
+        console.warn("No llm_id found on Retell agent – cannot inject task prompt");
+      }
 
       // Determine from_number for batch call
       let fromNumber = spec.from_number || null;
@@ -181,22 +233,25 @@ serve(async (req) => {
       }
 
       // Build tasks array for Retell batch API
-      const tasks = contacts.map((contact: any) => ({
-        to_number: contact.phone,
-        retell_llm_dynamic_variables: {
-          contact_name: contact.name || "",
-          ...(contact.extra_data && typeof contact.extra_data === "object" ? contact.extra_data : {}),
-        },
-        metadata: {
-          org_id: campaign.agent_projects.org_id,
-          project_id: campaign.project_id,
-          campaign_id,
-          contact_id: contact.id,
-          version: spec.version,
-        },
-      }));
-
-      // Use override_agent_id instead of agent_id for Retell batch API
+      const tasks = contacts.map((contact: any) => {
+        const firstName = contact.name?.trim().split(/\s+/)[0] || "";
+        return {
+          to_number: contact.phone,
+          retell_llm_dynamic_variables: {
+            first_name: firstName,
+            agent_name: spec.persona_name || "",
+            contact_name: contact.name || "",
+            ...(contact.extra_data && typeof contact.extra_data === "object" ? contact.extra_data : {}),
+          },
+          metadata: {
+            org_id: campaign.agent_projects.org_id,
+            project_id: campaign.project_id,
+            campaign_id,
+            contact_id: contact.id,
+            version: spec.version,
+          },
+        };
+      });
 
       const batchPayload: any = {
         from_number: fromNumber,

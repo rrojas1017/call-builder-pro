@@ -53,6 +53,26 @@ serve(async (req) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error_message || data.message || JSON.stringify(data));
 
+      // Inject general_prompt into the auto-created LLM if provided
+      const llmId = data.response_engine?.llm_id;
+      if (llmId && config?.general_prompt) {
+        const trimmedPrompt = config.general_prompt.length > 28000
+          ? config.general_prompt.substring(0, 28000) + "\n\n[Trimmed for length]"
+          : config.general_prompt;
+        try {
+          const llmRes = await fetch(`${RETELL_BASE}/update-retell-llm/${llmId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({ general_prompt: trimmedPrompt }),
+          });
+          const llmData = await llmRes.json();
+          if (!llmRes.ok) console.error("Failed to set LLM prompt:", llmData);
+          else console.log(`Injected prompt into LLM ${llmId} (${trimmedPrompt.length} chars)`);
+        } catch (promptErr) {
+          console.error("LLM prompt injection failed:", promptErr);
+        }
+      }
+
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

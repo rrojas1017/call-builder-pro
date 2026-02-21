@@ -418,13 +418,41 @@ export default function CreateAgentPage() {
       const formattedPhone = transferEnabled && phoneDigits.length >= 10
         ? (phoneDigits.startsWith("1") ? `+${phoneDigits}` : `+1${phoneDigits}`)
         : null;
+
+      // Auto-create Retell agent if provider is Append and no agent exists yet
+      let finalRetellAgentId = retellAgentId;
+      if (voiceProvider === "retell" && !retellAgentId) {
+        try {
+          const { data: retellData, error: retellErr } = await supabase.functions.invoke("manage-retell-agent", {
+            body: {
+              action: "create",
+              config: {
+                agent_name: agentName || personaName || "Appendify Agent",
+                voice_id: voiceId,
+                language: agentLanguage || "en-US",
+                general_prompt: description || sourceText || undefined,
+              },
+            },
+          });
+          if (retellErr) throw retellErr;
+          if (retellData?.agent_id) {
+            finalRetellAgentId = retellData.agent_id;
+            setRetellAgentId(retellData.agent_id);
+            toast({ title: "Append agent created", description: "Your AI agent was configured automatically." });
+          }
+        } catch (retellCreateErr: any) {
+          console.error("Auto-create Retell agent failed:", retellCreateErr);
+          toast({ title: "Append agent creation failed", description: retellCreateErr.message, variant: "destructive" });
+        }
+      }
+
       await supabase.from("agent_specs").update({
         voice_id: voiceId || undefined,
         transfer_required: transferEnabled,
         transfer_phone_number: formattedPhone,
         background_track: backgroundTrack,
         voice_provider: voiceProvider,
-        retell_agent_id: voiceProvider === "retell" ? retellAgentId || null : null,
+        retell_agent_id: voiceProvider === "retell" ? finalRetellAgentId || null : null,
         mode: agentMode,
         language: agentLanguage,
         persona_name: personaName.trim() || null,
