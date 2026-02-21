@@ -30,12 +30,10 @@ serve(async (req) => {
           { description: "Whether the lead was qualified", name: "qualified", type: "boolean" },
           { description: "Brief summary of the call", name: "call_summary", type: "string" },
         ],
+        response_engine: config?.llm_id
+          ? { type: "retell-llm", llm_id: config.llm_id }
+          : { type: "retell-llm" },
       };
-
-      // Only include response_engine if we have an llm_id
-      if (config?.llm_id) {
-        body.response_engine = { type: "retell-llm", llm_id: config.llm_id };
-      }
 
       // Remove undefined values
       if (!body.voice_id) delete body.voice_id;
