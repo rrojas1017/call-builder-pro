@@ -120,7 +120,32 @@ serve(async (req) => {
       if (!retellApiKey) throw new Error("RETELL_API_KEY not configured");
       const retellAgentId = spec?.retell_agent_id;
       if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
-      
+
+      // Pre-flight: auto-fix transfer agents so they can make outbound calls
+      try {
+        const agentCheckRes = await fetch(`https://api.retellai.com/get-agent/${retellAgentId}`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${retellApiKey}` },
+        });
+        const agentCheckData = await agentCheckRes.json();
+        if (agentCheckRes.ok && agentCheckData.is_transfer_agent) {
+          const llmId = agentCheckData.response_engine?.llm_id;
+          if (llmId) {
+            const patchRes = await fetch(`https://api.retellai.com/update-retell-llm/${llmId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
+              body: JSON.stringify({ is_transfer_llm: false }),
+            });
+            if (patchRes.ok) {
+              console.log(`Auto-switched agent ${retellAgentId} from transfer to outbound`);
+            } else {
+              console.error("Failed to auto-switch transfer agent:", await patchRes.text());
+            }
+          }
+        }
+      } catch (preflight: any) {
+        console.error("Transfer agent pre-flight check failed:", preflight.message);
+      }
 
       for (const contact of queuedContacts) {
         try {
