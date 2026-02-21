@@ -1,33 +1,45 @@
 
 
-# Fix: Retell Test Calls Failing Due to Missing `from_number`
+# Fix: Retell API Payload Field Names
 
 ## Problem
-When running a test call with the Retell (Append) provider, the API returns: `request/body must have required property 'from_number'`. This happens because no outbound number is configured and the `from_number` field is silently omitted from the API payload.
+The `run-test-run` edge function sends incorrect field names to the Retell `create-phone-call` API, causing calls to fail. The Retell API documentation specifies different field names than what our code currently uses.
 
-## Solution
+## Incorrect vs Correct Fields
 
-### 1. Add validation in `run-test-run` edge function
-Before attempting the Retell API call, check that a `from_number` is available. If not, return a clear, user-friendly error message instead of letting the Retell API return a cryptic one.
+| Current (Wrong)    | Retell API (Correct)   |
+|--------------------|------------------------|
+| `phone_number`     | `to_number`            |
+| `agent_id`         | `override_agent_id`    |
+| `webhook_url`      | _(not a valid param)_  |
 
-### 2. Add validation in `tick-campaign` edge function
-Apply the same guard for campaign calls using Retell to prevent the same issue during live campaigns.
+## Changes
 
-### 3. Improve the Create/Edit Agent UI
-When the user selects "Append" (Retell) as the voice provider, show a warning or required field if no trusted outbound numbers exist for the organization. This prevents users from getting to the test stage only to hit this error.
+### 1. Edge function `run-test-run/index.ts` (Retell branch)
+Update the Retell payload construction (around lines 127-136):
+- Rename `phone_number` to `to_number`
+- Rename `agent_id` to `override_agent_id`
+- Remove `webhook_url` (not a valid Retell API parameter; webhooks are configured in the Retell dashboard or via agent settings)
+- Keep `from_number`, `metadata` as-is (these are correct)
+
+### 2. Edge function `tick-campaign/index.ts` (Retell branch)
+Apply the same field name corrections in the campaign tick function's Retell call payload.
 
 ## Technical Details
 
-### Edge function changes (`run-test-run/index.ts`)
-- After line 144 (end of `from_number` resolution), add a check:
-  - If `retellPayload.from_number` is still undefined, mark the contact as "failed" with error message: "No outbound number available. Please add a trusted phone number in Settings > Phone Numbers, or set a From Number on your agent."
-  - Skip the API call for that contact.
+The corrected Retell payload will look like:
+```
+{
+  override_agent_id: retellAgentId,
+  to_number: contact.phone,
+  from_number: resolvedFromNumber,
+  metadata: { ... }
+}
+```
 
-### Edge function changes (`tick-campaign/index.ts`)
-- Apply the same `from_number` validation in the Retell branch of the campaign tick function.
-
-### UI changes (`CreateAgentPage.tsx` / `EditAgentPage.tsx`)
-- When provider is "retell"/"append", query the `outbound_numbers` table for trusted numbers.
-- If none exist, display an inline warning: "Retell requires an outbound phone number. Add one in Settings > Phone Numbers."
-- Optionally add a direct "From Number" input field on the agent form for Retell agents.
+This matches the Retell API spec at `POST /v2/create-phone-call` which requires:
+- `from_number` (required) - E.164 format, must be purchased/imported in Retell
+- `to_number` (required) - E.164 format destination number
+- `override_agent_id` (optional) - one-time agent override for this call
+- `metadata` (optional) - arbitrary storage object
 
