@@ -120,19 +120,18 @@ serve(async (req) => {
       if (!retellApiKey) throw new Error("RETELL_API_KEY not configured");
       const retellAgentId = spec?.retell_agent_id;
       if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
-      const retellWebhookUrl = `${supabaseUrl}/functions/v1/receive-retell-webhook`;
+      
 
       for (const contact of queuedContacts) {
         try {
           const retellPayload: any = {
-            agent_id: retellAgentId,
-            phone_number: contact.phone,
+            override_agent_id: retellAgentId,
+            to_number: contact.phone,
             metadata: {
               test_run_id, test_run_contact_id: contact.id,
               org_id: testRun.org_id, project_id: testRun.project_id,
               spec_version: testRun.spec_version,
             },
-            webhook_url: retellWebhookUrl,
           };
           if (spec?.from_number) {
             retellPayload.from_number = spec.from_number;
