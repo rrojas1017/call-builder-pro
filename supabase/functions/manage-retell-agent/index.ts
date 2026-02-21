@@ -93,9 +93,7 @@ serve(async (req) => {
 
       const res = await fetch(`${RETELL_BASE}/get-agent/${agent_id}`, {
         method: "GET",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: { Authorization: `Bearer ${apiKey}` },
       });
 
       const data = await res.json();
@@ -106,7 +104,46 @@ serve(async (req) => {
       });
     }
 
-    throw new Error(`Unknown action: ${action}. Use "create", "update", or "get".`);
+    if (action === "switch_to_outbound") {
+      if (!agent_id) throw new Error("agent_id required for switch_to_outbound");
+
+      // 1. Get agent to find LLM ID
+      const agentRes = await fetch(`${RETELL_BASE}/get-agent/${agent_id}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      const agentData = await agentRes.json();
+      if (!agentRes.ok) throw new Error(agentData.error_message || agentData.message || JSON.stringify(agentData));
+
+      const llmId = agentData.response_engine?.llm_id;
+      if (!llmId) throw new Error("No LLM ID found on this agent. Cannot switch to outbound.");
+
+      // 2. Patch LLM to disable transfer mode
+      const llmRes = await fetch(`${RETELL_BASE}/update-retell-llm/${llmId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ is_transfer_llm: false }),
+      });
+      const llmData = await llmRes.json();
+      if (!llmRes.ok) throw new Error(llmData.error_message || llmData.message || JSON.stringify(llmData));
+
+      // 3. Re-fetch agent to return updated config
+      const refreshRes = await fetch(`${RETELL_BASE}/get-agent/${agent_id}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      const refreshData = await refreshRes.json();
+      if (!refreshRes.ok) throw new Error(refreshData.error_message || refreshData.message || JSON.stringify(refreshData));
+
+      return new Response(JSON.stringify(refreshData), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    throw new Error(`Unknown action: ${action}. Use "create", "update", "get", or "switch_to_outbound".`);
   } catch (err) {
     console.error("manage-retell-agent error:", err);
     return new Response(JSON.stringify({ error: err.message }), {
