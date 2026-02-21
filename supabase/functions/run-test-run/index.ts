@@ -143,6 +143,15 @@ serve(async (req) => {
             await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
           }
 
+          // Guard: Retell requires from_number
+          if (!retellPayload.from_number) {
+            await supabase.from("test_run_contacts").update({
+              status: "failed",
+              error: "No outbound number available. Please add a trusted phone number in Settings > Phone Numbers, or set a From Number on your agent.",
+            }).eq("id", contact.id);
+            continue;
+          }
+
           const retellResp = await fetch("https://api.retellai.com/v2/create-phone-call", {
             method: "POST",
             headers: { Authorization: `Bearer ${retellApiKey}`, "Content-Type": "application/json" },

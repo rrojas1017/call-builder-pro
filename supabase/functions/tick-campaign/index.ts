@@ -173,6 +173,13 @@ serve(async (req) => {
         await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
       }
 
+      // Guard: Retell requires from_number
+      if (!fromNumber) {
+        return new Response(JSON.stringify({
+          error: "No outbound number available. Please add a trusted phone number in Settings > Phone Numbers, or set a From Number on your agent.",
+        }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
       // Build tasks array for Retell batch API
       const tasks = contacts.map((contact: any) => ({
         to_number: contact.phone,
