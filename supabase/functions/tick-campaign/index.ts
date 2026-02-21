@@ -196,10 +196,12 @@ serve(async (req) => {
         },
       }));
 
+      // Use override_agent_id instead of agent_id for Retell batch API
+
       const batchPayload: any = {
         from_number: fromNumber,
         tasks,
-        agent_id: retellAgentId,
+        override_agent_id: retellAgentId,
       };
 
       const retellResp = await fetch("https://api.retellai.com/create-batch-call", {
