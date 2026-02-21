@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "react-router-dom";
-import { Plus, Loader2, FlaskConical, BookOpen, Pencil, Phone, PhoneIncoming, PhoneForwarded, Trash2, GraduationCap } from "lucide-react";
+import { Plus, Loader2, FlaskConical, BookOpen, Pencil, Phone, PhoneIncoming, PhoneForwarded, Trash2, GraduationCap, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -15,8 +15,8 @@ interface Agent {
   description: string | null;
   created_at: string;
   mode: "outbound" | "inbound" | "hybrid";
-  voice_provider: "bland" | "retell";
   maturity_level: string;
+  has_retell_id: boolean;
 }
 
 const maturityConfig: Record<string, { label: string; className: string; bgClassName: string; icon?: boolean }> = {
@@ -39,29 +39,31 @@ export default function AgentsPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const { toast } = useToast();
+
+  const loadAgents = async () => {
+    const { data } = await supabase
+      .from("agent_projects")
+      .select("id, name, description, created_at, maturity_level, agent_specs(mode, retell_agent_id)")
+      .order("created_at", { ascending: false });
+
+    const mapped: Agent[] = (data || []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      created_at: p.created_at,
+      mode: p.agent_specs?.mode || "outbound",
+      maturity_level: p.maturity_level || "training",
+      has_retell_id: !!p.agent_specs?.retell_agent_id,
+    }));
+    setAgents(mapped);
+    setLoading(false);
+  };
 
   useEffect(() => {
     if (!user) return;
-    const load = async () => {
-      const { data } = await supabase
-        .from("agent_projects")
-        .select("id, name, description, created_at, maturity_level, agent_specs(mode, voice_provider)")
-        .order("created_at", { ascending: false });
-
-      const mapped: Agent[] = (data || []).map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        created_at: p.created_at,
-        mode: p.agent_specs?.mode || "outbound",
-        voice_provider: p.agent_specs?.voice_provider || "bland",
-        maturity_level: p.maturity_level || "training",
-      }));
-      setAgents(mapped);
-      setLoading(false);
-    };
-    load();
+    loadAgents();
   }, [user]);
 
   const handleDelete = async () => {
@@ -82,6 +84,26 @@ export default function AgentsPage() {
     }
   };
 
+  const unprovisionedCount = agents.filter(a => !a.has_retell_id).length;
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("bulk-sync-retell-agents");
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast({
+        title: "Sync complete",
+        description: `${data.synced} of ${data.total} agents synced successfully.`,
+      });
+      await loadAgents();
+    } catch (e: any) {
+      toast({ title: "Sync failed", description: e.message, variant: "destructive" });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -98,6 +120,18 @@ export default function AgentsPage() {
             <Button><Plus className="mr-2 h-4 w-4" /> New Agent</Button>
           </Link>
         </div>
+
+        {unprovisionedCount > 0 && (
+          <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+            <p className="text-sm text-foreground">
+              <span className="font-semibold">{unprovisionedCount}</span> agent{unprovisionedCount !== 1 ? "s" : ""} need Retell provisioning
+            </p>
+            <Button size="sm" onClick={handleSync} disabled={syncing}>
+              {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Sync All Now
+            </Button>
+          </div>
+        )}
 
         {agents.length === 0 ? (
           <div className="surface-elevated rounded-xl p-12 text-center space-y-4">
@@ -132,7 +166,7 @@ export default function AgentsPage() {
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-foreground truncate">{agent.name}</h3>
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0">{config.label}</Badge>
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">{agent.voice_provider === "retell" ? "Append" : "Voz"}</Badge>
+                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">Append</Badge>
                         <Badge variant="outline" className={`text-[10px] px-1.5 py-0 shrink-0 border ${maturity.bgClassName} ${maturity.className}`}>
                           {maturity.icon && <GraduationCap className="h-2.5 w-2.5 mr-0.5" />}
                           {maturity.label}
