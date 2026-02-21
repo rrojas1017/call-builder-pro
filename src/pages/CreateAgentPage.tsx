@@ -783,7 +783,7 @@ export default function CreateAgentPage() {
               </h3>
               <p className="text-xs text-muted-foreground">Choose a voice for your agent.</p>
               <VoiceSelector
-                voices={blandVoices}
+                voices={retellVoices}
                 loading={voicesLoading}
                 selectedVoice={selectedVoice}
                 onSelect={setSelectedVoice}
