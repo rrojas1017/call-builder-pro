@@ -63,7 +63,10 @@ serve(async (req) => {
 
       const body: Record<string, unknown> = {};
       if (config?.agent_name) body.agent_name = config.agent_name;
-      if (config?.voice_id) body.voice_id = config.voice_id;
+      // Only send voice_id if it looks like a Retell voice ID (contains a dash or starts with known prefixes)
+      if (config?.voice_id && (config.voice_id.includes("-") || config.voice_id.startsWith("eleven_"))) {
+        body.voice_id = config.voice_id;
+      }
       if (config?.language) body.language = config.language;
       // Always ensure webhook is set correctly
       body.webhook_url = webhookUrl;
