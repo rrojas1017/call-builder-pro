@@ -16,7 +16,8 @@ serve(async (req) => {
     if (!action) throw new Error("action is required");
 
     const BLAND_API_KEY = Deno.env.get("BLAND_API_KEY");
-    if (!BLAND_API_KEY) throw new Error("BLAND_API_KEY not configured");
+    const RETELL_API_KEY = Deno.env.get("RETELL_API_KEY");
+    const RETELL_BASE = "https://api.retellai.com";
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -67,82 +68,101 @@ serve(async (req) => {
         .from("inbound_numbers").select("*").eq("id", number_id).single();
       if (numErr) throw numErr;
 
-      const { data: spec, error: specErr } = await supabase
-        .from("agent_specs").select("*").eq("project_id", project_id).single();
-      if (specErr) throw new Error("Agent has no spec configured");
+      const isRetell = num.monthly_cost_usd === 2;
 
-      const { data: project } = await supabase
-        .from("agent_projects").select("org_id").eq("id", project_id).single();
+      if (isRetell) {
+        // ---- Retell flow ----
+        if (!RETELL_API_KEY) throw new Error("RETELL_API_KEY not configured");
 
-      // Summarize agent knowledge via AI (matching university/campaign pattern)
-      let knowledgeBriefing = "";
-      try {
-        const { data: summaryData, error: summaryErr } = await supabase.functions.invoke("summarize-agent-knowledge", {
-          body: { project_id },
+        const { data: spec, error: specErr } = await supabase
+          .from("agent_specs").select("retell_agent_id").eq("project_id", project_id).single();
+        if (specErr || !spec?.retell_agent_id) throw new Error("Agent has no Retell ID configured");
+
+        const retellResp = await fetch(`${RETELL_BASE}/update-phone-number/${encodeURIComponent(num.phone_number)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${RETELL_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ inbound_agent_id: spec.retell_agent_id }),
         });
-        if (summaryErr) {
-          console.error("Knowledge summarization error:", summaryErr);
-        } else if (summaryData?.briefing) {
-          knowledgeBriefing = summaryData.briefing;
-          console.log(`Inbound knowledge briefing: ${summaryData.entries_count} entries → ${knowledgeBriefing.length} chars`);
+        const retellData = await retellResp.json();
+        console.log("Retell assign response:", JSON.stringify(retellData));
+        if (!retellResp.ok) throw new Error(`Retell assign error: ${JSON.stringify(retellData)}`);
+
+        await supabase.from("inbound_numbers").update({ project_id }).eq("id", number_id);
+
+      } else {
+        // ---- Bland flow (unchanged) ----
+        if (!BLAND_API_KEY) throw new Error("BLAND_API_KEY not configured");
+
+        const { data: spec, error: specErr } = await supabase
+          .from("agent_specs").select("*").eq("project_id", project_id).single();
+        if (specErr) throw new Error("Agent has no spec configured");
+
+        const { data: project } = await supabase
+          .from("agent_projects").select("org_id").eq("id", project_id).single();
+
+        let knowledgeBriefing = "";
+        try {
+          const { data: summaryData, error: summaryErr } = await supabase.functions.invoke("summarize-agent-knowledge", {
+            body: { project_id },
+          });
+          if (summaryErr) {
+            console.error("Knowledge summarization error:", summaryErr);
+          } else if (summaryData?.briefing) {
+            knowledgeBriefing = summaryData.briefing;
+            console.log(`Inbound knowledge briefing: ${summaryData.entries_count} entries → ${knowledgeBriefing.length} chars`);
+          }
+        } catch (sumErr: any) {
+          console.error("Failed to invoke summarize-agent-knowledge:", sumErr.message);
         }
-      } catch (sumErr: any) {
-        console.error("Failed to invoke summarize-agent-knowledge:", sumErr.message);
+
+        const { data: globalBehaviors } = await supabase
+          .from("global_human_behaviors").select("content")
+          .order("created_at", { ascending: false }).limit(10);
+        const globalTechniques = (globalBehaviors || []).map((g: any) => g.content as string);
+
+        if (globalTechniques.length > 0) {
+          const currentNotes: string[] = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
+          const existingLower = new Set(currentNotes.map((n: string) => n.toLowerCase().trim()));
+          const newGlobal = globalTechniques.filter((t: string) => !existingLower.has(t.toLowerCase().trim()));
+          spec.humanization_notes = [...currentNotes, ...newGlobal];
+        }
+
+        let task = buildTaskPrompt(spec, [], knowledgeBriefing);
+        const MAX_TASK_LENGTH = 28000;
+        if (task.length > MAX_TASK_LENGTH) {
+          console.warn(`Inbound prompt too long (${task.length} chars), truncating`);
+          task = task.substring(0, MAX_TASK_LENGTH) + "\n\n[Trimmed for length]";
+        }
+
+        const configBody: any = {
+          prompt: task,
+          webhook: webhookUrl,
+          model: "base",
+          voice: spec.voice_id || "maya",
+          temperature: spec.temperature ?? 0.7,
+          interruption_threshold: spec.interruption_threshold ?? 100,
+          noise_cancellation: true,
+          record: true,
+          metadata: { org_id: project?.org_id || num.org_id, project_id },
+        };
+        if (spec.opening_line) configBody.first_sentence = spec.opening_line;
+        if (spec.language) configBody.language = spec.language;
+        if (spec.transfer_phone_number) configBody.transfer_phone_number = spec.transfer_phone_number;
+        if (spec.background_track && spec.background_track !== "none") configBody.background_track = spec.background_track;
+        if (spec.speaking_speed && spec.speaking_speed !== 1.0) configBody.voice_settings = { speed: spec.speaking_speed };
+        if (spec.pronunciation_guide && Array.isArray(spec.pronunciation_guide) && spec.pronunciation_guide.length > 0) configBody.pronunciation_guide = spec.pronunciation_guide;
+
+        const configResp = await fetch(`https://api.bland.ai/v1/inbound/${encodeURIComponent(num.phone_number)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": BLAND_API_KEY },
+          body: JSON.stringify(configBody),
+        });
+        const configData = await configResp.json();
+        console.log("Bland inbound config response:", JSON.stringify(configData));
+        if (!configResp.ok) throw new Error(`Bland config error: ${JSON.stringify(configData)}`);
+
+        await supabase.from("inbound_numbers").update({ project_id }).eq("id", number_id);
       }
-
-      // Load global human behaviors and merge into spec (matching university/campaign pattern)
-      const { data: globalBehaviors } = await supabase
-        .from("global_human_behaviors").select("content")
-        .order("created_at", { ascending: false }).limit(10);
-      const globalTechniques = (globalBehaviors || []).map((g: any) => g.content as string);
-
-      if (globalTechniques.length > 0) {
-        const currentNotes: string[] = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
-        const existingLower = new Set(currentNotes.map((n: string) => n.toLowerCase().trim()));
-        const newGlobal = globalTechniques.filter((t: string) => !existingLower.has(t.toLowerCase().trim()));
-        spec.humanization_notes = [...currentNotes, ...newGlobal];
-      }
-
-      // Build task using shared builder (identical to university/campaign)
-      let task = buildTaskPrompt(spec, [], knowledgeBriefing);
-
-      const MAX_TASK_LENGTH = 28000;
-      if (task.length > MAX_TASK_LENGTH) {
-        console.warn(`Inbound prompt too long (${task.length} chars), truncating`);
-        task = task.substring(0, MAX_TASK_LENGTH) + "\n\n[Trimmed for length]";
-      }
-
-      // Configure on Bland (full parity with run-test-run / tick-campaign)
-      const configBody: any = {
-        prompt: task,
-        webhook: webhookUrl,
-        model: "base",
-        voice: spec.voice_id || "maya",
-        temperature: spec.temperature ?? 0.7,
-        interruption_threshold: spec.interruption_threshold ?? 100,
-        noise_cancellation: true,
-        record: true,
-        metadata: { org_id: project?.org_id || num.org_id, project_id },
-      };
-      if (spec.opening_line) configBody.first_sentence = spec.opening_line;
-      if (spec.language) configBody.language = spec.language;
-      if (spec.transfer_phone_number) configBody.transfer_phone_number = spec.transfer_phone_number;
-      if (spec.background_track && spec.background_track !== "none") configBody.background_track = spec.background_track;
-      if (spec.speaking_speed && spec.speaking_speed !== 1.0) configBody.voice_settings = { speed: spec.speaking_speed };
-      if (spec.pronunciation_guide && Array.isArray(spec.pronunciation_guide) && spec.pronunciation_guide.length > 0) configBody.pronunciation_guide = spec.pronunciation_guide;
-
-      const configResp = await fetch(`https://api.bland.ai/v1/inbound/${encodeURIComponent(num.phone_number)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": BLAND_API_KEY },
-        body: JSON.stringify(configBody),
-      });
-      const configData = await configResp.json();
-      console.log("Bland inbound config response:", JSON.stringify(configData));
-      if (!configResp.ok) {
-        throw new Error(`Bland config error: ${JSON.stringify(configData)}`);
-      }
-
-      await supabase.from("inbound_numbers").update({ project_id }).eq("id", number_id);
 
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -158,14 +178,31 @@ serve(async (req) => {
         .from("inbound_numbers").select("*").eq("id", number_id).single();
       if (!num) throw new Error("Number not found");
 
-      await fetch(`https://api.bland.ai/v1/inbound/${encodeURIComponent(num.phone_number)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": BLAND_API_KEY },
-        body: JSON.stringify({
-          prompt: "This number is not currently in service. Please try again later. Politely end the call.",
-          metadata: { org_id: num.org_id },
-        }),
-      });
+      const isRetell = num.monthly_cost_usd === 2;
+
+      if (isRetell) {
+        if (!RETELL_API_KEY) throw new Error("RETELL_API_KEY not configured");
+
+        const retellResp = await fetch(`${RETELL_BASE}/update-phone-number/${encodeURIComponent(num.phone_number)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${RETELL_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ inbound_agent_id: null }),
+        });
+        const retellData = await retellResp.json();
+        console.log("Retell unassign response:", JSON.stringify(retellData));
+        if (!retellResp.ok) throw new Error(`Retell unassign error: ${JSON.stringify(retellData)}`);
+      } else {
+        if (!BLAND_API_KEY) throw new Error("BLAND_API_KEY not configured");
+
+        await fetch(`https://api.bland.ai/v1/inbound/${encodeURIComponent(num.phone_number)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": BLAND_API_KEY },
+          body: JSON.stringify({
+            prompt: "This number is not currently in service. Please try again later. Politely end the call.",
+            metadata: { org_id: num.org_id },
+          }),
+        });
+      }
 
       await supabase.from("inbound_numbers").update({ project_id: null }).eq("id", number_id);
 
