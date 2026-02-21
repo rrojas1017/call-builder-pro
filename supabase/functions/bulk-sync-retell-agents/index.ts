@@ -48,14 +48,23 @@ serve(async (req) => {
       const projectName = project?.name || "Unnamed";
 
       try {
-        // Map language code
+        // Map language code — handle multi-language values like "en, es"
         const lang = spec.language || "en";
-        const retellLang = LANG_MAP[lang] || lang;
+        let retellLang: string;
+        if (lang.includes(",")) {
+          retellLang = "multi";
+        } else {
+          retellLang = LANG_MAP[lang.trim()] || lang;
+          if (!retellLang.includes("-") && retellLang !== "multi") {
+            retellLang = "en-US";
+          }
+        }
 
         // 1. Create the Retell agent
         const createBody: Record<string, unknown> = {
           agent_name: projectName,
           language: retellLang,
+          response_engine: { type: "retell-llm" },
           webhook_url: webhookUrl,
           post_call_analysis_data: [
             { description: "Whether the lead was qualified", name: "qualified", type: "boolean" },
