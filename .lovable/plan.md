@@ -1,44 +1,41 @@
 
 
-# Fix: Bulk Sync Retell Agents - response_engine Schema Error
+# Fix: Bulk Sync — Add response_engine Back + Handle Multi-Language
 
 ## Problem
-The `bulk-sync-retell-agents` edge function fails for all 8 agents with this Retell API error:
+Two issues preventing all 8 agents from syncing:
 
-> `response_engine must have required property 'llm_id'... must match exactly one schema in oneOf`
+1. **response_engine is required by Retell API** — removing it entirely was wrong. The working `manage-retell-agent` function sends `response_engine: { type: "retell-llm" }` without an `llm_id`, which triggers Retell to auto-create the LLM. The bulk-sync function needs to do the same.
 
-The `response_engine: { type: "retell-llm" }` format is not accepted by Retell's API -- it requires either `llm_id`, `llm_websocket_url`, or `conversation_flow_id` to be present, OR the `response_engine` field should be omitted entirely to let Retell auto-create one.
+2. **Trip Easy Agent has language "en, es"** — this isn't a valid Retell language code. The function needs to detect multi-language values and map them to `"multi"`.
 
-## Root Cause
-In the working `manage-retell-agent` function, when no `llm_id` is provided, the field is deleted from the object before sending. The `bulk-sync` function doesn't do this cleanup.
-
-## Fix
-In `supabase/functions/bulk-sync-retell-agents/index.ts`, remove the explicit `response_engine` field from the create body. Let Retell auto-create the LLM (which is what happens in the working function). The auto-created LLM ID is returned in the response and then used for prompt injection.
-
-### Change Details
+## Changes
 
 **File:** `supabase/functions/bulk-sync-retell-agents/index.ts`
 
-Replace the `createBody` construction (around lines 55-65) to remove `response_engine`:
+### Change 1: Add response_engine back
+Add `response_engine: { type: "retell-llm" }` to the `createBody` object (matching the pattern in `manage-retell-agent`).
 
-```typescript
-const createBody: Record<string, unknown> = {
-  agent_name: projectName,
-  language: retellLang,
-  webhook_url: webhookUrl,
-  post_call_analysis_data: [
-    { description: "Whether the lead was qualified", name: "qualified", type: "boolean" },
-    { description: "Brief summary of the call", name: "call_summary", type: "string" },
-  ],
-};
-if (spec.voice_id) createBody.voice_id = spec.voice_id;
+### Change 2: Handle multi-language
+Before the language mapping, check if the language string contains a comma or multiple codes. If so, use `"multi"`. Otherwise, apply the existing `LANG_MAP` lookup with a fallback to `"en-US"`.
+
+```
+// Pseudocode
+const lang = spec.language || "en";
+let retellLang: string;
+if (lang.includes(",")) {
+  retellLang = "multi";
+} else {
+  retellLang = LANG_MAP[lang.trim()] || lang;
+  // If still not a valid Retell format (no dash), default to en-US
+  if (!retellLang.includes("-") && retellLang !== "multi") {
+    retellLang = "en-US";
+  }
+}
 ```
 
-The only change is removing the `response_engine: { type: "retell-llm" }` line. Retell will auto-create a retell-llm response engine and return the `llm_id` in the response, which is already being used for prompt injection on line 78+.
-
 ## Files
-- **Modified**: `supabase/functions/bulk-sync-retell-agents/index.ts` (remove `response_engine` from create body)
+- **Modified**: `supabase/functions/bulk-sync-retell-agents/index.ts`
 
 ## After Fix
-Re-deploy the function, then click "Sync All Now" again to provision all 8 agents.
-
+Redeploy, then invoke again to provision all 8 agents. Then run a test call on one.
