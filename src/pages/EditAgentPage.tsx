@@ -21,7 +21,6 @@ export default function EditAgentPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { voices: retellVoices, loading: retellVoicesLoading } = useRetellVoices();
-  const { voices: retellVoices, loading: retellVoicesLoading } = useRetellVoices();
   const { numbers: trustedNumbers } = useOutboundNumbers();
 
   const [loading, setLoading] = useState(true);
