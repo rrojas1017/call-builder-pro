@@ -1,9 +1,19 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { BlandVoice } from "@/hooks/useBlandVoices";
+
+export interface Voice {
+  voice_id: string;
+  name: string;
+  description?: string;
+  is_custom?: boolean;
+  language?: string;
+  gender?: string;
+  accent?: string;
+  preview_url?: string;
+}
 
 export function useRetellVoices() {
-  const [voices, setVoices] = useState<BlandVoice[]>([]);
+  const [voices, setVoices] = useState<Voice[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -13,7 +23,7 @@ export function useRetellVoices() {
         if (error) throw error;
 
         const raw = Array.isArray(data) ? data : data?.voices ?? [];
-        const mapped: BlandVoice[] = raw.map((v: any) => ({
+        const mapped: Voice[] = raw.map((v: any) => ({
           voice_id: v.voice_id ?? v.id ?? "unknown",
           name: v.voice_name ?? v.name ?? "Unknown",
           description: v.provider ?? "",

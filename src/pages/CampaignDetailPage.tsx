@@ -777,7 +777,6 @@ export default function CampaignDetailPage() {
 
                 {contact.status === "calling" && (
                   <LiveCallMonitor
-                    blandCallId={contact.bland_call_id}
                     retellCallId={call?.retell_call_id}
                     contactId={contact.id}
                     isActive={true}

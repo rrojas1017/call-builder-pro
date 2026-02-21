@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, PhoneIncoming, PhoneForwarded, Shield, Target, Users, Mic, Save, Volume2, Globe, CheckCircle2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { useBlandVoices } from "@/hooks/useBlandVoices";
+import { useRetellVoices } from "@/hooks/useRetellVoices";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { useOutboundNumbers } from "@/hooks/useOutboundNumbers";
 import { RetellAgentManager } from "@/components/RetellAgentManager";
@@ -284,7 +284,7 @@ interface WizardQuestion {
 }
 
 export default function CreateAgentPage() {
-  const { voices: blandVoices, loading: voicesLoading } = useBlandVoices();
+  const { voices: retellVoices, loading: voicesLoading } = useRetellVoices();
   const { numbers: trustedNumbers } = useOutboundNumbers();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -653,7 +653,7 @@ export default function CreateAgentPage() {
               <SummaryCard icon={<Mic className="h-5 w-5" />} title="Voice" value={
                 selectedVoice === "custom"
                   ? customVoiceId || "No custom ID set"
-                  : `${blandVoices.find(v => v.voice_id === selectedVoice)?.name || selectedVoice}`
+                  : `${retellVoices.find(v => v.voice_id === selectedVoice)?.name || selectedVoice}`
               } />
             </div>
           )}

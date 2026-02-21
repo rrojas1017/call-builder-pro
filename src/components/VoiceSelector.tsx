@@ -6,10 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Search, Mic, Loader2, Globe } from "lucide-react";
 import { VoicePlayButton } from "@/components/VoicePlayButton";
-import type { BlandVoice } from "@/hooks/useBlandVoices";
+import type { Voice } from "@/hooks/useRetellVoices";
 
 interface VoiceSelectorProps {
-  voices: BlandVoice[];
+  voices: Voice[];
   loading: boolean;
   selectedVoice: string;
   onSelect: (voiceId: string) => void;
@@ -41,7 +41,7 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
     return Array.from(accents).sort();
   }, [voices]);
 
-  const matchesSelected = (v: BlandVoice) =>
+  const matchesSelected = (v: Voice) =>
     v.voice_id === selectedVoice || v.name.toLowerCase() === selectedVoice.toLowerCase();
 
   const pinnedVoice = useMemo(() => {
@@ -56,12 +56,9 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
 
   const filtered = useMemo(() => {
     let result = voices;
-
-    // Exclude pinned voice from main list
     if (selectedVoice) {
       result = result.filter((v) => !matchesSelected(v));
     }
-
     if (languageFilter !== "all") {
       result = result.filter((v) => v.language?.toLowerCase() === languageFilter.toLowerCase());
     }
@@ -71,7 +68,6 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
     if (accentFilter !== "all") {
       result = result.filter((v) => v.accent?.toLowerCase() === accentFilter.toLowerCase());
     }
-
     const q = search.toLowerCase();
     if (q) {
       result = result.filter(
@@ -182,37 +178,23 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
       {pinnedVoice && (
         <div className="space-y-1">
           <p className="text-xs font-semibold text-primary uppercase tracking-wider">Selected</p>
-          <VoiceCard
-            voice={pinnedVoice}
-            selected
-            onSelect={onSelect}
-            sampleText={sampleText}
-          />
+          <VoiceCard voice={pinnedVoice} selected onSelect={onSelect} sampleText={sampleText} />
         </div>
       )}
 
       {/* Scrollable list */}
       <ScrollArea className="max-h-[420px]">
         <div className="space-y-4 pr-3">
-          {/* Custom clones group */}
           {customVoices.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-primary uppercase tracking-wider">Your Clones</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {customVoices.map((voice) => (
-                  <VoiceCard
-                    key={voice.voice_id}
-                    voice={voice}
-                    selected={matchesSelected(voice)}
-                    onSelect={onSelect}
-                    sampleText={sampleText}
-                  />
+                  <VoiceCard key={voice.voice_id} voice={voice} selected={matchesSelected(voice)} onSelect={onSelect} sampleText={sampleText} />
                 ))}
               </div>
             </div>
           )}
-
-          {/* Preset voices group */}
           {presetVoices.length > 0 && (
             <div className="space-y-2">
               {customVoices.length > 0 && (
@@ -220,18 +202,11 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
               )}
               <div className="grid gap-2 sm:grid-cols-2">
                 {presetVoices.map((voice) => (
-                  <VoiceCard
-                    key={voice.voice_id}
-                    voice={voice}
-                    selected={matchesSelected(voice)}
-                    onSelect={onSelect}
-                    sampleText={sampleText}
-                  />
+                  <VoiceCard key={voice.voice_id} voice={voice} selected={matchesSelected(voice)} onSelect={onSelect} sampleText={sampleText} />
                 ))}
               </div>
             </div>
           )}
-
           {filtered.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-4">No voices match your filters</p>
           )}
@@ -247,7 +222,7 @@ function VoiceCard({
   onSelect,
   sampleText,
 }: {
-  voice: BlandVoice;
+  voice: Voice;
   selected: boolean;
   onSelect: (id: string) => void;
   sampleText?: string;
@@ -262,7 +237,7 @@ function VoiceCard({
     >
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-foreground">{voice.name}</p>
-        <VoicePlayButton voiceId={voice.voice_id} sampleText={sampleText} previewUrl={voice.preview_url} />
+        <VoicePlayButton voiceId={voice.voice_id} previewUrl={voice.preview_url} />
       </div>
       {voice.description && <p className="text-xs text-muted-foreground mt-1">{voice.description}</p>}
       <div className="flex gap-1.5 mt-1.5 flex-wrap">

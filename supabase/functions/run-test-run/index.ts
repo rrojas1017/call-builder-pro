@@ -16,8 +16,8 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const blandApiKey = Deno.env.get("BLAND_API_KEY");
-    if (!blandApiKey) throw new Error("BLAND_API_KEY not configured");
+    const retellApiKey = Deno.env.get("RETELL_API_KEY");
+    if (!retellApiKey) throw new Error("RETELL_API_KEY not configured");
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -78,7 +78,7 @@ serve(async (req) => {
       .order("last_used_at", { ascending: true, nullsFirst: true });
     let trustedNumberIndex = 0;
 
-    // Summarize agent knowledge via AI (replaces raw knowledge fetch)
+    // Summarize agent knowledge via AI
     let knowledgeBriefing = "";
     try {
       const { data: summaryData, error: summaryErr } = await supabase.functions.invoke("summarize-agent-knowledge", {
@@ -110,262 +110,149 @@ serve(async (req) => {
       spec.humanization_notes = [...currentNotes, ...newGlobal];
     }
 
-    const voiceProvider = spec?.voice_provider || "bland";
+    const retellAgentId = spec?.retell_agent_id;
+    if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
 
     const callIds: string[] = [];
 
-    if (voiceProvider === "retell") {
-      // ===== RETELL AI BRANCH =====
-      const retellApiKey = Deno.env.get("RETELL_API_KEY");
-      if (!retellApiKey) throw new Error("RETELL_API_KEY not configured");
-      const retellAgentId = spec?.retell_agent_id;
-      if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
+    // Pre-flight: fetch agent to get llm_id and fix transfer agent flag
+    let agentLlmId: string | null = null;
+    try {
+      const agentCheckRes = await fetch(`https://api.retellai.com/get-agent/${retellAgentId}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${retellApiKey}` },
+      });
+      const agentCheckData = await agentCheckRes.json();
 
-      // Pre-flight: fetch agent to get llm_id and fix transfer agent flag
-      let agentLlmId: string | null = null;
-      try {
-        const agentCheckRes = await fetch(`https://api.retellai.com/get-agent/${retellAgentId}`, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${retellApiKey}` },
+      agentLlmId = agentCheckData.response_engine?.llm_id || null;
+
+      if (agentCheckRes.ok && agentCheckData.is_transfer_agent) {
+        const agentPatchRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
+          body: JSON.stringify({ is_transfer_agent: false }),
         });
-        const agentCheckData = await agentCheckRes.json();
+        if (agentPatchRes.ok) {
+          console.log(`Auto-switched agent ${retellAgentId} is_transfer_agent to false`);
+        } else {
+          console.error("Failed to patch agent is_transfer_agent:", await agentPatchRes.text());
+        }
 
-        // Extract llm_id for prompt injection
-        agentLlmId = agentCheckData.response_engine?.llm_id || null;
-
-        if (agentCheckRes.ok && agentCheckData.is_transfer_agent) {
-          // Patch agent-level transfer flag
-          const agentPatchRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
+        if (agentLlmId) {
+          const llmPatchRes = await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
-            body: JSON.stringify({ is_transfer_agent: false }),
+            body: JSON.stringify({ is_transfer_llm: false }),
           });
-          if (agentPatchRes.ok) {
-            console.log(`Auto-switched agent ${retellAgentId} is_transfer_agent to false`);
+          if (llmPatchRes.ok) {
+            console.log(`Auto-switched LLM ${agentLlmId} is_transfer_llm to false`);
           } else {
-            console.error("Failed to patch agent is_transfer_agent:", await agentPatchRes.text());
+            console.error("Failed to patch LLM is_transfer_llm:", await llmPatchRes.text());
           }
-
-          // Also patch LLM transfer flag
-          if (agentLlmId) {
-            const llmPatchRes = await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
-              body: JSON.stringify({ is_transfer_llm: false }),
-            });
-            if (llmPatchRes.ok) {
-              console.log(`Auto-switched LLM ${agentLlmId} is_transfer_llm to false`);
-            } else {
-              console.error("Failed to patch LLM is_transfer_llm:", await llmPatchRes.text());
-            }
-          }
-
-          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for Retell propagation
         }
-      } catch (preflight: any) {
-        console.error("Transfer agent pre-flight check failed:", preflight.message);
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
+    } catch (preflight: any) {
+      console.error("Transfer agent pre-flight check failed:", preflight.message);
+    }
 
-      // Build the task prompt (same logic as Bland branch)
-      const retellTaskPrompt = testRun.agent_instructions_text
-        ? testRun.agent_instructions_text
-        : (spec ? buildTaskPrompt(spec, [], knowledgeBriefing, "") : "Conduct a professional outbound call.");
-      const trimmedRetellPrompt = retellTaskPrompt.length > 28000
-        ? retellTaskPrompt.substring(0, 28000) + "\n\n[Trimmed for length]"
-        : retellTaskPrompt;
+    // Build the task prompt
+    const retellTaskPrompt = testRun.agent_instructions_text
+      ? testRun.agent_instructions_text
+      : (spec ? buildTaskPrompt(spec, [], knowledgeBriefing, "") : "Conduct a professional outbound call.");
+    const trimmedRetellPrompt = retellTaskPrompt.length > 28000
+      ? retellTaskPrompt.substring(0, 28000) + "\n\n[Trimmed for length]"
+      : retellTaskPrompt;
 
-      // Inject prompt into the Retell LLM so the agent follows instructions
-      if (agentLlmId) {
-        try {
-          const llmPromptRes = await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
-            body: JSON.stringify({ general_prompt: trimmedRetellPrompt }),
-          });
-          if (llmPromptRes.ok) {
-            console.log(`Injected task prompt into LLM ${agentLlmId} (${trimmedRetellPrompt.length} chars)`);
-          } else {
-            console.error("Failed to update LLM prompt:", await llmPromptRes.text());
-          }
-        } catch (promptErr: any) {
-          console.error("LLM prompt injection failed:", promptErr.message);
+    // Inject prompt into the Retell LLM
+    if (agentLlmId) {
+      try {
+        const llmPromptRes = await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
+          body: JSON.stringify({ general_prompt: trimmedRetellPrompt }),
+        });
+        if (llmPromptRes.ok) {
+          console.log(`Injected task prompt into LLM ${agentLlmId} (${trimmedRetellPrompt.length} chars)`);
+        } else {
+          console.error("Failed to update LLM prompt:", await llmPromptRes.text());
         }
-      } else {
-        console.warn("No llm_id found on Retell agent – cannot inject task prompt");
-      }
-
-      for (const contact of queuedContacts) {
-        try {
-          const firstName = contact.name?.trim().split(/\s+/)[0] || "";
-          const retellPayload: any = {
-            override_agent_id: retellAgentId,
-            to_number: contact.phone,
-            retell_llm_dynamic_variables: {
-              first_name: firstName,
-              agent_name: spec?.persona_name || "",
-              contact_name: contact.name?.trim() || "",
-            },
-            metadata: {
-              test_run_id, test_run_contact_id: contact.id,
-              org_id: testRun.org_id, project_id: testRun.project_id,
-              spec_version: testRun.spec_version,
-            },
-          };
-          if (spec?.from_number) {
-            retellPayload.from_number = spec.from_number;
-          } else if (trustedNumbers && trustedNumbers.length > 0) {
-            const picked = trustedNumbers[trustedNumberIndex % trustedNumbers.length];
-            retellPayload.from_number = picked.phone_number;
-            trustedNumberIndex++;
-            await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
-          }
-
-          // Guard: Retell requires from_number
-          if (!retellPayload.from_number) {
-            await supabase.from("test_run_contacts").update({
-              status: "failed",
-              error: "No outbound number available. Please add a trusted phone number in Settings > Phone Numbers, or set a From Number on your agent.",
-            }).eq("id", contact.id);
-            continue;
-          }
-
-          // Retry loop for transfer agent propagation delay
-          let retellData: any = {};
-          const maxRetries = 3;
-          for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            const retellResp = await fetch("https://api.retellai.com/v2/create-phone-call", {
-              method: "POST",
-              headers: { Authorization: `Bearer ${retellApiKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify(retellPayload),
-            });
-            retellData = await retellResp.json();
-            console.log(`Retell API response (attempt ${attempt}):`, retellResp.status, JSON.stringify(retellData));
-
-            const errMsg = retellData.message || retellData.error || "";
-            if (typeof errMsg === "string" && errMsg.includes("Transfer agents cannot be used for outbound calls") && attempt < maxRetries) {
-              console.warn(`Transfer agent not yet propagated, retrying in 3s (attempt ${attempt}/${maxRetries})`);
-              await new Promise(resolve => setTimeout(resolve, 3000));
-              continue;
-            }
-            break;
-          }
-
-          if (retellData.call_id) {
-            callIds.push(retellData.call_id);
-            await supabase.from("test_run_contacts").update({
-              status: "calling", retell_call_id: retellData.call_id, called_at: new Date().toISOString(),
-            } as any).eq("id", contact.id);
-          } else {
-            await supabase.from("test_run_contacts").update({
-              status: "failed", error: retellData.message || retellData.error || JSON.stringify(retellData),
-            }).eq("id", contact.id);
-          }
-        } catch (callErr: any) {
-          await supabase.from("test_run_contacts").update({ status: "failed", error: callErr.message }).eq("id", contact.id);
-        }
+      } catch (promptErr: any) {
+        console.error("LLM prompt injection failed:", promptErr.message);
       }
     } else {
-      // ===== BLAND AI BRANCH =====
-      const webhookUrl = `${supabaseUrl}/functions/v1/receive-bland-webhook`;
+      console.warn("No llm_id found on Retell agent – cannot inject task prompt");
+    }
 
-      for (const contact of queuedContacts) {
-        try {
-          // Build per-contact prompt with caller name context
-          const perContactTask = testRun.agent_instructions_text
-            ? replaceTemplateVars(testRun.agent_instructions_text, contact, spec?.persona_name)
-            : (spec ? buildTaskPrompt(spec, [], knowledgeBriefing, contact.name?.trim() || "") : "Conduct a professional outbound call.");
-          const contactTask = perContactTask.length > 28000
-            ? perContactTask.substring(0, 28000) + "\n\n[Trimmed for length]"
-            : perContactTask;
-
-          const rawFirstSentence = spec?.opening_line
-            ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, spec?.persona_name || "")
-            : undefined;
-          // Fix blank-name fallback: strip {{first_name}} and ask for name naturally
-          let contactFirstSentence: string | undefined;
-          if (rawFirstSentence) {
-            const firstName = contact.name?.trim().split(/\s+/)[0] || "";
-            if (firstName) {
-              contactFirstSentence = replaceTemplateVars(rawFirstSentence, contact, spec?.persona_name);
-            } else {
-              // Remove {{first_name}} placeholder and append a name-asking phrase
-              const lang = (spec?.language || "en").toLowerCase();
-              const askName = lang.startsWith("es") ? " ¿Con quién tengo el gusto?" : " May I ask who I'm speaking with?";
-              contactFirstSentence = rawFirstSentence.replace(/\{\{first_name\}\}[,!]?\s*/gi, "").trim() + askName;
-            }
-          }
-
-          const blandPayload: any = {
-            phone_number: contact.phone,
-            task: contactTask,
-            first_sentence: contactFirstSentence,
-            voice: spec?.voice_id || "maya",
-            model: "base",
-            record: true,
-            webhook: webhookUrl,
-            temperature: spec?.temperature ?? 0.7,
-            interruption_threshold: spec?.interruption_threshold ?? 100,
-            noise_cancellation: true,
-            metadata: {
-              test_run_id, test_run_contact_id: contact.id,
-              org_id: testRun.org_id, project_id: testRun.project_id,
-              spec_version: testRun.spec_version,
-            },
-          };
-
-          if (spec?.speaking_speed && spec.speaking_speed !== 1.0) {
-            blandPayload.voice_settings = { speed: spec.speaking_speed };
-          }
-          if (spec?.pronunciation_guide && Array.isArray(spec.pronunciation_guide) && spec.pronunciation_guide.length > 0) {
-            blandPayload.pronunciation_guide = spec.pronunciation_guide;
-          }
-          if (spec?.transfer_required && spec?.transfer_phone_number) {
-            const digits = spec.transfer_phone_number.replace(/\D/g, "");
-            if (digits.length >= 10) {
-              blandPayload.transfer_phone_number = digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
-            }
-          }
-          if (spec?.background_track && spec.background_track !== "none") {
-            blandPayload.background_track = spec.background_track;
-          }
-          // Use spec.from_number if set, otherwise pick from trusted pool
-          if (spec?.from_number) {
-            blandPayload.from = spec.from_number;
-          } else if (trustedNumbers && trustedNumbers.length > 0) {
-            const picked = trustedNumbers[trustedNumberIndex % trustedNumbers.length];
-            blandPayload.from = picked.phone_number;
-            trustedNumberIndex++;
-            await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
-          }
-
-          const blandResp = await fetch("https://us.api.bland.ai/v1/calls", {
-            method: "POST",
-            headers: { Authorization: blandApiKey, "Content-Type": "application/json" },
-            body: JSON.stringify(blandPayload),
-          });
-
-          const blandText = await blandResp.text();
-          let blandData;
-          try {
-            blandData = JSON.parse(blandText);
-          } catch {
-            throw new Error(`Bland API returned non-JSON (HTTP ${blandResp.status}): ${blandText.substring(0, 200)}`);
-          }
-          console.log("Bland API response:", blandResp.status, JSON.stringify(blandData));
-
-          if (blandData.call_id) {
-            callIds.push(blandData.call_id);
-            await supabase.from("test_run_contacts").update({
-              status: "calling", bland_call_id: blandData.call_id, called_at: new Date().toISOString(),
-            }).eq("id", contact.id);
-          } else {
-            await supabase.from("test_run_contacts").update({
-              status: "failed", error: blandData.message || blandData.error || JSON.stringify(blandData),
-            }).eq("id", contact.id);
-          }
-        } catch (callErr: any) {
-          await supabase.from("test_run_contacts").update({ status: "failed", error: callErr.message }).eq("id", contact.id);
+    for (const contact of queuedContacts) {
+      try {
+        const firstName = contact.name?.trim().split(/\s+/)[0] || "";
+        const retellPayload: any = {
+          override_agent_id: retellAgentId,
+          to_number: contact.phone,
+          retell_llm_dynamic_variables: {
+            first_name: firstName,
+            agent_name: spec?.persona_name || "",
+            contact_name: contact.name?.trim() || "",
+          },
+          metadata: {
+            test_run_id, test_run_contact_id: contact.id,
+            org_id: testRun.org_id, project_id: testRun.project_id,
+            spec_version: testRun.spec_version,
+          },
+        };
+        if (spec?.from_number) {
+          retellPayload.from_number = spec.from_number;
+        } else if (trustedNumbers && trustedNumbers.length > 0) {
+          const picked = trustedNumbers[trustedNumberIndex % trustedNumbers.length];
+          retellPayload.from_number = picked.phone_number;
+          trustedNumberIndex++;
+          await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
         }
+
+        // Guard: Retell requires from_number
+        if (!retellPayload.from_number) {
+          await supabase.from("test_run_contacts").update({
+            status: "failed",
+            error: "No outbound number available. Please add a trusted phone number in Settings > Phone Numbers, or set a From Number on your agent.",
+          }).eq("id", contact.id);
+          continue;
+        }
+
+        // Retry loop for transfer agent propagation delay
+        let retellData: any = {};
+        const maxRetries = 3;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          const retellResp = await fetch("https://api.retellai.com/v2/create-phone-call", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${retellApiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify(retellPayload),
+          });
+          retellData = await retellResp.json();
+          console.log(`Retell API response (attempt ${attempt}):`, retellResp.status, JSON.stringify(retellData));
+
+          const errMsg = retellData.message || retellData.error || "";
+          if (typeof errMsg === "string" && errMsg.includes("Transfer agents cannot be used for outbound calls") && attempt < maxRetries) {
+            console.warn(`Transfer agent not yet propagated, retrying in 3s (attempt ${attempt}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            continue;
+          }
+          break;
+        }
+
+        if (retellData.call_id) {
+          callIds.push(retellData.call_id);
+          await supabase.from("test_run_contacts").update({
+            status: "calling", retell_call_id: retellData.call_id, called_at: new Date().toISOString(),
+          } as any).eq("id", contact.id);
+        } else {
+          await supabase.from("test_run_contacts").update({
+            status: "failed", error: retellData.message || retellData.error || JSON.stringify(retellData),
+          }).eq("id", contact.id);
+        }
+      } catch (callErr: any) {
+        await supabase.from("test_run_contacts").update({ status: "failed", error: callErr.message }).eq("id", contact.id);
       }
     }
 
@@ -376,7 +263,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       initiated_count: callIds.length,
       call_ids: callIds,
-      provider: voiceProvider,
+      provider: "retell",
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {
     console.error("run-test-run error:", err);

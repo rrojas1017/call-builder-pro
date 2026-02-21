@@ -1,8 +1,5 @@
 project_id = "kmwaqmowstrhwmevwweg"
 
-[functions.receive-bland-webhook]
-verify_jwt = false
-
 [functions.generate-spec]
 verify_jwt = false
 
@@ -34,12 +31,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.research-and-improve]
-verify_jwt = false
-
-[functions.list-bland-voices]
-verify_jwt = false
-
-[functions.generate-voice-sample]
 verify_jwt = false
 
 [functions.stop-call]
