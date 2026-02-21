@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, RefreshCw, AlertTriangle, CheckCircle2, ChevronDown } from "lucide-react";
+import { Loader2, Plus, RefreshCw, AlertTriangle, CheckCircle2, ChevronDown, ArrowRightLeft } from "lucide-react";
 import { useRetellAgent } from "@/hooks/useRetellAgent";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -24,7 +24,7 @@ export function RetellAgentManager({
   language,
 }: RetellAgentManagerProps) {
   const { toast } = useToast();
-  const { config, loading, error, createAgent, updateAgent } = useRetellAgent(
+  const { config, loading, error, createAgent, updateAgent, switchToOutbound } = useRetellAgent(
     retellAgentId || null
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -138,6 +138,23 @@ export function RetellAgentManager({
           <p className="text-xs text-muted-foreground">
             Transfer agents cannot make outbound calls. This agent needs to be reconfigured as an outbound agent.
           </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full border-yellow-500/50 text-yellow-600 hover:bg-yellow-500/20 dark:text-yellow-400"
+            onClick={async () => {
+              const result = await switchToOutbound(retellAgentId);
+              if (result) {
+                toast({ title: "Switched to outbound!", description: "This agent can now make outbound calls." });
+              } else if (error) {
+                toast({ title: "Failed to switch", description: error, variant: "destructive" });
+              }
+            }}
+            disabled={loading}
+          >
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowRightLeft className="mr-2 h-4 w-4" />}
+            Switch to Outbound
+          </Button>
         </div>
       )}
 

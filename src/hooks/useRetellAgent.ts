@@ -85,5 +85,24 @@ export function useRetellAgent(agentId: string | null | undefined) {
     }
   };
 
-  return { config, loading, error, createAgent, updateAgent, refetch: fetchAgent };
+  const switchToOutbound = async (id: string): Promise<RetellAgentConfig | null> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: err } = await supabase.functions.invoke("manage-retell-agent", {
+        body: { action: "switch_to_outbound", agent_id: id },
+      });
+      if (err) throw err;
+      if (data?.error) throw new Error(data.error);
+      setConfig(data);
+      return data;
+    } catch (e: any) {
+      setError(e.message);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { config, loading, error, createAgent, updateAgent, switchToOutbound, refetch: fetchAgent };
 }
