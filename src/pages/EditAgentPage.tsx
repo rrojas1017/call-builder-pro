@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { VoiceSelector } from "@/components/VoiceSelector";
+import { RetellAgentManager } from "@/components/RetellAgentManager";
 
 export default function EditAgentPage() {
   const { id } = useParams<{ id: string }>();
@@ -165,11 +166,13 @@ export default function EditAgentPage() {
         </div>
         {voiceProvider === "retell" && (
           <div className="space-y-3">
-            <div className="space-y-2">
-              <Label>Append Agent ID</Label>
-              <Input value={retellAgentId} onChange={(e) => setRetellAgentId(e.target.value)} placeholder="e.g. agent_abc123" />
-              <p className="text-xs text-muted-foreground">The agent ID from your Append dashboard.</p>
-            </div>
+            <RetellAgentManager
+              retellAgentId={retellAgentId}
+              onAgentIdChange={setRetellAgentId}
+              personaName={personaName}
+              voiceId={selectedVoice || undefined}
+              language="en"
+            />
             {trustedNumbers.length === 0 && fromNumber === "auto" && (
               <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
                 <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">⚠ Outbound number required</p>

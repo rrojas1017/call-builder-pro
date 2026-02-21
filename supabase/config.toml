@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.list-retell-voices]
 verify_jwt = false
+
+[functions.manage-retell-agent]
+verify_jwt = false
