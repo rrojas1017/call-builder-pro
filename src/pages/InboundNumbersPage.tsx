@@ -89,8 +89,26 @@ export default function InboundNumbersPage() {
   }, [user, orgId]);
 
   const extractError = async (error: any): Promise<string> => {
-    const body = await error?.context?.json?.().catch(() => null);
-    return body?.error || error?.message || "Unknown error";
+    // Try reading the Response body from FunctionsHttpError
+    try {
+      const body = await error?.context?.json?.();
+      if (body?.error) return body.error;
+    } catch { /* body may already be consumed */ }
+    // Fallback: try parsing JSON from the error message itself
+    const msg = error?.message || "";
+    try {
+      const parsed = JSON.parse(msg);
+      if (parsed?.error) return parsed.error;
+    } catch { /* not JSON */ }
+    // Try extracting JSON embedded in the message string (e.g. "Edge function returned 400: Error, {"error":"..."}")
+    const jsonMatch = msg.match(/\{[^}]+\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed?.error) return parsed.error;
+      } catch { /* not valid JSON */ }
+    }
+    return msg || "Unknown error";
   };
 
   const handlePurchase = async () => {
