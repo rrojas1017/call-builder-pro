@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useBlandVoices } from "@/hooks/useBlandVoices";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { useOutboundNumbers } from "@/hooks/useOutboundNumbers";
+import { RetellAgentManager } from "@/components/RetellAgentManager";
 
 // ─── Translation map ────────────────────────────────────────────────────────
 const LANGUAGES = [
@@ -685,11 +686,13 @@ export default function CreateAgentPage() {
             </div>
             {voiceProvider === "retell" && (
               <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label>Append Agent ID</Label>
-                  <Input value={retellAgentId} onChange={(e) => setRetellAgentId(e.target.value)} placeholder="e.g. agent_abc123" />
-                  <p className="text-xs text-muted-foreground">The agent ID from your Append dashboard.</p>
-                </div>
+                <RetellAgentManager
+                  retellAgentId={retellAgentId}
+                  onAgentIdChange={setRetellAgentId}
+                  personaName={personaName}
+                  voiceId={selectedVoice !== "maya" ? selectedVoice : undefined}
+                  language={agentLanguage}
+                />
                 {trustedNumbers.length === 0 && (
                   <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
                     <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">⚠ Outbound number required</p>
