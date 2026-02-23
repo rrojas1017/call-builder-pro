@@ -12,8 +12,10 @@ const RETELL_BASE = "https://api.retellai.com";
 /** Check if a voice_id looks like a valid Retell voice (UUID or 11labs- prefix) */
 function isValidRetellVoiceId(id?: string): boolean {
   if (!id) return false;
-  // Valid formats: UUID-like, 11labs-*, eleven_*, or contains a hyphen (provider-name pattern)
-  return /^[0-9a-f]{8}-/.test(id) || id.startsWith("11labs-") || id.startsWith("eleven_") || id.includes("-");
+  // Retell voices use provider prefixes: 11labs-, cartesia-, openai-, minimax-, eleven_
+  // Raw UUIDs are NOT valid Retell voice IDs (they come from legacy providers)
+  const validPrefixes = ["11labs-", "cartesia-", "openai-", "minimax-", "eleven_", "deepgram-", "playht-"];
+  return validPrefixes.some(prefix => id.startsWith(prefix));
 }
 
 function buildAgentBody(config: Record<string, any>, webhookUrl: string): Record<string, unknown> {
