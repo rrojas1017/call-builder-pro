@@ -1,41 +1,27 @@
 
 
-# Fix: Agent Evolution Graph Not Showing
+# Fix: Redeploy evaluate-call and verify live transcription
 
-## Root Cause
+## Problem
 
-The "Agent Humanness Progress" evolution graph is not appearing because **all call evaluations are failing**. The `evaluate-call` function uses your Anthropic API key to run Claude, but the Anthropic account has run out of credits:
+Two related issues:
 
-> "Your credit balance is too low to access the Anthropic API"
+1. **evaluate-call not redeployed**: The logs confirm the deployed version is still calling `callClaude` (Anthropic), which fails with "credit balance too low". The code was updated to use Gemini but the function was never actually redeployed with the new code. This blocks all post-call evaluations and prevents the evolution graph from appearing.
 
-Since no evaluations complete, there's no humanness/naturalness score data, and the chart is hidden (it only renders when data exists).
+2. **Live transcription may not trigger**: The `LiveCallMonitor` component only renders when `running && contact?.retell_call_id` is truthy. If the `retell_call_id` isn't populated on the contact record quickly enough after the call starts, the monitor won't appear.
 
 ## Solution
 
-Migrate the `evaluate-call` function from the direct Anthropic API to **Lovable AI**, which provides access to equivalent models without needing a separate API key. This eliminates the dependency on external API billing.
+### Step 1: Redeploy evaluate-call
+The code already has `provider: "gemini"` with `google/gemini-2.5-flash`. Simply redeploying the function will fix all evaluation failures.
 
-### Changes
+### Step 2: Redeploy live-call-stream
+Ensure this function is also on the latest deployed version to prevent any stale code issues.
 
-**1. Update `supabase/functions/_shared/ai-client.ts`**
-- Add a `callLovableAI` function that routes requests through the Lovable AI gateway (using the existing `LOVABLE_API_KEY` secret)
-- Support the same interface as the current `callClaude` function
-
-**2. Update `supabase/functions/evaluate-call/index.ts`**
-- Switch from `callClaude` to `callLovableAI` using a supported model (e.g., `google/gemini-2.5-flash` or `openai/gpt-5-mini`) for evaluation
-- Keep the same prompt structure and tool-calling pattern
-- The evaluation logic, scoring rubric, and auto-graduation checks remain unchanged
-
-**3. Add an empty state to the evolution graph in `src/pages/UniversityPage.tsx`**
-- When there are completed test contacts but no evaluations yet, show a placeholder message like "Evaluations pending -- scores will appear here after calls are graded" instead of hiding the chart entirely
-- This gives users visibility that the feature exists even before data populates
-
-### Why Lovable AI?
-
-The `LOVABLE_API_KEY` is already configured in your secrets. Models like `openai/gpt-5-mini` or `google/gemini-2.5-flash` provide strong reasoning capabilities sufficient for call evaluation, without requiring you to maintain a separate Anthropic billing account.
+### Step 3: Verify retell_call_id population
+Check that the test call flow properly sets `retell_call_id` on the test contact so the `LiveCallMonitor` renders. If there's a timing issue where the call starts before the ID is saved, we may need to add a brief refetch loop.
 
 ## Expected Result
-
-After this change:
-- Completed test calls will be automatically evaluated using Lovable AI
-- The evolution graph will appear on the University/Test page showing humanness and naturalness trends
-- No more dependency on Anthropic API credits for evaluations
+- Evaluations will complete successfully using the Lovable AI gateway
+- The evolution graph will populate with humanness/naturalness scores
+- Live transcription will display during active test calls
