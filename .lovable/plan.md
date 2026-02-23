@@ -1,59 +1,68 @@
 
 
-# Fix: AI Optimization Engine Producing Invalid Recommendations
+# Fix: Voice, Persona Name, and Transfer Not Syncing to Retell
 
-## Problem
+## The Three Problems
 
-The "Optimize with AI" feature is generating recommendations with the **wrong Retell API format** for `transfer_call` tools and invalid voice IDs. When applied, Retell rejects everything, resulting in "0 settings updated."
+1. **Wrong voice**: DB has `minimax-Ashley` but Retell agent shows `11labs-Adrian` because the pre-flight sync in `run-test-run` and `tick-campaign` never syncs `voice_id` to the Retell agent before making calls.
 
-Two specific errors from logs:
-- `general_tools/1 must have required property 'transfer_option'` -- wrong tool format
-- `Item 11labs-Ashley not found from voice` -- recommending a voice that doesn't exist
+2. **Wrong persona name**: The agent says "Ashley" instead of "Alex" because the `transfer_call` tool format is STILL wrong (`type: "phone_number"` instead of `type: "predefined"`, missing `transfer_option`). This causes Retell to reject the entire LLM PATCH -- including `general_prompt` (with "Alex") and `begin_message`.
 
-## Root Cause
+3. **No transfers**: Same root cause -- Retell rejects the LLM patch, so the `transfer_call` tool never gets configured.
 
-1. The `RETELL_BEST_PRACTICES` prompt doesn't document the correct `transfer_call` schema, so the AI hallucinates the format
-2. The apply logic blindly sends AI-recommended values to Retell without validation
-3. No guard against recommending voice IDs that don't match the current voice provider
+## Fixes
 
-## Fix
+### 1. Fix `transfer_call` format in ALL three files
 
-### `supabase/functions/optimize-retell-agent/index.ts`
+The previous fix used `type: "phone_number"` which Retell still rejects. Must use `type: "predefined"` and include `transfer_option`:
 
-**A. Update `RETELL_BEST_PRACTICES` with correct transfer_call format:**
-
-Add explicit documentation of the required transfer_call schema:
-
-```text
-### transfer_call Tool Format (REQUIRED)
-{
-  "type": "transfer_call",
-  "name": "transfer_to_agent",
-  "description": "Transfer the call...",
-  "transfer_destination": {
-    "type": "predefined",
-    "number": "+1XXXXXXXXXX",
-    "ignore_e164_validation": false
+```typescript
+// CORRECT format (all three files)
+generalTools.push({
+  type: "transfer_call",
+  name: "transfer_to_agent",
+  description: "Transfer the call to a live agent when the lead is qualified and ready.",
+  transfer_destination: {
+    type: "predefined",
+    number: spec.transfer_phone_number,
+    ignore_e164_validation: false,
   },
-  "transfer_option": {
-    "type": "cold_transfer",
-    "show_transferee_as_caller": false
-  }
-}
+  transfer_option: {
+    type: "cold_transfer",
+    show_transferee_as_caller: false,
+  },
+});
 ```
 
-**B. Add validation before applying `general_tools` patches:**
+**Files:**
+- `supabase/functions/run-test-run/index.ts` (lines 220-230)
+- `supabase/functions/tick-campaign/index.ts` (lines 240-250)
+- `supabase/functions/manage-retell-agent/index.ts` (lines 148-158, inside `buildLlmBody`)
 
-When the AI recommends `general_tools`, intercept and fix any `transfer_call` entries to ensure they have the correct `transfer_destination` (with `type: "predefined"`) and `transfer_option` structure. Use the phone number from `spec.transfer_phone_number` as the source of truth rather than whatever the AI hallucinates.
+### 2. Sync `voice_id` and `agent_name` in pre-flight
 
-**C. Skip voice_id recommendations:**
+Add `voice_id` and `agent_name` to the agent-level PATCH in `run-test-run` (around line 158) and `tick-campaign` so the Retell agent always matches the DB spec before calls start:
 
-Add the `voice_id` param to a "skip list" so the optimizer never tries to change the voice -- voice selection is a user choice, not something AI should override. This prevents the `11labs-Ashley not found` error.
+```typescript
+// Add to the agentPatch object in pre-flight
+if (spec?.voice_id) agentPatch.voice_id = spec.voice_id;
+if (spec?.persona_name) agentPatch.agent_name = spec.persona_name;
+```
 
-**D. Add system prompt instruction:**
+**Files:**
+- `supabase/functions/run-test-run/index.ts` (around line 158-160)
+- `supabase/functions/tick-campaign/index.ts` (same pre-flight section)
 
-Tell the AI to never recommend changing `voice_id` and to always use the exact `transfer_call` format from the best practices document.
+## Expected Outcome
+
+After these fixes:
+- The Retell agent will use `minimax-Ashley` voice (matching the UI selection)
+- The LLM PATCH will succeed, injecting the prompt with "Alex" as persona name
+- The `begin_message` will say "Hi there, this is Alex..." 
+- The `transfer_call` tool will be properly configured for call transfers
 
 ## Files to Modify
-- `supabase/functions/optimize-retell-agent/index.ts` -- Update best practices doc, add apply-time validation, skip voice changes
+- `supabase/functions/run-test-run/index.ts` -- Fix transfer format + add voice/name sync
+- `supabase/functions/tick-campaign/index.ts` -- Fix transfer format + add voice/name sync
+- `supabase/functions/manage-retell-agent/index.ts` -- Fix transfer format in `buildLlmBody`
 
