@@ -243,6 +243,11 @@ serve(async (req) => {
       body.response_engine = { type: "retell-llm", llm_id: llmId };
       body.is_transfer_agent = false;
 
+      const res = await fetch(`${RETELL_BASE}/create-agent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(body),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error_message || data.message || JSON.stringify(data));
 

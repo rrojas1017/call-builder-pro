@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { buildTaskPrompt, replaceTemplateVars } from "../_shared/buildTaskPrompt.ts";
+import { buildTaskPrompt, replaceTemplateVars, resolveBeginMessage } from "../_shared/buildTaskPrompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -236,10 +236,10 @@ serve(async (req) => {
           });
         }
 
-        // Resolve begin_message from opening_line
+        // Resolve begin_message: strip {{first_name}} since it's a static LLM field
         const agentName = spec?.persona_name || "Agent";
         const resolvedOpening = spec?.opening_line
-          ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, agentName)
+          ? resolveBeginMessage(spec.opening_line, agentName)
           : null;
 
         const llmPatchBody: Record<string, unknown> = {
