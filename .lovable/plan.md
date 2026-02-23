@@ -1,69 +1,40 @@
 
 
-# Cost Tracking and Reporting from Retell
+# Add Agent Profile Summary to Edit Agent Page
 
-## What This Does
-After every call ends, we'll automatically fetch the real cost from Retell's API and save it. Then we'll show a clear cost breakdown on the Billing page so you always know exactly what's costing you.
+## What You'll Get
+A visual profile card at the top of the Edit Agent page that shows the current configuration of the agent at a glance -- including the voice being used, persona name, mode, maturity level, ambient sound, and key stats like call count and average score. This way you can immediately see "who" the agent is before diving into edits.
 
-## How It Works
+## Changes
 
-### 1. Capture Real Costs from Retell (Webhook Update)
-When a call ends, the webhook will call Retell's "Get Call" API (`GET /v2/get-call/{call_id}`) to fetch the actual cost breakdown. This returns itemized costs (voice engine, LLM, telephony) and a combined total. We'll save:
-- The total cost to the existing `cost_estimate_usd` column on the calls table
-- A new credit transaction record deducting that amount from the org's balance
-- Decrement the org's `credits_balance` accordingly
+### 1. Fetch additional profile data on load
+The Edit Agent page already loads `agent_projects` and `agent_specs`. We'll also fetch:
+- The voice name (resolved from the voice list by matching `voice_id`)
+- The maturity level from `agent_projects`
+- Call count and qualified count from `calls`
+- Average evaluation score from `calls`
 
-### 2. Auto-Deduct Credits After Each Call
-Right after saving the cost, the webhook will:
-- Insert a `credit_transaction` with type `call_charge` and a negative amount
-- Update the org's `credits_balance` by subtracting the call cost
-- Include a description like "Call to +1234567890 (3.2 min) - $0.42"
+### 2. Add a Profile Summary card at the top
+Right below the page header (and above the Identity section), we'll add a compact card showing:
 
-### 3. Cost Reporting on Billing Page
-Add a new "Usage Summary" section above the transaction history showing:
-- **Total Spend** (sum of all call charges)
-- **Total Minutes** used
-- **Avg Cost Per Minute** 
-- **Calls Made** count
-- A period selector (Today / 7 Days / 30 Days / All Time)
-- Breakdown table by agent showing minutes and cost per agent
+| Field | Source |
+|-------|--------|
+| Persona Name | `agent_specs.persona_name` |
+| Voice | Resolved name from Retell voices list |
+| Mode | `agent_specs.mode` (Outbound/Inbound) |
+| Maturity Level | `agent_projects.maturity_level` with color badge |
+| Ambient Sound | `agent_specs.background_track` |
+| Opening Line | `agent_specs.opening_line` (truncated) |
+| Tone | `agent_specs.tone_style` |
+| Transfer | Enabled/Disabled + phone number |
+| Retell Agent ID | Shown if provisioned |
+| Total Calls / Qualified / Avg Score | Aggregated from `calls` table |
 
----
-
-## Technical Details
+This will be a read-only summary section styled as a "resume card" -- consistent with the existing `AgentProfileCard` pattern but expanded with more detail since this is the dedicated edit page.
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/receive-retell-webhook/index.ts` | After upserting the call, fetch `GET /v2/get-call/{call_id}` from Retell API using `RETELL_API_KEY` to get `call_cost.combined_cost`. Save to `cost_estimate_usd`. Insert credit_transaction and decrement org balance. |
-| `src/pages/BillingPage.tsx` | Add usage summary KPI cards (Total Spend, Minutes, Avg $/min, Call Count) with period selector. Add per-agent cost breakdown table. Query data from `calls` table aggregating `cost_estimate_usd` and `duration_seconds`. |
-
-### Retell API Response Structure (call_cost)
-```text
-call_cost: {
-  product_costs: [
-    { product: "elevenlabs_tts", cost: 60, unit_price: 1 },
-    { product: "openai_llm", cost: 10, unit_price: 0.5 }
-  ],
-  total_duration_seconds: 60,
-  total_duration_unit_price: 1,
-  combined_cost: 70  // in cents
-}
-```
-
-### Credit Deduction Flow
-```text
-Call Ends (webhook)
-  --> Fetch Retell GET /v2/get-call/{call_id}
-  --> Extract combined_cost (cents) --> convert to USD
-  --> UPDATE calls SET cost_estimate_usd = $X
-  --> INSERT credit_transaction (type: call_charge, amount: -$X)
-  --> UPDATE organizations SET credits_balance = credits_balance - $X
-```
-
-### No New Database Tables Needed
-- `cost_estimate_usd` column already exists on `calls`
-- `credit_transactions` table already exists
-- `credits_balance` column already exists on `organizations`
+| `src/pages/EditAgentPage.tsx` | Add maturity level to the data load query. Add a profile summary card section between the header and the Identity form section. Resolve voice name from the loaded voices list. Fetch call stats (total, qualified, avg score). |
 
