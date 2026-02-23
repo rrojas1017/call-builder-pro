@@ -59,7 +59,7 @@ const TRANSLATIONS: Record<LangCode, {
   en: {
     step0Title: "Build Your AI Call Agent",
     step0Sub: "Describe what you want the agent to do. We'll handle the structure.",
-    agentNameLabel: "Agent Name",
+    agentNameLabel: "Agent Profile",
     agentNamePlaceholder: "e.g. Health Insurance Pre-Qualifier",
     personaNameLabel: "Agent Persona Name",
     personaNamePlaceholder: "e.g. Sofia, Alex, Carlos",
@@ -87,7 +87,7 @@ const TRANSLATIONS: Record<LangCode, {
   es: {
     step0Title: "Crea tu Agente de Llamadas con IA",
     step0Sub: "Describe lo que quieres que haga el agente. Nosotros nos encargamos de la estructura.",
-    agentNameLabel: "Nombre del Agente",
+    agentNameLabel: "Perfil del Agente",
     agentNamePlaceholder: "ej. Pre-calificador de Seguros de Salud",
     personaNameLabel: "Nombre de Persona del Agente",
     personaNamePlaceholder: "ej. Sofía, Alejandro, Carlos",
@@ -115,7 +115,7 @@ const TRANSLATIONS: Record<LangCode, {
   fr: {
     step0Title: "Créez votre Agent d'Appel IA",
     step0Sub: "Décrivez ce que vous voulez que l'agent fasse. Nous gérons la structure.",
-    agentNameLabel: "Nom de l'Agent",
+    agentNameLabel: "Profil de l'Agent",
     agentNamePlaceholder: "ex. Pré-qualificateur d'Assurance Santé",
     personaNameLabel: "Nom de Persona de l'Agent",
     personaNamePlaceholder: "ex. Sophie, Alex, Pierre",
@@ -143,7 +143,7 @@ const TRANSLATIONS: Record<LangCode, {
   pt: {
     step0Title: "Crie seu Agente de Chamadas com IA",
     step0Sub: "Descreva o que você quer que o agente faça. Nós cuidamos da estrutura.",
-    agentNameLabel: "Nome do Agente",
+    agentNameLabel: "Perfil do Agente",
     agentNamePlaceholder: "ex. Pré-qualificador de Seguro Saúde",
     personaNameLabel: "Nome de Persona do Agente",
     personaNamePlaceholder: "ex. Sofia, Alex, Carlos",
@@ -171,7 +171,7 @@ const TRANSLATIONS: Record<LangCode, {
   de: {
     step0Title: "Erstellen Sie Ihren KI-Anruf-Agenten",
     step0Sub: "Beschreiben Sie, was der Agent tun soll. Wir kümmern uns um die Struktur.",
-    agentNameLabel: "Agentenname",
+    agentNameLabel: "Agentenprofil",
     agentNamePlaceholder: "z.B. Krankenversicherungs-Vorqualifizierer",
     personaNameLabel: "Persona-Name des Agenten",
     personaNamePlaceholder: "z.B. Sofia, Alex, Klaus",
@@ -199,7 +199,7 @@ const TRANSLATIONS: Record<LangCode, {
   it: {
     step0Title: "Crea il tuo Agente di Chiamate IA",
     step0Sub: "Descrivi cosa vuoi che l'agente faccia. Noi gestiamo la struttura.",
-    agentNameLabel: "Nome dell'Agente",
+    agentNameLabel: "Profilo dell'Agente",
     agentNamePlaceholder: "es. Pre-qualificatore Assicurazione Sanitaria",
     personaNameLabel: "Nome Persona dell'Agente",
     personaNamePlaceholder: "es. Sofia, Alex, Marco",
@@ -558,7 +558,8 @@ export default function CreateAgentPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>{t.agentNameLabel}</Label>
+              <Label className="text-base font-semibold">{t.agentNameLabel}</Label>
+              <span className="block text-sm text-muted-foreground -mt-1">Agent Name</span>
               <Input value={agentName} onChange={(e) => setAgentName(e.target.value)} placeholder={t.agentNamePlaceholder} />
             </div>
             <div className="space-y-2">
