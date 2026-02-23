@@ -193,61 +193,96 @@ Analyze the gap between current config and best practices. Return optimization r
       result = { recommendations: [], overall_score: 0, summary: aiResponse.content || "No recommendations generated" };
     }
 
-    // Auto-apply if requested and we have a Retell agent
-    if (apply && spec.retell_agent_id && result.recommendations?.length > 0) {
-      const agentPatch: Record<string, unknown> = {};
-      const llmPatch: Record<string, unknown> = {};
+    // Auto-apply if requested
+    if (apply && result.recommendations?.length > 0) {
+      const autoRecs = result.recommendations.filter((r: any) => r.auto_apply);
 
-      for (const rec of result.recommendations) {
-        if (!rec.auto_apply) continue;
-        const param = rec.retell_param;
-        const value = rec.recommended_value;
+      if (spec.retell_agent_id) {
+        // Apply to live Retell agent
+        const agentPatch: Record<string, unknown> = {};
+        const llmPatch: Record<string, unknown> = {};
 
-        // Parse value appropriately
-        let parsedValue: unknown;
-        try { parsedValue = JSON.parse(value); } catch { parsedValue = value; }
+        for (const rec of autoRecs) {
+          const param = rec.retell_param;
+          const value = rec.recommended_value;
+          let parsedValue: unknown;
+          try { parsedValue = JSON.parse(value); } catch { parsedValue = value; }
 
-        // Route to agent or LLM patch based on parameter
-        const llmParams = ["model", "model_temperature", "begin_message", "general_tools", "states"];
-        if (llmParams.includes(param)) {
-          llmPatch[param] = parsedValue;
-        } else {
-          agentPatch[param] = parsedValue;
+          const llmParams = ["model", "model_temperature", "begin_message", "general_tools", "states"];
+          if (llmParams.includes(param)) {
+            llmPatch[param] = parsedValue;
+          } else {
+            agentPatch[param] = parsedValue;
+          }
         }
-      }
 
-      // Apply agent-level patches
-      if (Object.keys(agentPatch).length > 0) {
-        const res = await fetch(`${RETELL_BASE}/update-agent/${spec.retell_agent_id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
-          body: JSON.stringify(agentPatch),
-        });
-        if (!res.ok) {
-          const err = await res.text();
-          console.error("Failed to apply agent patches:", err);
-          result.apply_errors = result.apply_errors || [];
-          result.apply_errors.push(`Agent patch failed: ${err}`);
-        } else {
-          result.applied_agent_patches = agentPatch;
+        if (Object.keys(agentPatch).length > 0) {
+          const res = await fetch(`${RETELL_BASE}/update-agent/${spec.retell_agent_id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
+            body: JSON.stringify(agentPatch),
+          });
+          if (!res.ok) {
+            const err = await res.text();
+            console.error("Failed to apply agent patches:", err);
+            result.apply_errors = result.apply_errors || [];
+            result.apply_errors.push(`Agent patch failed: ${err}`);
+          } else {
+            result.applied_agent_patches = agentPatch;
+          }
         }
-      }
 
-      // Apply LLM-level patches
-      const llmId = retellConfig?.response_engine?.llm_id;
-      if (llmId && Object.keys(llmPatch).length > 0) {
-        const res = await fetch(`${RETELL_BASE}/update-retell-llm/${llmId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
-          body: JSON.stringify(llmPatch),
-        });
-        if (!res.ok) {
-          const err = await res.text();
-          console.error("Failed to apply LLM patches:", err);
-          result.apply_errors = result.apply_errors || [];
-          result.apply_errors.push(`LLM patch failed: ${err}`);
-        } else {
-          result.applied_llm_patches = llmPatch;
+        const llmId = retellConfig?.response_engine?.llm_id;
+        if (llmId && Object.keys(llmPatch).length > 0) {
+          const res = await fetch(`${RETELL_BASE}/update-retell-llm/${llmId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
+            body: JSON.stringify(llmPatch),
+          });
+          if (!res.ok) {
+            const err = await res.text();
+            console.error("Failed to apply LLM patches:", err);
+            result.apply_errors = result.apply_errors || [];
+            result.apply_errors.push(`LLM patch failed: ${err}`);
+          } else {
+            result.applied_llm_patches = llmPatch;
+          }
+        }
+      } else {
+        // No Retell agent provisioned — save optimizations to local agent_specs
+        const PARAM_TO_SPEC: Record<string, { col: string; transform?: (v: any) => any }> = {
+          interruption_sensitivity: { col: "interruption_threshold", transform: (v: number) => Math.round(Number(v) * 100) },
+          voice_speed: { col: "speaking_speed", transform: (v: any) => Number(v) },
+          model_temperature: { col: "temperature", transform: (v: any) => Number(v) },
+          begin_message: { col: "opening_line" },
+          responsiveness: { col: "speaking_speed", transform: (v: any) => Number(v) },
+        };
+
+        const specPatch: Record<string, unknown> = {};
+
+        for (const rec of autoRecs) {
+          const mapping = PARAM_TO_SPEC[rec.retell_param];
+          if (mapping) {
+            let parsedValue: unknown;
+            try { parsedValue = JSON.parse(rec.recommended_value); } catch { parsedValue = rec.recommended_value; }
+            specPatch[mapping.col] = mapping.transform ? mapping.transform(parsedValue) : parsedValue;
+          }
+        }
+
+        if (Object.keys(specPatch).length > 0) {
+          const { error: specErr } = await supabase
+            .from("agent_specs")
+            .update(specPatch)
+            .eq("project_id", project_id);
+
+          if (specErr) {
+            console.error("Failed to apply spec patches:", specErr);
+            result.apply_errors = result.apply_errors || [];
+            result.apply_errors.push(`Spec patch failed: ${specErr.message}`);
+          } else {
+            result.applied_spec_patches = specPatch;
+            result.no_retell_agent = true;
+          }
         }
       }
     }

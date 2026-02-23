@@ -126,7 +126,15 @@ export default function EditAgentPage() {
         setOptimizeResults(result);
         setShowOptimizeModal(true);
         if (apply) {
-          toast({ title: "Optimizations applied!", description: `${result.applied_agent_patches ? Object.keys(result.applied_agent_patches).length : 0} settings updated.` });
+          const agentCount = result.applied_agent_patches ? Object.keys(result.applied_agent_patches).length : 0;
+          const llmCount = result.applied_llm_patches ? Object.keys(result.applied_llm_patches).length : 0;
+          const specCount = result.applied_spec_patches ? Object.keys(result.applied_spec_patches).length : 0;
+          const total = agentCount + llmCount + specCount;
+          if (result.no_retell_agent) {
+            toast({ title: "Optimizations saved to spec!", description: `${total} settings saved. They'll apply when you create your Retell agent.` });
+          } else {
+            toast({ title: "Optimizations applied!", description: `${total} settings updated.` });
+          }
         }
       }
     } catch (err: any) {
@@ -198,8 +206,23 @@ export default function EditAgentPage() {
                   </p>
                 </div>
               )}
-              {!optimizeResults.applied_agent_patches && (
-                <Button onClick={() => handleOptimize(true)} disabled={optimizing} className="w-full">
+              {optimizeResults.applied_llm_patches && (
+                <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-3">
+                  <p className="text-sm font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
+                    <Check className="h-4 w-4" /> Applied {Object.keys(optimizeResults.applied_llm_patches).length} LLM settings
+                  </p>
+                </div>
+              )}
+              {optimizeResults.applied_spec_patches && (
+                <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
+                  <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400 flex items-center gap-1">
+                    <Check className="h-4 w-4" /> Saved {Object.keys(optimizeResults.applied_spec_patches).length} settings to your agent spec
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">No Retell agent provisioned yet. These will apply when you create your agent.</p>
+                </div>
+              )}
+              {!optimizeResults.applied_agent_patches && !optimizeResults.applied_llm_patches && !optimizeResults.applied_spec_patches && (
+                <Button onClick={() => handleOptimize(true)} disabled={optimizing || !optimizeResults.recommendations?.some((r: any) => r.auto_apply)} className="w-full">
                   {optimizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                   Apply All Auto-Applicable Optimizations
                 </Button>
