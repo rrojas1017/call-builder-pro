@@ -165,6 +165,7 @@ serve(async (req) => {
       // Step 2: Create agent with enhanced settings
       const body = buildAgentBody(config || {}, webhookUrl);
       body.response_engine = { type: "retell-llm", llm_id: llmId };
+      body.is_transfer_agent = false;
 
       const res = await fetch(`${RETELL_BASE}/create-agent`, {
         method: "POST",

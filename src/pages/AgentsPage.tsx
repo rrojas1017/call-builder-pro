@@ -40,6 +40,7 @@ export default function AgentsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [fixingTransfer, setFixingTransfer] = useState(false);
   const { toast } = useToast();
 
   const loadAgents = async () => {
@@ -85,6 +86,7 @@ export default function AgentsPage() {
   };
 
   const unprovisionedCount = agents.filter(a => !a.has_retell_id).length;
+  const provisionedCount = agents.filter(a => a.has_retell_id).length;
 
   const handleSync = async () => {
     setSyncing(true);
@@ -101,6 +103,23 @@ export default function AgentsPage() {
       toast({ title: "Sync failed", description: e.message, variant: "destructive" });
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleFixTransfer = async () => {
+    setFixingTransfer(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("bulk-fix-transfer-agents");
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      toast({
+        title: "Transfer fix complete",
+        description: `${data.fixed} of ${data.total} agents fixed successfully.`,
+      });
+    } catch (e: any) {
+      toast({ title: "Fix failed", description: e.message, variant: "destructive" });
+    } finally {
+      setFixingTransfer(false);
     }
   };
 
@@ -129,6 +148,18 @@ export default function AgentsPage() {
             <Button size="sm" onClick={handleSync} disabled={syncing}>
               {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               Sync All Now
+            </Button>
+          </div>
+        )}
+
+        {provisionedCount > 0 && (
+          <div className="flex items-center justify-between rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+            <p className="text-sm text-foreground">
+              Fix transfer agent flags on <span className="font-semibold">{provisionedCount}</span> provisioned agent{provisionedCount !== 1 ? "s" : ""}
+            </p>
+            <Button size="sm" variant="outline" onClick={handleFixTransfer} disabled={fixingTransfer}>
+              {fixingTransfer ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Fix All Now
             </Button>
           </div>
         )}
