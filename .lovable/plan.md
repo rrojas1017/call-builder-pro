@@ -1,90 +1,72 @@
 
 
-# Campaign Management: Delete, Edit, and Reset
+# Campaign Detail Page: Modern Dashboard Redesign
 
-## Overview
-Add full campaign lifecycle management (edit, reset, delete) while preserving all historical data in the CRM and calls tables. Deleting a campaign removes the campaign configuration and its contacts, but CRM records and call history remain untouched as historical data.
+## Problem
+The current Campaign Detail page uses a flat, basic layout with plain KPI cards in a cramped row, a simple pie chart, and uniform card styling throughout. It looks like a spreadsheet rather than a modern analytics dashboard.
+
+## Design Direction
+Modernize the dashboard with visual hierarchy, gradient accents, better spacing, improved chart presentation, and the existing utility classes (`glass-card`, `gradient-border`, `glow-primary`, `text-gradient-primary`) already defined in the CSS but unused on this page.
 
 ## What Changes
 
-### 1. Database: Set Foreign Keys to Allow Orphaned Historical Data
-Currently, `contacts.campaign_id` and `calls.campaign_id` reference the campaigns table. To allow campaign deletion while preserving call history:
-- Set `calls.campaign_id` to `SET NULL` on delete (calls remain as historical records with a null campaign reference)
-- Delete `contacts` when campaign is deleted (they are campaign-specific operational data, not historical)
-- Delete `campaign_lists` when campaign is deleted
+### 1. Header Section Overhaul
+- Larger campaign name with gradient text for the status badge
+- Campaign metadata (agent, date, concurrency) displayed as subtle chips instead of raw text
+- Action buttons grouped in a pill-shaped container with better visual weight
+- HIPAA and TEST badges with icon+color styling
 
-The `crm_records` table stores `campaign_ids` as a UUID array with no FK -- already safe.
+### 2. Progress Bar Enhancement
+- Taller progress bar with gradient fill (orange-to-amber)
+- Percentage shown as a large bold number beside the bar
+- Animated shimmer effect when campaign is running
 
-### 2. Campaign Detail Page: Add Edit and Reset Actions
+### 3. KPI Cards Redesign
+- Reduce from 9 cramped cards to 4 primary hero KPIs (Total Contacts, Qualified, Conversion Rate, Avg Score) displayed prominently with larger numbers and subtle icon backgrounds
+- Secondary metrics (In Progress, Terminal, Retryable, Failed, Avg Duration) shown as a compact inline row below
+- Use `gradient-border` class on the primary KPIs for visual pop
+- Color-coded values: green for qualified/conversion, orange for in-progress, red for failed
 
-**Edit Campaign** (for draft/paused campaigns):
-- Inline-editable fields: name, max concurrent calls, max attempts, redial delay, retryable statuses, HIPAA toggle, test mode toggle, voicemail message
-- Save button to persist changes
-- Cannot change agent or lists after creation (would require re-importing contacts)
+### 4. Charts Section Upgrade
+- Replace basic Recharts PieChart with a donut chart (inner radius) and center label showing total
+- Add subtle gradient backgrounds to chart cards
+- Use the project's `ChartContainer` and `ChartTooltipContent` from `src/components/ui/chart.tsx` for consistent themed tooltips
+- Performance by List table gets alternating row backgrounds and progress bars for completion rate instead of plain percentages
 
-**Reset Campaign** (for paused/completed campaigns):
-- Resets all contacts back to "queued" status with attempts = 0
-- Clears called_at, bland_call_id, retell_call_id, last_error
-- Sets campaign status back to "draft"
-- Does NOT touch calls table or CRM records (historical data preserved)
-- Requires confirmation dialog with clear warning
+### 5. Live Calls Section
+- More prominent pulsing indicator with a frosted glass card (`glass-card` class)
+- Each live call row gets a subtle green left border accent
+- Better phone number formatting and elapsed time display
 
-**Delete Campaign** (any status except running):
-- Deletes contacts, campaign_lists, then the campaign itself
-- Calls are preserved (campaign_id set to null via cascade)
-- CRM records untouched (they store campaign_ids independently)
-- Requires confirmation dialog
-- Cannot delete while campaign is running (must pause first)
+### 6. Contacts Table
+- Sticky header with subtle blur background
+- Row hover with left-border accent color based on outcome
+- Status badges use filled pill style instead of outline
+- Better spacing and typography hierarchy
 
-### 3. Campaigns List Page: Add Delete Action
-- Add a trash icon button next to each campaign in the list view
-- Confirmation dialog before deletion
-- Disabled for running campaigns
+### 7. Contact Detail Drawer
+- Evaluation scores displayed as circular progress rings instead of plain numbers
+- Better visual grouping with section dividers
+- Recording link styled as a prominent audio player-like button
 
 ## Technical Details
 
-### Migration
-```text
--- Update FK on calls.campaign_id to SET NULL on delete
-ALTER TABLE calls DROP CONSTRAINT IF EXISTS calls_campaign_id_fkey;
-ALTER TABLE calls ADD CONSTRAINT calls_campaign_id_fkey 
-  FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL;
-
--- Update FK on contacts.campaign_id to CASCADE delete
-ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_campaign_id_fkey;
-ALTER TABLE contacts ADD CONSTRAINT contacts_campaign_id_fkey 
-  FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE;
-
--- Update FK on campaign_lists.campaign_id to CASCADE delete
-ALTER TABLE campaign_lists DROP CONSTRAINT IF EXISTS campaign_lists_campaign_id_fkey;
-ALTER TABLE campaign_lists ADD CONSTRAINT campaign_lists_campaign_id_fkey 
-  FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE;
-```
-
-### Delete logic (frontend)
-Simply delete the campaign row -- cascades handle contacts and campaign_lists, calls get nullified.
-
-### Reset logic (frontend)
-```text
--- Reset all contacts for this campaign
-UPDATE contacts SET status = 'queued', attempts = 0, called_at = NULL, 
-  retell_call_id = NULL, bland_call_id = NULL, last_error = NULL
-WHERE campaign_id = ?;
-
--- Reset campaign status
-UPDATE campaigns SET status = 'draft' WHERE id = ?;
-```
-
-### Edit logic (frontend)
-Standard UPDATE on the campaigns table for editable fields.
-
 ### Files to modify
-- New migration for FK cascade rules
-- `src/pages/CampaignDetailPage.tsx` -- add edit form, reset button, improve delete handler
-- `src/pages/CampaignsPage.tsx` -- add delete button with confirmation to list view
+- `src/pages/CampaignDetailPage.tsx` -- full visual overhaul of the render section (logic stays the same)
 
-## Implementation Order
-1. Database migration (FK cascade rules)
-2. Update CampaignDetailPage with edit, reset, and improved delete
-3. Update CampaignsPage list with delete action
+### Approach
+- All existing logic, state management, data fetching, and realtime subscriptions remain untouched
+- Only the JSX return block and some styling constants change
+- Leverage existing Tailwind utilities and CSS custom classes already defined in `index.css`
+- No new dependencies needed
+
+### Key styling patterns to apply
+- `glass-card` on the Live Calls section
+- `gradient-border` on hero KPI cards
+- `text-gradient-primary` on key metric values
+- `hover-lift` on interactive cards
+- `mesh-gradient` as subtle background on the header area
+- Donut chart with `innerRadius={60}` and center text label
+- Progress bars inside the list performance table for visual rate display
+- Consistent use of `rounded-xl` instead of `rounded-lg` for a softer, modern feel
 
