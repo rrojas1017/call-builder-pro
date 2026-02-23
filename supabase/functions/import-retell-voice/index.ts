@@ -23,30 +23,38 @@ serve(async (req) => {
       throw new Error("provider_voice_id and voice_name are required");
     }
 
-    // Resolve public_user_id from ElevenLabs API if not provided
+    // Resolve public_user_id: use provided value, or try ElevenLabs API, or use default for premade voices
     let resolvedPublicUserId = public_user_id;
     if (!resolvedPublicUserId) {
+      // Default ElevenLabs public user ID for their premade/default voices
+      const ELEVENLABS_DEFAULT_OWNER = "000000000000000000000000";
+
       const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
       if (ELEVENLABS_API_KEY) {
         try {
-          const searchRes = await fetch(
-            `https://api.elevenlabs.io/v1/shared-voices?page_size=20&search=${encodeURIComponent(voice_name.split(" – ")[0])}`,
+          // Try fetching the specific voice to get its public_owner_id
+          const voiceRes = await fetch(
+            `https://api.elevenlabs.io/v1/voices/${provider_voice_id}`,
             { headers: { "xi-api-key": ELEVENLABS_API_KEY } }
           );
-          if (searchRes.ok) {
-            const searchData = await searchRes.json();
-            const voices = searchData.voices || [];
-            const match = voices.find((v: any) => v.voice_id === provider_voice_id);
-            if (match?.public_owner_id) {
-              resolvedPublicUserId = match.public_owner_id;
+          if (voiceRes.ok) {
+            const voiceData = await voiceRes.json();
+            if (voiceData.sharing?.public_owner_id) {
+              resolvedPublicUserId = voiceData.sharing.public_owner_id;
+              console.log(`Resolved public_owner_id from voice detail: ${resolvedPublicUserId}`);
             }
+          } else {
+            console.warn(`ElevenLabs voice lookup failed with status ${voiceRes.status}`);
           }
         } catch (e) {
           console.warn("Failed to resolve public_user_id from ElevenLabs:", e);
         }
       }
+
+      // Fall back to default ElevenLabs owner ID for premade voices
       if (!resolvedPublicUserId) {
-        throw new Error("public_user_id is required and could not be auto-resolved. Please provide it manually.");
+        console.log(`Using default ElevenLabs owner ID for voice ${provider_voice_id}`);
+        resolvedPublicUserId = ELEVENLABS_DEFAULT_OWNER;
       }
     }
 
