@@ -21,7 +21,9 @@ import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, Label as RechartsLabel } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Users, CheckCircle, TrendingUp, Star, Clock, XCircle, RotateCw, Zap, HeadphonesIcon } from "lucide-react";
 
 const COLORS = [
   "hsl(var(--primary))",
@@ -465,158 +467,180 @@ export default function CampaignDetailPage() {
     completed: "text-primary bg-primary/10",
   };
 
-  const kpis = [
-    { label: "Total Contacts", value: total },
-    { label: "In Progress", value: inProgress },
-    { label: "Qualified", value: qualified },
-    { label: "Terminal", value: terminal },
-    { label: "Retryable", value: retryable },
-    { label: "Failed", value: failed },
-    { label: "Conversion Rate", value: `${conversionRate}%` },
-    { label: "Avg Duration", value: avgDuration > 0 ? `${Math.floor(avgDuration / 60)}m ${avgDuration % 60}s` : "—" },
-    { label: "Avg Score", value: avgScore > 0 ? `${avgScore}/100` : "—" },
+  const heroKpis = [
+    { label: "Total Contacts", value: total, icon: Users, color: "text-foreground" },
+    { label: "Qualified", value: qualified, icon: CheckCircle, color: "text-green-600 dark:text-green-400" },
+    { label: "Conversion Rate", value: `${conversionRate}%`, icon: TrendingUp, color: conversionRate > 0 ? "text-green-600 dark:text-green-400" : "text-muted-foreground" },
+    { label: "Avg Score", value: avgScore > 0 ? `${avgScore}` : "—", icon: Star, color: avgScore >= 70 ? "text-green-600 dark:text-green-400" : avgScore >= 40 ? "text-yellow-600 dark:text-yellow-400" : "text-muted-foreground" },
   ];
 
+  const secondaryKpis = [
+    { label: "In Progress", value: inProgress, color: "text-primary" },
+    { label: "Terminal", value: terminal, color: "text-foreground" },
+    { label: "Retryable", value: retryable, color: "text-yellow-600 dark:text-yellow-400" },
+    { label: "Failed", value: failed, color: "text-destructive" },
+    { label: "Avg Duration", value: avgDuration > 0 ? `${Math.floor(avgDuration / 60)}m ${avgDuration % 60}s` : "—", color: "text-muted-foreground" },
+  ];
+
+  const chartConfig = pieData.reduce((acc, item, i) => {
+    acc[item.name] = { label: item.name, color: COLORS[i % COLORS.length] };
+    return acc;
+  }, {} as Record<string, { label: string; color: string }>);
+
   return (
-    <div className="p-8 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link to="/campaigns" className="text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">{campaign.name}</h1>
-            <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor[campaign.status] || ""}`}>
-                {campaign.status}
-              </span>
-              {campaign.hipaa_enabled && (
-                <Badge variant="outline" className="gap-1 text-xs border-primary/50 text-primary">
-                  <ShieldCheck className="h-3 w-3" /> HIPAA
-                </Badge>
-              )}
-              {agent && <span>Agent: {agent.name}</span>}
-              <span>{new Date(campaign.created_at).toLocaleDateString()}</span>
-              <span className="flex items-center gap-1.5">
-                Concurrency:
-                {editConcurrency !== null ? (
-                  <>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={editConcurrency}
-                      onChange={(e) => setEditConcurrency(Math.max(1, Math.min(100, Number(e.target.value))))}
-                      className="w-16 h-6 text-xs inline-block"
-                    />
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 px-1.5"
-                      disabled={savingConcurrency}
-                      onClick={async () => {
-                        setSavingConcurrency(true);
-                        await supabase.from("campaigns").update({ max_concurrent_calls: editConcurrency }).eq("id", id);
-                        setCampaign((prev: any) => ({ ...prev, max_concurrent_calls: editConcurrency }));
-                        setEditConcurrency(null);
-                        setSavingConcurrency(false);
-                        toast({ title: "Concurrency updated" });
-                      }}
-                    >
-                      {savingConcurrency ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                    </Button>
-                  </>
-                ) : (
-                  <button
-                    className="underline decoration-dotted cursor-pointer hover:text-foreground"
-                    onClick={() => setEditConcurrency(campaign.max_concurrent_calls || 1)}
-                  >
-                    {campaign.max_concurrent_calls || 1}
-                  </button>
+    <div className="p-6 md:p-8 space-y-6">
+      {/* Header with mesh gradient background */}
+      <div className="mesh-gradient rounded-xl p-6 -mx-6 md:-mx-8 -mt-6 md:-mt-8 mb-6">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Link to="/campaigns" className="text-muted-foreground hover:text-foreground mt-1.5 transition-colors">
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">{campaign.name}</h1>
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColor[campaign.status] || "bg-muted text-muted-foreground"}`}>
+                  {campaign.status.toUpperCase()}
+                </span>
+                {campaign.hipaa_enabled && (
+                  <Badge variant="outline" className="gap-1 text-xs border-primary/50 text-primary rounded-full px-3 py-1">
+                    <ShieldCheck className="h-3 w-3" /> HIPAA
+                  </Badge>
                 )}
-              </span>
+                {campaign.is_test && (
+                  <Badge variant="outline" className="gap-1 text-xs border-yellow-500/50 text-yellow-600 dark:text-yellow-400 rounded-full px-3 py-1">
+                    <AlertTriangle className="h-3 w-3" /> TEST
+                  </Badge>
+                )}
+                {agent && (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/80 rounded-full px-3 py-1">
+                    <HeadphonesIcon className="h-3 w-3" /> {agent.name}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/80 rounded-full px-3 py-1">
+                  <Clock className="h-3 w-3" /> {new Date(campaign.created_at).toLocaleDateString()}
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/80 rounded-full px-3 py-1">
+                  <Zap className="h-3 w-3" />
+                  Concurrency:
+                  {editConcurrency !== null ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={editConcurrency}
+                        onChange={(e) => setEditConcurrency(Math.max(1, Math.min(100, Number(e.target.value))))}
+                        className="w-14 h-5 text-xs inline-block"
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-5 px-1"
+                        disabled={savingConcurrency}
+                        onClick={async () => {
+                          setSavingConcurrency(true);
+                          await supabase.from("campaigns").update({ max_concurrent_calls: editConcurrency }).eq("id", id);
+                          setCampaign((prev: any) => ({ ...prev, max_concurrent_calls: editConcurrency }));
+                          setEditConcurrency(null);
+                          setSavingConcurrency(false);
+                          toast({ title: "Concurrency updated" });
+                        }}
+                      >
+                        {savingConcurrency ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                      </Button>
+                    </span>
+                  ) : (
+                    <button
+                      className="underline decoration-dotted cursor-pointer hover:text-foreground font-medium"
+                      onClick={() => setEditConcurrency(campaign.max_concurrent_calls || 1)}
+                    >
+                      {campaign.max_concurrent_calls || 1}
+                    </button>
+                  )}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={fetchData}>
-            <RefreshCw className="h-4 w-4 mr-1" /> Refresh
-          </Button>
-          {(campaign.status === "draft" || campaign.status === "paused") && !isEditing && (
-            <Button size="sm" variant="outline" onClick={startEditing}>
-              <Pencil className="h-4 w-4 mr-1" /> Edit
+          <div className="flex items-center gap-2 bg-card/80 backdrop-blur-sm rounded-full px-2 py-1.5 border border-border/50">
+            <Button size="sm" variant="ghost" onClick={fetchData} className="rounded-full h-8">
+              <RefreshCw className="h-4 w-4 mr-1" /> Refresh
             </Button>
-          )}
-          {(campaign.status === "paused" || campaign.status === "completed") && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button size="sm" variant="outline" disabled={resetting}>
-                  {resetting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RotateCcw className="h-4 w-4 mr-1" />}
-                  Reset
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Reset Campaign</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will re-queue all contacts (attempts reset to 0) and set the campaign back to draft. Historical call records and CRM data will NOT be affected.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleReset}>Reset Campaign</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-          {(campaign.status === "draft" || campaign.status === "paused") && (
-            <Button size="sm" onClick={handleStart} disabled={actionLoading}>
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
-              {campaign.status === "paused" ? "Resume" : "Start"}
-            </Button>
-          )}
-          {campaign.status === "running" && (
-            <Button size="sm" variant="outline" onClick={handlePause} disabled={actionLoading}>
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Pause className="h-4 w-4 mr-1" />}
-              Pause
-            </Button>
-          )}
-          {campaign.status !== "running" && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button size="sm" variant="destructive" disabled={actionLoading}>
-                  <Trash2 className="h-4 w-4 mr-1" /> Delete
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Campaign</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will permanently delete this campaign and all its contact data. Call records and CRM data will be preserved as historical data. This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
+            {(campaign.status === "draft" || campaign.status === "paused") && !isEditing && (
+              <Button size="sm" variant="ghost" onClick={startEditing} className="rounded-full h-8">
+                <Pencil className="h-4 w-4 mr-1" /> Edit
+              </Button>
+            )}
+            {(campaign.status === "paused" || campaign.status === "completed") && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" variant="ghost" disabled={resetting} className="rounded-full h-8">
+                    {resetting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RotateCcw className="h-4 w-4 mr-1" />}
+                    Reset
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Reset Campaign</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will re-queue all contacts (attempts reset to 0) and set the campaign back to draft. Historical call records and CRM data will NOT be affected.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleReset}>Reset Campaign</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+            {(campaign.status === "draft" || campaign.status === "paused") && (
+              <Button size="sm" onClick={handleStart} disabled={actionLoading} className="rounded-full h-8">
+                {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
+                {campaign.status === "paused" ? "Resume" : "Start"}
+              </Button>
+            )}
+            {campaign.status === "running" && (
+              <Button size="sm" variant="outline" onClick={handlePause} disabled={actionLoading} className="rounded-full h-8">
+                {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Pause className="h-4 w-4 mr-1" />}
+                Pause
+              </Button>
+            )}
+            {campaign.status !== "running" && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" variant="ghost" disabled={actionLoading} className="rounded-full h-8 text-destructive hover:text-destructive">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Campaign</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete this campaign and all its contact data. Call records and CRM data will be preserved as historical data. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Edit form */}
       {isEditing && (
-        <Card>
+        <Card className="rounded-xl border-primary/20">
           <CardContent className="p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-foreground">Edit Campaign</h3>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
-                <Button size="sm" onClick={handleSaveEdit} disabled={savingEdit}>
+                <Button size="sm" variant="outline" onClick={() => setIsEditing(false)} className="rounded-full">Cancel</Button>
+                <Button size="sm" onClick={handleSaveEdit} disabled={savingEdit} className="rounded-full">
                   {savingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
                   Save
                 </Button>
@@ -692,110 +716,165 @@ export default function CampaignDetailPage() {
         </Card>
       )}
 
-      {/* Progress bar */}
-      <div className="space-y-1">
-        <div className="flex justify-between text-xs text-muted-foreground">
-          <span>{processed} of {total} contacts processed</span>
-          <span>{progressPct}%</span>
+      {/* Enhanced Progress Bar */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 space-y-1.5">
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>{processed} of {total} contacts processed</span>
+          </div>
+          <div className="relative h-3 w-full overflow-hidden rounded-full bg-secondary">
+            <div
+              className="h-full rounded-full transition-all duration-500 ease-out"
+              style={{
+                width: `${progressPct}%`,
+                background: "linear-gradient(90deg, hsl(24 85% 50%), hsl(38 92% 50%))",
+              }}
+            />
+            {campaign.status === "running" && (
+              <div
+                className="absolute inset-0 rounded-full"
+                style={{
+                  background: "linear-gradient(90deg, transparent, hsla(0,0%,100%,0.2), transparent)",
+                  animation: "shimmer 2s infinite",
+                }}
+              />
+            )}
+          </div>
         </div>
-        <Progress value={progressPct} className="h-2" />
+        <span className="text-3xl font-bold tabular-nums text-gradient-primary min-w-[4ch] text-right">{progressPct}%</span>
       </div>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-9 gap-3">
-        {kpis.map((k) => (
-          <Card key={k.label}>
-            <CardContent className="p-4 text-center">
-              <p className="text-xl font-bold text-foreground">{k.value}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">{k.label}</p>
+      {/* Hero KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {heroKpis.map((k) => (
+          <div key={k.label} className="gradient-border rounded-xl hover-lift">
+            <CardContent className="p-5 relative overflow-hidden">
+              <k.icon className="absolute -right-2 -top-2 h-16 w-16 text-muted-foreground/5" />
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{k.label}</p>
+              <p className={`text-3xl font-bold mt-1 tabular-nums ${k.color}`}>{k.value}</p>
             </CardContent>
-          </Card>
+          </div>
         ))}
       </div>
 
-      {/* Live Calls */}
+      {/* Secondary metrics row */}
+      <div className="flex flex-wrap items-center gap-3 px-1">
+        {secondaryKpis.map((k) => (
+          <div key={k.label} className="flex items-center gap-2 bg-card border border-border/50 rounded-full px-4 py-2">
+            <span className="text-xs text-muted-foreground">{k.label}</span>
+            <span className={`text-sm font-semibold tabular-nums ${k.color}`}>{k.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Live Calls - Glass Card */}
       {liveCalls.length > 0 && (
-        <Card className="border-orange-500/30 bg-orange-50/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500" />
+        <div className="glass-card rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-semibold flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500" />
               </span>
               Live Calls ({liveCalls.length})
-            </CardTitle>
-            <Button size="sm" variant="destructive" onClick={handleStopAll}>
+            </h3>
+            <Button size="sm" variant="destructive" onClick={handleStopAll} className="rounded-full">
               <PhoneOff className="h-4 w-4 mr-1" /> Stop All
             </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {liveCalls.map((c) => (
-                <div key={c.id} className="flex items-center justify-between rounded-md border px-3 py-2">
-                  <div className="flex items-center gap-3">
-                    <span className="font-medium text-sm">{c.name}</span>
-                    <span className="font-mono text-xs text-muted-foreground">{c.phone}</span>
-                  </div>
-                  {(c as any).retell_call_id ? (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={stoppingCalls.has(c.id)}
-                      onClick={() => {
-                        handleStopCall((c as any).retell_call_id, c.id, "retell");
-                      }}
-                    >
-                      {stoppingCalls.has(c.id) ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <><PhoneOff className="h-3 w-3 mr-1" /> Stop</>
-                      )}
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={stoppingCalls.has(c.id)}
-                      onClick={() => handleForceCancel(c.id)}
-                    >
-                      {stoppingCalls.has(c.id) ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <><PhoneOff className="h-3 w-3 mr-1" /> Force Cancel</>
-                      )}
-                    </Button>
-                  )}
+          </div>
+          <div className="space-y-2">
+            {liveCalls.map((c) => (
+              <div key={c.id} className="flex items-center justify-between rounded-xl border-l-4 border-l-green-500 bg-card/80 border border-border/50 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <span className="font-medium text-sm">{c.name}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{c.phone}</span>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                {(c as any).retell_call_id ? (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={stoppingCalls.has(c.id)}
+                    onClick={() => handleStopCall((c as any).retell_call_id, c.id, "retell")}
+                    className="rounded-full"
+                  >
+                    {stoppingCalls.has(c.id) ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <><PhoneOff className="h-3 w-3 mr-1" /> Stop</>
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={stoppingCalls.has(c.id)}
+                    onClick={() => handleForceCancel(c.id)}
+                    className="rounded-full"
+                  >
+                    {stoppingCalls.has(c.id) ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <><PhoneOff className="h-3 w-3 mr-1" /> Force Cancel</>
+                    )}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
+      {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Outcome pie */}
+        {/* Donut Chart */}
         {pieData.length > 0 && (
-          <Card>
+          <Card className="rounded-xl">
             <CardHeader><CardTitle className="text-base">Outcome Distribution</CardTitle></CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={220}>
+              <ChartContainer config={chartConfig} className="mx-auto aspect-square max-h-[260px]">
                 <PieChart>
-                  <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
+                  <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    strokeWidth={2}
+                    stroke="hsl(var(--background))"
+                  >
                     {pieData.map((_, i) => (
                       <Cell key={i} fill={COLORS[i % COLORS.length]} />
                     ))}
+                    <RechartsLabel
+                      content={({ viewBox }) => {
+                        if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                          return (
+                            <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                              <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-3xl font-bold">
+                                {total}
+                              </tspan>
+                              <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 20} className="fill-muted-foreground text-xs">
+                                contacts
+                              </tspan>
+                            </text>
+                          );
+                        }
+                      }}
+                    />
                   </Pie>
-                  <Tooltip />
                   <Legend />
                 </PieChart>
-              </ResponsiveContainer>
+              </ChartContainer>
             </CardContent>
           </Card>
         )}
 
-        {/* Per-list breakdown */}
+        {/* Per-list breakdown with progress bars */}
         {listStats.length > 0 && (
-          <Card>
+          <Card className="rounded-xl">
             <CardHeader><CardTitle className="text-base">Performance by List</CardTitle></CardHeader>
             <CardContent>
               <Table>
@@ -804,17 +883,30 @@ export default function CampaignDetailPage() {
                     <TableHead>List</TableHead>
                     <TableHead className="text-right">Contacts</TableHead>
                     <TableHead className="text-right">Completed</TableHead>
-                    <TableHead className="text-right">Rate</TableHead>
+                    <TableHead className="w-[120px]">Rate</TableHead>
                     <TableHead className="text-right">Avg Dur</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {listStats.map((ls) => (
-                    <TableRow key={ls.name}>
+                  {listStats.map((ls, i) => (
+                    <TableRow key={ls.name} className={i % 2 === 0 ? "bg-muted/30" : ""}>
                       <TableCell className="font-medium">{ls.name}</TableCell>
                       <TableCell className="text-right">{ls.total}</TableCell>
                       <TableCell className="text-right">{ls.completed}</TableCell>
-                      <TableCell className="text-right">{ls.rate}%</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${ls.rate}%`,
+                                background: "linear-gradient(90deg, hsl(24 85% 50%), hsl(38 92% 50%))",
+                              }}
+                            />
+                          </div>
+                          <span className="text-xs font-medium tabular-nums w-8 text-right">{ls.rate}%</span>
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right text-xs">
                         {ls.avgDuration > 0 ? `${Math.floor(ls.avgDuration / 60)}m ${ls.avgDuration % 60}s` : "—"}
                       </TableCell>
@@ -828,7 +920,7 @@ export default function CampaignDetailPage() {
       </div>
 
       {/* Contact table */}
-      <Card>
+      <Card className="rounded-xl">
         <CardHeader>
           <CardTitle className="text-base">Contacts ({total})</CardTitle>
         </CardHeader>
@@ -836,11 +928,11 @@ export default function CampaignDetailPage() {
           <ScrollArea className="h-[400px]">
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="sticky top-0 bg-card/95 backdrop-blur-sm z-10">
                   <TableHead>Name</TableHead>
                   <TableHead>Phone</TableHead>
                   <TableHead>Status</TableHead>
-                   <TableHead>Attempts</TableHead>
+                  <TableHead>Attempts</TableHead>
                   <TableHead>Duration</TableHead>
                   <TableHead>Outcome</TableHead>
                   {campaign.hipaa_enabled && <TableHead>Compliance</TableHead>}
@@ -853,9 +945,14 @@ export default function CampaignDetailPage() {
                   const lifecycle = getLifecycleStatus(c.status);
                   const outcomeValue = resolveOutcome(c, call);
                   const outcomeBadge = getOutcomeBadge(outcomeValue);
+                  const borderColor = outcomeValue === "qualified" ? "border-l-green-500" : outcomeValue === "failed" ? "border-l-destructive" : outcomeValue === "disqualified" ? "border-l-destructive" : "border-l-transparent";
                   return (
-                    <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedContactId(c.id)}>
-                      <TableCell>{c.name}</TableCell>
+                    <TableRow
+                      key={c.id}
+                      className={`cursor-pointer hover:bg-muted/50 border-l-4 ${borderColor} transition-colors`}
+                      onClick={() => setSelectedContactId(c.id)}
+                    >
+                      <TableCell className="font-medium">{c.name}</TableCell>
                       <TableCell className="font-mono text-xs">{c.phone}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -936,7 +1033,7 @@ export default function CampaignDetailPage() {
             return (
               <>
                 <SheetHeader>
-                  <SheetTitle className="flex items-center gap-2">
+                  <SheetTitle className="flex items-center gap-2 text-lg">
                     {contact.name}
                   </SheetTitle>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -953,7 +1050,7 @@ export default function CampaignDetailPage() {
                     const textColor = score == null ? "text-muted-foreground" : score >= 80 ? "text-green-600 dark:text-green-400" : score >= 50 ? "text-yellow-600 dark:text-yellow-400" : "text-red-600 dark:text-red-400";
                     const label = score == null ? "Pending Review" : score >= 80 ? "HIPAA Compliant" : score >= 50 ? "Partially Compliant" : "Non-Compliant";
                     return (
-                      <div className={`flex items-center gap-2 rounded-md border p-3 ${color}`}>
+                      <div className={`flex items-center gap-2 rounded-xl border p-3 ${color}`}>
                         <ShieldCheck className={`h-5 w-5 ${textColor}`} />
                         <div>
                           <p className={`text-sm font-semibold ${textColor}`}>{label}</p>
@@ -978,7 +1075,7 @@ export default function CampaignDetailPage() {
                   {/* Call metadata */}
                   {call && (
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-md border p-3">
+                      <div className="rounded-xl border p-3">
                         <p className="text-xs text-muted-foreground">Duration</p>
                         <p className="font-medium">
                           {call.duration_seconds != null
@@ -986,7 +1083,7 @@ export default function CampaignDetailPage() {
                             : "—"}
                         </p>
                       </div>
-                      <div className="rounded-md border p-3">
+                      <div className="rounded-xl border p-3">
                         <p className="text-xs text-muted-foreground">Outcome</p>
                         <p className="font-medium">{call.outcome || "—"}</p>
                       </div>
@@ -999,29 +1096,51 @@ export default function CampaignDetailPage() {
                       href={call.recording_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+                      className="inline-flex items-center gap-2 text-sm bg-primary/10 text-primary hover:bg-primary/20 rounded-full px-4 py-2 transition-colors font-medium"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" /> Listen to Recording
+                      <ExternalLink className="h-4 w-4" /> Listen to Recording
                     </a>
                   )}
 
-                  {/* Evaluation scores */}
+                  {/* Evaluation scores - Circular progress rings */}
                   {evaluation && (
                     <div>
-                      <h4 className="text-sm font-semibold mb-2">Evaluation Scores</h4>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      <h4 className="text-sm font-semibold mb-3">Evaluation Scores</h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {[
                           { label: "Overall", value: evaluation.overall_score },
                           { label: "Compliance", value: evaluation.compliance_score },
                           { label: "Objective", value: evaluation.objective_score },
                           { label: "Humanness", value: evaluation.humanness_score },
                           { label: "Naturalness", value: evaluation.naturalness_score },
-                        ].map((s) => (
-                          <div key={s.label} className="rounded-md border p-2 text-center">
-                            <p className="text-lg font-bold text-foreground">{s.value ?? "—"}</p>
-                            <p className="text-[11px] text-muted-foreground">{s.label}</p>
-                          </div>
-                        ))}
+                        ].map((s) => {
+                          const scoreVal = s.value ?? 0;
+                          const circumference = 2 * Math.PI * 28;
+                          const offset = circumference - (circumference * scoreVal) / 100;
+                          const ringColor = scoreVal >= 70 ? "stroke-green-500" : scoreVal >= 40 ? "stroke-yellow-500" : "stroke-destructive";
+                          return (
+                            <div key={s.label} className="rounded-xl border p-3 text-center">
+                              <div className="relative w-16 h-16 mx-auto mb-1">
+                                <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
+                                  <circle cx="32" cy="32" r="28" fill="none" strokeWidth="4" className="stroke-secondary" />
+                                  {s.value != null && (
+                                    <circle
+                                      cx="32" cy="32" r="28" fill="none" strokeWidth="4"
+                                      className={ringColor}
+                                      strokeDasharray={circumference}
+                                      strokeDashoffset={offset}
+                                      strokeLinecap="round"
+                                    />
+                                  )}
+                                </svg>
+                                <span className="absolute inset-0 flex items-center justify-center text-sm font-bold">
+                                  {s.value ?? "—"}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -1034,7 +1153,7 @@ export default function CampaignDetailPage() {
                       </h4>
                       <ul className="space-y-1.5">
                         {(evaluation.issues as any[]).map((issue: any, i: number) => (
-                          <li key={i} className="text-sm rounded-md border border-destructive/20 bg-destructive/5 p-2">
+                          <li key={i} className="text-sm rounded-xl border border-destructive/20 bg-destructive/5 p-2">
                             {typeof issue === "string" ? issue : issue.description || JSON.stringify(issue)}
                           </li>
                         ))}
@@ -1050,7 +1169,7 @@ export default function CampaignDetailPage() {
                       </h4>
                       <ul className="space-y-1.5">
                         {(evaluation.humanness_suggestions as any[]).map((s: any, i: number) => (
-                          <li key={i} className="text-sm rounded-md border p-2 bg-muted/30">
+                          <li key={i} className="text-sm rounded-xl border p-2 bg-muted/30">
                             {typeof s === "string" ? s : s.suggestion || JSON.stringify(s)}
                           </li>
                         ))}
@@ -1066,7 +1185,7 @@ export default function CampaignDetailPage() {
                       </h4>
                       <ul className="space-y-1.5">
                         {(evaluation.knowledge_gaps as any[]).map((g: any, i: number) => (
-                          <li key={i} className="text-sm rounded-md border p-2 bg-muted/30">
+                          <li key={i} className="text-sm rounded-xl border p-2 bg-muted/30">
                             {typeof g === "string" ? g : g.description || JSON.stringify(g)}
                           </li>
                         ))}
@@ -1080,7 +1199,7 @@ export default function CampaignDetailPage() {
                       <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
                         <FileText className="h-4 w-4" /> Transcript
                       </h4>
-                      <ScrollArea className="h-[300px] rounded-md border p-3">
+                      <ScrollArea className="h-[300px] rounded-xl border p-3">
                         <pre className="text-xs whitespace-pre-wrap font-mono text-muted-foreground leading-relaxed">
                           {call.transcript}
                         </pre>
@@ -1092,7 +1211,7 @@ export default function CampaignDetailPage() {
                   {call?.extracted_data && Object.keys(call.extracted_data).length > 0 && (
                     <div>
                       <h4 className="text-sm font-semibold mb-2">Extracted Data</h4>
-                      <ScrollArea className="h-[200px] rounded-md border p-3">
+                      <ScrollArea className="h-[200px] rounded-xl border p-3">
                         <pre className="text-xs whitespace-pre-wrap font-mono text-muted-foreground">
                           {JSON.stringify(call.extracted_data, null, 2)}
                         </pre>
@@ -1105,6 +1224,13 @@ export default function CampaignDetailPage() {
           })()}
         </SheetContent>
       </Sheet>
+
+      <style>{`
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
     </div>
   );
 }
