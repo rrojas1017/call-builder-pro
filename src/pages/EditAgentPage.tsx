@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X } from "lucide-react";
+import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radio, User, MessageSquare, Shield, Hash } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,14 @@ import { VoiceSelector } from "@/components/VoiceSelector";
 import { RetellAgentManager } from "@/components/RetellAgentManager";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+
+const maturityConfig: Record<string, { label: string; color: string }> = {
+  training: { label: "Training", color: "text-muted-foreground bg-muted" },
+  developing: { label: "Developing", color: "text-blue-600 bg-blue-500/10 border-blue-500/30" },
+  competent: { label: "Competent", color: "text-amber-600 bg-amber-500/10 border-amber-500/30" },
+  expert: { label: "Expert", color: "text-emerald-600 bg-emerald-500/10 border-emerald-500/30" },
+  graduated: { label: "Graduated", color: "text-purple-600 bg-purple-500/10 border-purple-500/30" },
+};
 
 export default function EditAgentPage() {
   const { id } = useParams<{ id: string }>();
@@ -41,6 +49,9 @@ export default function EditAgentPage() {
   const [fromNumber, setFromNumber] = useState("auto");
   const [voicemailMessage, setVoicemailMessage] = useState("");
   const [ambientSound, setAmbientSound] = useState("none");
+  const [maturityLevel, setMaturityLevel] = useState("training");
+  const [mode, setMode] = useState("outbound");
+  const [callStats, setCallStats] = useState({ total: 0, qualified: 0, avgScore: null as number | null });
 
   // AI Optimization
   const { optimizeAgent } = useRetellAgent(retellAgentId || null);
@@ -50,16 +61,26 @@ export default function EditAgentPage() {
   const voices = retellVoices;
   const voicesLoading = retellVoicesLoading;
 
+  const resolvedVoiceName = useMemo(() => {
+    if (!selectedVoice || voices.length === 0) return null;
+    const match = voices.find(v => v.voice_id === selectedVoice || v.name.toLowerCase() === selectedVoice.toLowerCase());
+    return match?.name || selectedVoice;
+  }, [selectedVoice, voices]);
+
   useEffect(() => {
     if (!id) return;
     const load = async () => {
-      const [{ data: project }, { data: spec }] = await Promise.all([
-        supabase.from("agent_projects").select("name, description").eq("id", id).single(),
-        supabase.from("agent_specs").select("voice_id, opening_line, tone_style, persona_name, transfer_required, transfer_phone_number, background_track, voice_provider, retell_agent_id, from_number, voicemail_message").eq("project_id", id).single(),
+      const [{ data: project }, { data: spec }, callsRes, qualifiedRes, scoreCalls] = await Promise.all([
+        supabase.from("agent_projects").select("name, description, maturity_level").eq("id", id).single(),
+        supabase.from("agent_specs").select("voice_id, opening_line, tone_style, persona_name, transfer_required, transfer_phone_number, background_track, voice_provider, retell_agent_id, from_number, voicemail_message, mode").eq("project_id", id).single(),
+        supabase.from("calls").select("id", { count: "exact", head: true }).eq("project_id", id),
+        supabase.from("calls").select("id", { count: "exact", head: true }).eq("project_id", id).eq("outcome", "qualified"),
+        supabase.from("calls").select("evaluation").eq("project_id", id).not("evaluation", "is", null),
       ]);
       if (project) {
         setName(project.name);
         setDescription(project.description || "");
+        setMaturityLevel(project.maturity_level || "training");
       }
       if (spec) {
         setSelectedVoice(spec.voice_id || "");
@@ -68,12 +89,23 @@ export default function EditAgentPage() {
         setPersonaName((spec as any).persona_name || "");
         setTransferEnabled(!!spec.transfer_required);
         setTransferPhone(spec.transfer_phone_number || "");
-        
         setRetellAgentId((spec as any).retell_agent_id || "");
         setFromNumber((spec as any).from_number || "auto");
         setVoicemailMessage((spec as any).voicemail_message || "");
         setAmbientSound((spec as any).background_track || "none");
+        setMode((spec as any).mode || "outbound");
       }
+
+      // Compute avg score
+      let avgScore: number | null = null;
+      if (scoreCalls.data && scoreCalls.data.length > 0) {
+        const scores = scoreCalls.data
+          .map((c) => { const e = c.evaluation as any; return e?.overall_score ? Number(e.overall_score) : null; })
+          .filter((s): s is number => s !== null);
+        if (scores.length > 0) avgScore = Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10;
+      }
+      setCallStats({ total: callsRes.count || 0, qualified: qualifiedRes.count || 0, avgScore });
+
       setLoading(false);
     };
     load();
@@ -233,6 +265,82 @@ export default function EditAgentPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Agent Profile Summary */}
+      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-foreground flex items-center gap-2">
+            <User className="h-4 w-4 text-primary" /> Agent Profile
+          </h3>
+          <Badge variant="outline" className={maturityConfig[maturityLevel]?.color || ""}>
+            {maturityConfig[maturityLevel]?.label || maturityLevel}
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 text-sm">
+          <div>
+            <p className="text-muted-foreground text-xs">Persona Name</p>
+            <p className="font-medium text-foreground">{personaName || "—"}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Voice</p>
+            <p className="font-medium text-foreground flex items-center gap-1">
+              <Mic className="h-3 w-3 text-muted-foreground" />
+              {resolvedVoiceName || "Not set"}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Mode</p>
+            <p className="font-medium text-foreground flex items-center gap-1">
+              <Radio className="h-3 w-3 text-muted-foreground" />
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Tone</p>
+            <p className="font-medium text-foreground">{toneStyle || "—"}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Ambient Sound</p>
+            <p className="font-medium text-foreground">{ambientSound === "none" ? "None" : ambientSound.replace(/-/g, " ").replace(/\b\w/g, l => l.toUpperCase())}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Transfer</p>
+            <p className="font-medium text-foreground">{transferEnabled ? `Yes → ${transferPhone || "No number"}` : "Disabled"}</p>
+          </div>
+          {retellAgentId && (
+            <div className="col-span-2 sm:col-span-3">
+              <p className="text-muted-foreground text-xs">Retell Agent ID</p>
+              <p className="font-mono text-xs text-foreground">{retellAgentId}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Stats bar */}
+        <div className="flex items-center gap-6 pt-2 border-t border-border">
+          <div className="flex items-center gap-2">
+            <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">{callStats.total}</p>
+              <p className="text-[10px] text-muted-foreground">Total Calls</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Shield className="h-3.5 w-3.5 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">{callStats.qualified}</p>
+              <p className="text-[10px] text-muted-foreground">Qualified</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Hash className="h-3.5 w-3.5 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">{callStats.avgScore !== null ? `${callStats.avgScore}/100` : "N/A"}</p>
+              <p className="text-[10px] text-muted-foreground">Avg Score</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Identity */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
