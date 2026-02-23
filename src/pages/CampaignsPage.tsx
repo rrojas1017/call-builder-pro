@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Play, Pause, Megaphone, Plus, Eye, ShieldCheck, Voicemail, Sparkles } from "lucide-react";
+import { Loader2, Play, Pause, Megaphone, Plus, Eye, ShieldCheck, Voicemail, Sparkles, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,6 +26,7 @@ interface Campaign {
   max_concurrent_calls: number;
   created_at: string;
   hipaa_enabled: boolean;
+  is_test: boolean;
 }
 
 interface Agent {
@@ -65,6 +66,7 @@ export default function CampaignsPage() {
   const [voicemailEnabled, setVoicemailEnabled] = useState(false);
   const [voicemailMessage, setVoicemailMessage] = useState("");
   const [generatingVoicemail, setGeneratingVoicemail] = useState(false);
+  const [isTest, setIsTest] = useState(false);
 
   const load = async () => {
     const [campRes, agentRes, listRes] = await Promise.all([
@@ -104,6 +106,7 @@ export default function CampaignsPage() {
           redial_delay_minutes: redialDelay,
           redial_statuses: redialStatuses,
           hipaa_enabled: hipaaEnabled,
+          is_test: isTest,
           voicemail_message: voicemailEnabled ? voicemailMessage || null : null,
         } as any)
         .select()
@@ -205,6 +208,7 @@ export default function CampaignsPage() {
       setRedialDelay(60);
       setRedialStatuses(["voicemail", "no_answer", "busy"]);
       setHipaaEnabled(false);
+      setIsTest(false);
       setVoicemailEnabled(false);
       setVoicemailMessage("");
       setShowCreate(false);
@@ -378,6 +382,19 @@ export default function CampaignsPage() {
 
             <div className="flex items-center justify-between rounded-lg border border-border p-4">
               <div className="flex items-center gap-3">
+                <FlaskConical className="h-5 w-5 text-primary" />
+                <div>
+                  <Label htmlFor="test-toggle" className="font-medium cursor-pointer">Test Mode</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Mark this campaign as a test. Calls will not be recorded in the CRM.
+                  </p>
+                </div>
+              </div>
+              <Switch id="test-toggle" checked={isTest} onCheckedChange={setIsTest} />
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border border-border p-4">
+              <div className="flex items-center gap-3">
                 <Voicemail className="h-5 w-5 text-primary" />
                 <div>
                   <Label htmlFor="voicemail-toggle" className="font-medium cursor-pointer">Leave Voicemail</Label>
@@ -489,9 +506,14 @@ export default function CampaignsPage() {
                     <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", statusColor[c.status])}>
                       {c.status}
                     </span>
-                    {(c as any).hipaa_enabled && (
+                    {c.hipaa_enabled && (
                       <Badge variant="outline" className="gap-1 text-xs border-primary/50 text-primary">
                         <ShieldCheck className="h-3 w-3" /> HIPAA
+                      </Badge>
+                    )}
+                    {c.is_test && (
+                      <Badge variant="outline" className="gap-1 text-xs border-yellow-500/50 text-yellow-600">
+                        <FlaskConical className="h-3 w-3" /> TEST
                       </Badge>
                     )}
                     <span>{new Date(c.created_at).toLocaleDateString()}</span>

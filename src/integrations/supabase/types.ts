@@ -422,6 +422,7 @@ export type Database = {
           created_at: string
           hipaa_enabled: boolean
           id: string
+          is_test: boolean
           max_attempts: number
           max_concurrent_calls: number
           name: string
@@ -438,6 +439,7 @@ export type Database = {
           created_at?: string
           hipaa_enabled?: boolean
           id?: string
+          is_test?: boolean
           max_attempts?: number
           max_concurrent_calls?: number
           name: string
@@ -454,6 +456,7 @@ export type Database = {
           created_at?: string
           hipaa_enabled?: boolean
           id?: string
+          is_test?: boolean
           max_attempts?: number
           max_concurrent_calls?: number
           name?: string
