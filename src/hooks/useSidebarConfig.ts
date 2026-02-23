@@ -54,6 +54,7 @@ const ADMIN_SECTION: SidebarSection = {
   items: [
     { label: "Companies", path: "/admin/companies" },
     { label: "Audit Log", path: "/admin/audit" },
+    { label: "Cost Audits", path: "/admin/cost-audits" },
   ],
 };
 
