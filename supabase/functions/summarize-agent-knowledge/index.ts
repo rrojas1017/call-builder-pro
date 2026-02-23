@@ -30,9 +30,12 @@ serve(async (req) => {
     // Increment usage_count for all entries being pulled into a prompt
     if (entries && entries.length > 0) {
       const entryIds = entries.map((e: any) => e.id);
-      await supabase.rpc("increment_knowledge_usage", { entry_ids: entryIds }).catch((err: any) => {
-        console.warn("Failed to increment usage_count:", err.message);
-      });
+      try {
+        const { error: rpcErr } = await supabase.rpc("increment_knowledge_usage", { entry_ids: entryIds });
+        if (rpcErr) console.warn("Failed to increment usage_count:", rpcErr.message);
+      } catch (rpcCatchErr: any) {
+        console.warn("Failed to increment usage_count:", rpcCatchErr.message);
+      }
     }
 
     if (error) throw error;
