@@ -1,40 +1,43 @@
 
 
-# Add Agent Profile Summary to Edit Agent Page
+# Bulk Fix: Remove Transfer Agent Flag from All Retell Agents
 
-## What You'll Get
-A visual profile card at the top of the Edit Agent page that shows the current configuration of the agent at a glance -- including the voice being used, persona name, mode, maturity level, ambient sound, and key stats like call count and average score. This way you can immediately see "who" the agent is before diving into edits.
+## Problem
+Several agents in the Retell dashboard are categorized under "Transfer Screening Agents." This prevents them from making outbound calls. None of your agents should be transfer agents.
 
-## Changes
+## Root Cause
+When agents are created with a `transfer_call` tool in their LLM config, Retell automatically flags the LLM as a "transfer LLM" and the agent as a "transfer agent." The current creation flow in `bulk-sync-retell-agents` and `manage-retell-agent` does not explicitly set `is_transfer_agent: false` during creation.
 
-### 1. Fetch additional profile data on load
-The Edit Agent page already loads `agent_projects` and `agent_specs`. We'll also fetch:
-- The voice name (resolved from the voice list by matching `voice_id`)
-- The maturity level from `agent_projects`
-- Call count and qualified count from `calls`
-- Average evaluation score from `calls`
+## Plan
 
-### 2. Add a Profile Summary card at the top
-Right below the page header (and above the Identity section), we'll add a compact card showing:
+### 1. Create a new backend function: `bulk-fix-transfer-agents`
+This function will:
+- Query all `agent_specs` rows that have a `retell_agent_id`
+- For each agent, call Retell API to:
+  - GET the agent to find its `llm_id`
+  - PATCH the LLM with `{ is_transfer_llm: false }`
+  - PATCH the agent with `{ is_transfer_agent: false }`
+- Return a summary of how many were fixed
 
-| Field | Source |
-|-------|--------|
-| Persona Name | `agent_specs.persona_name` |
-| Voice | Resolved name from Retell voices list |
-| Mode | `agent_specs.mode` (Outbound/Inbound) |
-| Maturity Level | `agent_projects.maturity_level` with color badge |
-| Ambient Sound | `agent_specs.background_track` |
-| Opening Line | `agent_specs.opening_line` (truncated) |
-| Tone | `agent_specs.tone_style` |
-| Transfer | Enabled/Disabled + phone number |
-| Retell Agent ID | Shown if provisioned |
-| Total Calls / Qualified / Avg Score | Aggregated from `calls` table |
+### 2. Update existing agent creation to prevent this in the future
+Modify `manage-retell-agent` (create action) and `bulk-sync-retell-agents` to explicitly include `is_transfer_agent: false` in the agent creation body, ensuring new agents never get flagged as transfer agents.
 
-This will be a read-only summary section styled as a "resume card" -- consistent with the existing `AgentProfileCard` pattern but expanded with more detail since this is the dedicated edit page.
+### 3. Add a "Fix All Transfer Agents" button on the Agents page
+Add a button (visible when needed) that calls the new bulk-fix function, similar to the existing "Sync All Now" button.
 
-### Files Changed
+## Technical Details
 
-| File | Change |
-|------|--------|
-| `src/pages/EditAgentPage.tsx` | Add maturity level to the data load query. Add a profile summary card section between the header and the Identity form section. Resolve voice name from the loaded voices list. Fetch call stats (total, qualified, avg score). |
+### New Edge Function: `bulk-fix-transfer-agents`
+- Reads all `retell_agent_id` values from `agent_specs`
+- Iterates through each, calling Retell GET + two PATCHes
+- Returns count of fixed agents
+
+### Changes to `manage-retell-agent/index.ts`
+- Add `is_transfer_agent: false` to the `buildAgentBody` function (line ~23)
+
+### Changes to `bulk-sync-retell-agents/index.ts`
+- Add `is_transfer_agent: false` to the `createBody` object (line ~96)
+
+### Changes to `AgentsPage.tsx`
+- Add a button to trigger the bulk fix (reuses the existing sync banner pattern)
 
