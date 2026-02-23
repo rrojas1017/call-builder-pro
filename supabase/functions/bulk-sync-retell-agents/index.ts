@@ -101,8 +101,18 @@ serve(async (req) => {
           webhook_url: webhookUrl,
           is_transfer_agent: false,
           post_call_analysis_data: [
-            { description: "Whether the lead was qualified", name: "qualified", type: "boolean" },
-            { description: "Brief summary of the call", name: "call_summary", type: "string" },
+            { name: "qualified", type: "boolean", description: "Whether the lead was qualified for transfer" },
+            { name: "caller_name", type: "string", description: "The caller's full name" },
+            { name: "email", type: "string", description: "The caller's email address" },
+            { name: "state", type: "string", description: "The caller's US state" },
+            { name: "zip_code", type: "string", description: "The caller's 5-digit zip code" },
+            { name: "age", type: "string", description: "The caller's age" },
+            { name: "household_size", type: "string", description: "Number of people in household" },
+            { name: "income_est_annual", type: "string", description: "Estimated annual household income" },
+            { name: "coverage_type", type: "string", description: "Current health coverage type" },
+            { name: "consent", type: "boolean", description: "Whether the caller gave consent to continue" },
+            { name: "transferred", type: "boolean", description: "Whether the call was transferred" },
+            { name: "call_summary", type: "string", description: "Brief summary of the call" },
           ],
         };
 

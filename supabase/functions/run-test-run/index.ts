@@ -154,19 +154,48 @@ serve(async (req) => {
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
-      // Sync ambient_sound from spec
+      // Sync ambient_sound and post_call_analysis_data from spec
+      const agentPatch: Record<string, unknown> = {};
       const ambientSound = spec?.background_track || null;
-      if (ambientSound) {
-        const ambientPatch: Record<string, unknown> = { ambient_sound: ambientSound };
-        const ambientRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
+      if (ambientSound) agentPatch.ambient_sound = ambientSound;
+
+      // Build comprehensive post_call_analysis_data
+      const standardFields = [
+        { name: "qualified", type: "boolean", description: "Whether the lead was qualified for transfer" },
+        { name: "caller_name", type: "string", description: "The caller's full name" },
+        { name: "email", type: "string", description: "The caller's email address" },
+        { name: "state", type: "string", description: "The caller's US state" },
+        { name: "zip_code", type: "string", description: "The caller's 5-digit zip code" },
+        { name: "age", type: "string", description: "The caller's age" },
+        { name: "household_size", type: "string", description: "Number of people in household" },
+        { name: "income_est_annual", type: "string", description: "Estimated annual household income" },
+        { name: "coverage_type", type: "string", description: "Current health coverage type" },
+        { name: "consent", type: "boolean", description: "Whether the caller gave consent to continue" },
+        { name: "transferred", type: "boolean", description: "Whether the call was transferred" },
+        { name: "call_summary", type: "string", description: "Brief summary of the call" },
+      ];
+      const existingNames = new Set(standardFields.map(f => f.name));
+      if (Array.isArray(spec?.must_collect_fields)) {
+        for (const field of spec.must_collect_fields) {
+          const fieldName = typeof field === "string" ? field : (field as any)?.name;
+          if (fieldName && !existingNames.has(fieldName)) {
+            standardFields.push({ name: fieldName, type: "string", description: `Custom field: ${fieldName}` });
+            existingNames.add(fieldName);
+          }
+        }
+      }
+      agentPatch.post_call_analysis_data = standardFields;
+
+      if (Object.keys(agentPatch).length > 0) {
+        const patchRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
-          body: JSON.stringify(ambientPatch),
+          body: JSON.stringify(agentPatch),
         });
-        if (ambientRes.ok) {
-          console.log(`Set ambient_sound to "${ambientSound}" on agent ${retellAgentId}`);
+        if (patchRes.ok) {
+          console.log(`Synced agent settings (ambient_sound, post_call_analysis_data) on ${retellAgentId}`);
         } else {
-          console.error("Failed to set ambient_sound:", await ambientRes.text());
+          console.error("Failed to sync agent settings:", await patchRes.text());
         }
       }
     } catch (preflight: any) {
