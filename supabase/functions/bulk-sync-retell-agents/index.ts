@@ -99,6 +99,7 @@ serve(async (req) => {
           language: retellLang,
           response_engine: { type: "retell-llm", llm_id: llmId },
           webhook_url: webhookUrl,
+          is_transfer_agent: false,
           post_call_analysis_data: [
             { description: "Whether the lead was qualified", name: "qualified", type: "boolean" },
             { description: "Brief summary of the call", name: "call_summary", type: "string" },
