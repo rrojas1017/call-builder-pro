@@ -11,7 +11,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    console.log("Retell webhook received:", JSON.stringify(body).slice(0, 500));
+    console.log("[receive-retell-webhook] Payload:", JSON.stringify(body).slice(0, 1000));
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -111,6 +111,7 @@ serve(async (req) => {
 
     if (extractedData?.qualified === true) outcome = "qualified";
     else if (extractedData?.qualified === false) outcome = "disqualified";
+    console.log(`[receive-retell-webhook] call_id=${retellCallId} disconnectReason=${disconnectReason} answeredBy=${answeredBy} contactStatus=${contactStatus} outcome=${outcome}`);
 
     // ===== TEST LAB FLOW =====
     if (metadata.test_run_contact_id) {
@@ -282,11 +283,13 @@ serve(async (req) => {
 
     // Trigger tick-campaign
     if (metadata.campaign_id) {
+      console.log(`[receive-retell-webhook] Re-triggering tick-campaign for campaign=${metadata.campaign_id}`);
       fetch(`${supabaseUrl}/functions/v1/tick-campaign`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
         body: JSON.stringify({ campaign_id: metadata.campaign_id }),
-      }).catch((e) => console.error("Error triggering tick:", e));
+      }).then((r) => console.log(`[receive-retell-webhook] tick-campaign re-trigger status=${r.status}`))
+        .catch((e) => console.error("[receive-retell-webhook] Error triggering tick:", e));
     }
 
     return new Response(JSON.stringify({ success: true }), {

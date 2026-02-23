@@ -10,9 +10,11 @@ const corsHeaders = {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const tickStart = Date.now();
   try {
     const { campaign_id } = await req.json();
     if (!campaign_id) throw new Error("campaign_id required");
+    console.log(`[tick-campaign] ===== START ===== campaign_id=${campaign_id}`);
 
     const RETELL_API_KEY = Deno.env.get("RETELL_API_KEY");
     if (!RETELL_API_KEY) throw new Error("RETELL_API_KEY not configured");
@@ -36,8 +38,10 @@ serve(async (req) => {
 
     // Check org credit balance
     const orgId = campaign.agent_projects.org_id;
+    console.log(`[tick-campaign] org_id=${orgId}, project_id=${campaign.project_id}, status=${campaign.status}`);
     const { data: orgData } = await supabase
       .from("organizations").select("credits_balance").eq("id", orgId).single();
+    console.log(`[tick-campaign] Credit balance: ${orgData?.credits_balance ?? 'N/A'}`);
     if (!orgData || orgData.credits_balance <= 0) {
       return new Response(JSON.stringify({ error: "Insufficient credits. Please top up your balance." }), {
         status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -50,6 +54,7 @@ serve(async (req) => {
       .eq("org_id", orgId).eq("status", "trusted")
       .order("last_used_at", { ascending: true, nullsFirst: true });
     let trustedNumberIndex = 0;
+    console.log(`[tick-campaign] Trusted outbound numbers: ${trustedNumbers?.length ?? 0}`, trustedNumbers?.map((n: any) => n.phone_number));
 
     // Get spec
     const { data: spec, error: specErr } = await supabase
@@ -58,6 +63,7 @@ serve(async (req) => {
 
     const retellAgentId = spec.retell_agent_id;
     if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
+    console.log(`[tick-campaign] retell_agent_id=${retellAgentId}, spec_version=${spec.version}`);
 
     // Count currently active calls to enforce concurrency limit
     const { count: activeCalls } = await supabase
@@ -65,6 +71,7 @@ serve(async (req) => {
       .eq("campaign_id", campaign_id).eq("status", "calling");
 
     const slotsAvailable = campaign.max_concurrent_calls - (activeCalls || 0);
+    console.log(`[tick-campaign] Active calls: ${activeCalls}, max: ${campaign.max_concurrent_calls}, slots available: ${slotsAvailable}`);
     if (slotsAvailable <= 0) {
       return new Response(JSON.stringify({ message: "All concurrent slots busy", active: activeCalls, max: campaign.max_concurrent_calls }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -224,6 +231,7 @@ serve(async (req) => {
 
     // Determine from_number for batch call
     let fromNumber = spec.from_number || null;
+    console.log(`[tick-campaign] spec.from_number=${fromNumber}`);
     if (!fromNumber && trustedNumbers && trustedNumbers.length > 0) {
       const picked = trustedNumbers[trustedNumberIndex % trustedNumbers.length];
       fromNumber = picked.phone_number;
@@ -231,6 +239,7 @@ serve(async (req) => {
       await supabase.from("outbound_numbers").update({ last_used_at: new Date().toISOString() }).eq("id", picked.id);
     }
 
+    console.log(`[tick-campaign] Selected from_number: ${fromNumber}`);
     // Guard: Retell requires from_number
     if (!fromNumber) {
       return new Response(JSON.stringify({
@@ -264,6 +273,8 @@ serve(async (req) => {
       tasks,
       override_agent_id: retellAgentId,
     };
+    console.log(`[tick-campaign] Batch payload: ${tasks.length} tasks, agent=${retellAgentId}, from=${fromNumber}`);
+    console.log(`[tick-campaign] Task phones: ${tasks.map((t: any) => t.to_number).join(", ")}`);
 
     const retellResp = await fetch("https://api.retellai.com/create-batch-call", {
       method: "POST",
@@ -284,15 +295,17 @@ serve(async (req) => {
 
     // Mark all contacts as calling
     const contactIds = contacts.map((c: any) => c.id);
+    console.log(`[tick-campaign] Marking ${contactIds.length} contacts as calling: ${contactIds.join(", ")}`);
     await supabase.from("contacts").update({
       status: "calling", called_at: new Date().toISOString(),
     }).in("id", contactIds);
 
+    console.log(`[tick-campaign] ===== DONE ===== ${Date.now() - tickStart}ms`);
     return new Response(JSON.stringify({
       provider: "retell", batch_id: batchId, contacts_dispatched: contacts.length,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {
-    console.error("tick-campaign error:", err);
+    console.error(`[tick-campaign] ERROR after ${Date.now() - tickStart}ms:`, err);
     return new Response(JSON.stringify({ error: err.message }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

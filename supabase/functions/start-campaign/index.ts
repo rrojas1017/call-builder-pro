@@ -12,6 +12,7 @@ serve(async (req) => {
   try {
     const { campaign_id } = await req.json();
     if (!campaign_id) throw new Error("campaign_id required");
+    console.log(`[start-campaign] Starting campaign: ${campaign_id}`);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -19,10 +20,11 @@ serve(async (req) => {
 
     // Set campaign to running
     await supabase.from("campaigns").update({ status: "running" }).eq("id", campaign_id);
+    console.log(`[start-campaign] Campaign ${campaign_id} set to running`);
 
     // Trigger tick-campaign
     const tickUrl = `${supabaseUrl}/functions/v1/tick-campaign`;
-    await fetch(tickUrl, {
+    const tickResp = await fetch(tickUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -30,6 +32,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({ campaign_id }),
     });
+    const tickBody = await tickResp.text();
+    console.log(`[start-campaign] tick-campaign response: status=${tickResp.status} body=${tickBody.slice(0, 500)}`);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
