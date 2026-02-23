@@ -16,19 +16,20 @@ serve(async (req) => {
     const RETELL_API_KEY = Deno.env.get("RETELL_API_KEY");
     if (!RETELL_API_KEY) throw new Error("RETELL_API_KEY not configured");
 
-    const stopRes = await fetch("https://api.retellai.com/v2/end-call", {
-      method: "POST",
+    const stopRes = await fetch(`https://api.retellai.com/v2/delete-call/${call_id}`, {
+      method: "DELETE",
       headers: {
         Authorization: `Bearer ${RETELL_API_KEY}`,
-        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ call_id }),
     });
 
-    if (!stopRes.ok) {
+    if (!stopRes.ok && stopRes.status !== 404) {
       const stopData = await stopRes.json().catch(() => ({}));
       console.error("Retell stop response:", JSON.stringify(stopData));
       throw new Error(`Retell API error: ${stopData.message || stopData.error_message || stopRes.statusText}`);
+    }
+    if (stopRes.status === 404) {
+      console.log("Call already ended or not found:", call_id);
     }
     console.log("Retell call stopped:", call_id);
 
