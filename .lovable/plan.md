@@ -1,54 +1,71 @@
 
 
-# Redesign Inbound Numbers Page
+# Redesign Phone Numbers Page -- List-Detail Layout
 
 ## Overview
-Revamp the `/inbound` page to match the style of other sections (Calls, Campaigns) with stats cards at the top, a cleaner title ("Phone Numbers" instead of "Inbound Numbers" inside the page), and clickable number rows that open a detail panel/dialog.
+Redesign the Phone Numbers page to use a split-panel layout similar to Retell's dashboard: a compact phone number list on the left, and a detailed configuration panel on the right when a number is selected.
+
+## Layout
+
+```text
++-------------------+--------------------------------------+
+| Phone Numbers [+] |  +1(948)265-0259                     |
+|                   |                                      |
+| [Search...]       |  Inbound Call Agent                  |
+|                   |  [ACA Inbound Qualifier v]           |
+| +1(948)265-0259   |                                      |
+| +1(415)964-3349   |  Label                               |
+| +1(786)686-3423   |  [ACA Inbound            ] [Save]   |
+| +1(786)699-7885   |                                      |
+|                   |  Details                             |
+|                   |  Area Code: 948                      |
+|                   |  Cost: $2/mo                         |
+|                   |  Purchased: Jan 15, 2025             |
+|                   |  Calls: 8                            |
+|                   |                                      |
+|                   |  Recent Calls                        |
+|                   |  [call entries...]                   |
+|                   |                                      |
+|                   |  [Release Number]                    |
++-------------------+--------------------------------------+
+```
 
 ## Changes
 
-### 1. Stats Cards at the Top
-Add a row of 4 stat cards (same `StatCard` pattern used on the Calls page):
-- **Total Numbers** -- count of active numbers
-- **Assigned** -- how many have a project_id linked
-- **Unassigned** -- numbers without an agent
-- **Total Inbound Calls** -- sum of call counts across all numbers
+### Remove the current layout
+- Remove the stats cards row at the top (the detail panel provides this info per-number)
+- Remove the inline Select dropdowns and Badge from each row
+- Remove the `PhoneNumberDetailDialog` -- replaced by the inline detail panel
 
-### 2. Rename Section Title
-- Page heading stays "Inbound Numbers" (matches sidebar nav)
-- Subtitle changes to: "Purchase and manage your phone numbers"
-- The empty state and internal references say "phone numbers" instead of "inbound numbers"
+### Left Panel -- Number List
+- Header: "Phone Numbers" title with a "+" button to open the Buy Number dialog
+- Search input to filter numbers by phone number or label
+- Compact list of numbers showing just the phone number and a subtle indicator if assigned (green dot) or unassigned (gray dot)
+- Clicking a number selects it and highlights the row
+- Sync button moved to bottom or as a subtle icon in the header
 
-### 3. Clickable Number Rows with Detail Dialog
-When a user clicks on a number row, a dialog opens showing:
-- Phone number and label (editable)
-- Assigned agent name (with link to agent page)
-- Status and area code
-- Monthly cost
-- Purchase date
-- Total inbound calls for that number
-- Recent calls list (last 5 calls to that number from the `calls` table filtered by `inbound_number_id`)
+### Right Panel -- Number Detail (shown when a number is selected)
+- Phone number as the heading (formatted like Retell: +1(948)265-0259)
+- **Inbound Call Agent** section: Select dropdown to assign/unassign an agent
+- **Label** section: Editable text field with save button
+- **Details** grid: Area code, monthly cost, purchase date, total calls
+- **Recent Calls** section: Last 5 calls with outcome, duration, timestamp
+- **Release Number** button at the bottom (destructive action with confirmation)
+- Empty state when no number is selected: "Select a phone number to view details"
 
-### 4. Assignment Visibility
-Each number row already shows the agent dropdown. The detail dialog will make the assignment more prominent, showing the agent name with a badge for assigned/unassigned status.
+### Files Modified
 
-## Technical Details
+| File | Change |
+|------|--------|
+| `src/pages/InboundNumbersPage.tsx` | Complete rewrite to list-detail split layout with search, selection state, and inline detail panel |
+| `src/components/PhoneNumberDetailDialog.tsx` | Delete -- functionality moved inline into the detail panel |
 
-### File Modified: `src/pages/InboundNumbersPage.tsx`
+### Technical Notes
+- Use CSS grid or flexbox for the two-panel layout (`grid-cols-[320px_1fr]`)
+- Keep all existing data fetching logic (numbers, agents, callCounts, orgId)
+- Move the recent calls fetch from the dialog into the page, triggered when `selectedNumber` changes
+- Reuse existing handlers: `handleAssign`, `handleRelease`, `handlePurchase`, `handleSync`
+- Format phone numbers for display: `+19482650259` becomes `+1(948)265-0259`
+- The left panel should have a fixed height with scroll for the number list
+- On mobile, show only the list; tapping a number navigates to the detail view (or stacks vertically)
 
-**Stats section** (new, inserted before the numbers list):
-- Compute stats from the existing `numbers` and `callCounts` state
-- Render 4 `StatCard`-style divs matching the Calls page pattern
-
-**Detail dialog** (new):
-- New state: `selectedNumber` for the currently clicked number
-- On click, open a `Dialog` showing number details
-- Fetch recent calls: query `calls` table where `inbound_number_id = selectedNumber.id`, limit 5, ordered by `created_at desc`
-- Show each recent call with outcome badge, duration, and timestamp
-- Allow inline label editing via the existing `update_label` action on `manage-inbound-numbers`
-
-**Row click handler**:
-- Make the number row clickable (add `cursor-pointer` and `onClick`)
-- Keep the assign dropdown and delete button functional without triggering the detail dialog (stop propagation)
-
-No database changes or new edge functions needed -- all data is already available.
