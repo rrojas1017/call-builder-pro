@@ -42,9 +42,27 @@ export default function LiveCallMonitor({ retellCallId, contactId, contactStatus
 
   const isCalling = contactStatus === "calling" || contactStatus === "queued";
 
-  // Poll database for transcript
+  // Poll Retell API for live transcript during active calls
   useEffect(() => {
-    if (!isActive || !contactId) return;
+    if (!isActive || !retellCallId || !isCalling) return;
+
+    const fetchLiveTranscript = async () => {
+      const { data } = await supabase.functions.invoke("live-call-stream", {
+        body: { call_id: retellCallId, action: "transcript" },
+      });
+      if (data?.transcripts?.length > 0) {
+        setLines(data.transcripts);
+      }
+    };
+
+    fetchLiveTranscript();
+    const interval = setInterval(fetchLiveTranscript, 3000);
+    return () => clearInterval(interval);
+  }, [isActive, retellCallId, isCalling]);
+
+  // Poll database for transcript after call ends
+  useEffect(() => {
+    if (!isActive || !contactId || isCalling) return;
 
     const fetchTranscript = async () => {
       const { data } = await supabase
@@ -62,7 +80,7 @@ export default function LiveCallMonitor({ retellCallId, contactId, contactStatus
     fetchTranscript();
     const interval = setInterval(fetchTranscript, 3000);
     return () => clearInterval(interval);
-  }, [isActive, contactId]);
+  }, [isActive, contactId, isCalling]);
 
   // Auto-scroll
   useEffect(() => {
