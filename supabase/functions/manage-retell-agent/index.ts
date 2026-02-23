@@ -115,6 +115,13 @@ function buildAgentBody(config: Record<string, any>, webhookUrl: string): Record
 function buildLlmBody(config: Record<string, any>): Record<string, unknown> {
   const llmBody: Record<string, unknown> = {};
 
+  // Use Custom LLM WebSocket URL for live transcription
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const wsUrl = supabaseUrl
+    .replace("https://", "wss://")
+    .replace("http://", "ws://");
+  llmBody.llm_websocket_url = `${wsUrl}/functions/v1/retell-llm-ws`;
+
   if (config.general_prompt) {
     const trimmedPrompt = config.general_prompt.length > 28000
       ? config.general_prompt.substring(0, 28000) + "\n\n[Trimmed for length]"
@@ -132,7 +139,7 @@ function buildLlmBody(config: Record<string, any>): Record<string, unknown> {
     llmBody.model_temperature = Number(config.temperature);
   }
 
-  // Model selection
+  // Model selection (kept as fallback context, Custom LLM takes priority)
   if (config.llm_model) {
     llmBody.model = config.llm_model;
   }

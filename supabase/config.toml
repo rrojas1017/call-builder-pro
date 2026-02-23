@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.bulk-fix-transfer-agents]
 verify_jwt = false
+
+[functions.retell-llm-ws]
+verify_jwt = false

@@ -38,7 +38,9 @@ function parseTranscript(raw: string): TranscriptLine[] {
 export default function LiveCallMonitor({ retellCallId, contactId, contactStatus, isActive }: LiveCallMonitorProps) {
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [hasTranscript, setHasTranscript] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const prevLinesCount = useRef(0);
 
   const isCalling = contactStatus === "calling" || contactStatus === "queued";
 
@@ -55,11 +57,12 @@ export default function LiveCallMonitor({ retellCallId, contactId, contactStatus
 
       if (data?.transcript) {
         setHasTranscript(true);
-        setLines(parseTranscript(data.transcript));
+        const parsed = parseTranscript(data.transcript);
+        setLines(parsed);
+        prevLinesCount.current = parsed.length;
       }
     };
 
-    // Initial fetch (picks up opening line written by run-test-run)
     fetchAndParse();
 
     // Subscribe to realtime changes on this contact row
@@ -77,7 +80,19 @@ export default function LiveCallMonitor({ retellCallId, contactId, contactStatus
           const newRecord = payload.new as any;
           if (newRecord?.transcript) {
             setHasTranscript(true);
-            setLines(parseTranscript(newRecord.transcript));
+            const parsed = parseTranscript(newRecord.transcript);
+            setLines(parsed);
+
+            // Show typing indicator when a new user utterance arrives
+            if (parsed.length > prevLinesCount.current) {
+              const lastLine = parsed[parsed.length - 1];
+              if (lastLine?.role === "caller") {
+                setIsTyping(true);
+              } else {
+                setIsTyping(false);
+              }
+            }
+            prevLinesCount.current = parsed.length;
           }
         }
       )
@@ -91,7 +106,7 @@ export default function LiveCallMonitor({ retellCallId, contactId, contactStatus
   // Auto-scroll
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [lines]);
+  }, [lines, isTyping]);
 
   if (!isActive || !contactId) return null;
 
@@ -110,7 +125,7 @@ export default function LiveCallMonitor({ retellCallId, contactId, contactStatus
           Call Transcript
         </h2>
         {isCalling && (
-          <Badge variant="outline" className="text-xs border-primary/40 text-primary">
+          <Badge variant="outline" className="text-xs border-primary/40 text-primary animate-pulse">
             LIVE
           </Badge>
         )}
@@ -132,7 +147,7 @@ export default function LiveCallMonitor({ retellCallId, contactId, contactStatus
             ))}
           </div>
           <p className="text-sm text-muted-foreground animate-pulse">
-            Call in progress — transcript will appear when the call completes...
+            Connecting call — live transcript will stream shortly...
           </p>
           <style>{`
             @keyframes audioWave {
@@ -179,13 +194,35 @@ export default function LiveCallMonitor({ retellCallId, contactId, contactStatus
               </div>
             </div>
           ))}
-        </div>
-      )}
 
-      {isCalling && lines.length > 0 && (
-        <p className="text-xs text-muted-foreground text-center">
-          Opening line delivered. Full transcript will appear when the call completes.
-        </p>
+          {/* Typing indicator */}
+          {isTyping && isCalling && (
+            <div className="flex gap-2 items-start">
+              <div className="flex-shrink-0 rounded-full p-1 bg-primary/10">
+                <Bot className="h-3 w-3 text-primary" />
+              </div>
+              <div className="rounded-lg px-3 py-2 bg-primary/10">
+                <div className="flex gap-1 items-center">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="w-1.5 h-1.5 rounded-full bg-primary/60"
+                      style={{
+                        animation: `typingDot 1.4s ease-in-out ${i * 0.2}s infinite`,
+                      }}
+                    />
+                  ))}
+                </div>
+                <style>{`
+                  @keyframes typingDot {
+                    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+                    30% { opacity: 1; transform: translateY(-3px); }
+                  }
+                `}</style>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
