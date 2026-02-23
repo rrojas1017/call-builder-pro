@@ -189,18 +189,23 @@ serve(async (req) => {
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
-      // Sync ambient_sound from spec
+      // Sync agent-level settings from spec (voice, name, ambient sound)
+      const agentSyncPatch: Record<string, unknown> = {};
+      if (spec.voice_id) agentSyncPatch.voice_id = spec.voice_id;
+      if (spec.persona_name) agentSyncPatch.agent_name = spec.persona_name;
       const ambientSound = spec.background_track || null;
-      if (ambientSound) {
-        const ambientRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
+      if (ambientSound) agentSyncPatch.ambient_sound = ambientSound;
+
+      if (Object.keys(agentSyncPatch).length > 0) {
+        const syncRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
-          body: JSON.stringify({ ambient_sound: ambientSound }),
+          body: JSON.stringify(agentSyncPatch),
         });
-        if (ambientRes.ok) {
-          console.log(`Set ambient_sound to "${ambientSound}" on agent ${retellAgentId}`);
+        if (syncRes.ok) {
+          console.log(`Synced agent settings (voice_id, agent_name, ambient_sound) on ${retellAgentId}`);
         } else {
-          console.error("Failed to set ambient_sound:", await ambientRes.text());
+          console.error("Failed to sync agent settings:", await syncRes.text());
         }
       }
 
@@ -243,8 +248,13 @@ serve(async (req) => {
           name: "transfer_to_agent",
           description: "Transfer the call to a live agent when the lead is qualified and ready.",
           transfer_destination: {
-            type: "phone_number",
+            type: "predefined",
             number: spec.transfer_phone_number,
+            ignore_e164_validation: false,
+          },
+          transfer_option: {
+            type: "cold_transfer",
+            show_transferee_as_caller: false,
           },
         });
       }
