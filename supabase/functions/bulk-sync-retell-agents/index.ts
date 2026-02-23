@@ -15,11 +15,6 @@ const LANG_MAP: Record<string, string> = {
   hi: "hi-IN", ru: "ru-RU", nl: "nl-NL", pl: "pl-PL", sv: "sv-SE",
 };
 
-function isValidRetellVoiceId(id?: string): boolean {
-  if (!id) return false;
-  const validPrefixes = ["11labs-", "cartesia-", "openai-", "minimax-", "eleven_", "deepgram-", "playht-"];
-  return validPrefixes.some(prefix => id.startsWith(prefix));
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -91,7 +86,7 @@ serve(async (req) => {
         console.log(`Created LLM ${llmId} for ${projectName}`);
 
         // 2. Create the Retell agent with the LLM id
-        const voiceId = isValidRetellVoiceId(spec.voice_id) ? spec.voice_id : "11labs-Adrian";
+        const voiceId = spec.voice_id || "11labs-Adrian";
 
         const createBody: Record<string, unknown> = {
           agent_name: projectName,
