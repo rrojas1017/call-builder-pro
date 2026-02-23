@@ -6,6 +6,65 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+async function upsertCrmRecord(
+  supabase: any,
+  metadata: any,
+  extractedData: any,
+  outcome: string,
+  campaignId: string | null
+) {
+  try {
+    const phone = metadata.phone?.replace(/\D/g, "") || "";
+    if (!phone || !metadata.org_id) return;
+
+    const name = extractedData?.caller_name || extractedData?.name || metadata.contact_name || null;
+    const state = extractedData?.state || null;
+    const age = extractedData?.age?.toString() || null;
+    const householdSize = extractedData?.household_size?.toString() || null;
+    const income = extractedData?.income_est_annual?.toString() || extractedData?.income?.toString() || null;
+    const coverageType = extractedData?.coverage_type || null;
+    const consent = extractedData?.consent ?? null;
+    const qualified = extractedData?.qualified ?? null;
+    const transferred = outcome === "transfer_completed" || extractedData?.transferred === true;
+    const email = extractedData?.email || null;
+
+    // Remove known fields from extractedData to store the rest as custom_fields
+    const knownKeys = ["caller_name", "name", "state", "age", "household_size", "income_est_annual", "income", "coverage_type", "consent", "qualified", "transferred", "email"];
+    const customFields: Record<string, any> = {};
+    if (extractedData && typeof extractedData === "object") {
+      for (const [k, v] of Object.entries(extractedData)) {
+        if (!knownKeys.includes(k) && v != null) customFields[k] = v;
+      }
+    }
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase.rpc("upsert_crm_record", {
+      _org_id: metadata.org_id,
+      _phone: phone,
+      _name: name,
+      _email: email,
+      _state: state,
+      _age: age,
+      _household_size: householdSize,
+      _income: income,
+      _coverage_type: coverageType,
+      _consent: consent,
+      _qualified: qualified,
+      _transferred: transferred,
+      _custom_fields: customFields,
+      _campaign_id: campaignId,
+      _outcome: outcome,
+      _now: now,
+    });
+
+    if (error) console.error("[CRM upsert] Error:", error);
+    else console.log(`[CRM upsert] OK for phone=${phone}`);
+  } catch (e) {
+    console.error("[CRM upsert] Exception:", e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -174,6 +233,11 @@ serve(async (req) => {
         }).catch((e) => console.error("Error triggering run-test-run:", e));
       }
 
+      // Upsert CRM record for test lab calls
+      if (metadata.org_id && metadata.phone) {
+        await upsertCrmRecord(supabase, metadata, extractedData, outcome, null);
+      }
+
       return new Response(JSON.stringify({ success: true, flow: "test_lab" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -290,6 +354,11 @@ serve(async (req) => {
         body: JSON.stringify({ campaign_id: metadata.campaign_id }),
       }).then((r) => console.log(`[receive-retell-webhook] tick-campaign re-trigger status=${r.status}`))
         .catch((e) => console.error("[receive-retell-webhook] Error triggering tick:", e));
+    }
+
+    // Upsert CRM record for campaign calls
+    if (metadata.org_id && metadata.phone) {
+      await upsertCrmRecord(supabase, metadata, extractedData, outcome, metadata.campaign_id || null);
     }
 
     return new Response(JSON.stringify({ success: true }), {

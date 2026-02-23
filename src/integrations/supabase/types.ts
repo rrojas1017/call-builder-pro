@@ -579,6 +579,99 @@ export type Database = {
           },
         ]
       }
+      crm_records: {
+        Row: {
+          age: string | null
+          consent: boolean | null
+          coverage_type: string | null
+          created_at: string
+          custom_fields: Json | null
+          email: string | null
+          first_contacted_at: string | null
+          household_size: string | null
+          id: string
+          income_est_annual: string | null
+          last_campaign_id: string | null
+          last_contacted_at: string | null
+          last_outcome: string | null
+          name: string | null
+          org_id: string
+          phone: string
+          qualified: boolean | null
+          source: string | null
+          state: string | null
+          total_calls: number
+          transferred: boolean | null
+          updated_at: string
+          zip_code: string | null
+        }
+        Insert: {
+          age?: string | null
+          consent?: boolean | null
+          coverage_type?: string | null
+          created_at?: string
+          custom_fields?: Json | null
+          email?: string | null
+          first_contacted_at?: string | null
+          household_size?: string | null
+          id?: string
+          income_est_annual?: string | null
+          last_campaign_id?: string | null
+          last_contacted_at?: string | null
+          last_outcome?: string | null
+          name?: string | null
+          org_id: string
+          phone: string
+          qualified?: boolean | null
+          source?: string | null
+          state?: string | null
+          total_calls?: number
+          transferred?: boolean | null
+          updated_at?: string
+          zip_code?: string | null
+        }
+        Update: {
+          age?: string | null
+          consent?: boolean | null
+          coverage_type?: string | null
+          created_at?: string
+          custom_fields?: Json | null
+          email?: string | null
+          first_contacted_at?: string | null
+          household_size?: string | null
+          id?: string
+          income_est_annual?: string | null
+          last_campaign_id?: string | null
+          last_contacted_at?: string | null
+          last_outcome?: string | null
+          name?: string | null
+          org_id?: string
+          phone?: string
+          qualified?: boolean | null
+          source?: string | null
+          state?: string | null
+          total_calls?: number
+          transferred?: boolean | null
+          updated_at?: string
+          zip_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_records_last_campaign_id_fkey"
+            columns: ["last_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_records_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dial_list_rows: {
         Row: {
           created_at: string
@@ -1365,6 +1458,27 @@ export type Database = {
           target_user_id: string
         }
         Returns: Json
+      }
+      upsert_crm_record: {
+        Args: {
+          _age?: string
+          _campaign_id?: string
+          _consent?: boolean
+          _coverage_type?: string
+          _custom_fields?: Json
+          _email?: string
+          _household_size?: string
+          _income?: string
+          _name?: string
+          _now?: string
+          _org_id: string
+          _outcome?: string
+          _phone: string
+          _qualified?: boolean
+          _state?: string
+          _transferred?: boolean
+        }
+        Returns: undefined
       }
     }
     Enums: {
