@@ -1,81 +1,59 @@
 
 
-# Fix: Agent Name, Transfer, and Extracted Data Issues
+# Fix: AI Optimization Engine Producing Invalid Recommendations
 
-## Root Cause (All Three Issues)
+## Problem
 
-The LLM prompt injection in `run-test-run` **failed completely** because the Retell API rejected the `general_tools` payload. The error:
+The "Optimize with AI" feature is generating recommendations with the **wrong Retell API format** for `transfer_call` tools and invalid voice IDs. When applied, Retell rejects everything, resulting in "0 settings updated."
 
-```text
-general_tools/1/type must be equal to one of the allowed values: end_call,
-general_tools/1 must have required property 'transfer_destination'
-```
+Two specific errors from logs:
+- `general_tools/1 must have required property 'transfer_option'` -- wrong tool format
+- `Item 11labs-Ashley not found from voice` -- recommending a voice that doesn't exist
 
-The code sends `{ type: "transfer_call", number: "+13054332275" }` but Retell's API requires `{ type: "transfer_call", transfer_destination: { type: "phone_number", number: "+13054332275" } }`.
+## Root Cause
 
-Because the **entire LLM PATCH was rejected**, none of the following took effect:
-- `general_prompt` (new prompt with "Alex") -- so old "Ashley" prompt remained
-- `general_tools` (transfer tool) -- so no transfer capability
-- `begin_message` (opening line with "Alex") -- so old "Ashley" greeting remained
-
-The `tick-campaign` function has the exact same bug (line 242-246).
-
-The extracted data and evaluation being null is a secondary issue: the webhook processed the call, but the `call_analyzed` event's `call_analysis` field likely returned minimal data since the `post_call_analysis_data` was only applied at the agent level (which is fine), but the evaluate-call function may not have fired properly for the cancelled test contact.
+1. The `RETELL_BEST_PRACTICES` prompt doesn't document the correct `transfer_call` schema, so the AI hallucinates the format
+2. The apply logic blindly sends AI-recommended values to Retell without validation
+3. No guard against recommending voice IDs that don't match the current voice provider
 
 ## Fix
 
-### 1. `supabase/functions/run-test-run/index.ts` (lines 220-227)
-Fix the transfer_call tool format to match Retell's API schema:
+### `supabase/functions/optimize-retell-agent/index.ts`
 
-```typescript
-// Before (WRONG):
-generalTools.push({
-  type: "transfer_call",
-  name: "transfer_to_agent",
-  description: "Transfer the call to a live agent when the lead is qualified and ready.",
-  number: spec.transfer_phone_number,
-});
+**A. Update `RETELL_BEST_PRACTICES` with correct transfer_call format:**
 
-// After (CORRECT):
-generalTools.push({
-  type: "transfer_call",
-  name: "transfer_to_agent",
-  description: "Transfer the call to a live agent when the lead is qualified and ready.",
-  transfer_destination: {
-    type: "phone_number",
-    number: spec.transfer_phone_number,
+Add explicit documentation of the required transfer_call schema:
+
+```text
+### transfer_call Tool Format (REQUIRED)
+{
+  "type": "transfer_call",
+  "name": "transfer_to_agent",
+  "description": "Transfer the call...",
+  "transfer_destination": {
+    "type": "predefined",
+    "number": "+1XXXXXXXXXX",
+    "ignore_e164_validation": false
   },
-});
+  "transfer_option": {
+    "type": "cold_transfer",
+    "show_transferee_as_caller": false
+  }
+}
 ```
 
-### 2. `supabase/functions/tick-campaign/index.ts` (lines 240-247)
-Same fix for the campaign flow:
+**B. Add validation before applying `general_tools` patches:**
 
-```typescript
-generalTools.push({
-  type: "transfer_call",
-  name: "transfer_to_agent",
-  description: "Transfer the call to a live agent when the lead is qualified and ready.",
-  transfer_destination: {
-    type: "phone_number",
-    number: spec.transfer_phone_number,
-  },
-});
-```
+When the AI recommends `general_tools`, intercept and fix any `transfer_call` entries to ensure they have the correct `transfer_destination` (with `type: "predefined"`) and `transfer_option` structure. Use the phone number from `spec.transfer_phone_number` as the source of truth rather than whatever the AI hallucinates.
 
-### 3. `supabase/functions/manage-retell-agent/index.ts`
-Check and fix the same pattern wherever `transfer_call` tools are built (for consistency during agent creation/sync).
+**C. Skip voice_id recommendations:**
 
-## Expected Outcome
+Add the `voice_id` param to a "skip list" so the optimizer never tries to change the voice -- voice selection is a user choice, not something AI should override. This prevents the `11labs-Ashley not found` error.
 
-After this fix:
-- The LLM PATCH will succeed, injecting the correct prompt with "Alex" as persona name
-- The `begin_message` will be set with the resolved opening line using "Alex"
-- The `transfer_call` tool will be properly configured, enabling call transfers
-- Extracted data will flow correctly since the `post_call_analysis_data` (set at agent level) is already correct
+**D. Add system prompt instruction:**
+
+Tell the AI to never recommend changing `voice_id` and to always use the exact `transfer_call` format from the best practices document.
 
 ## Files to Modify
-- `supabase/functions/run-test-run/index.ts` -- Fix transfer_call tool format
-- `supabase/functions/tick-campaign/index.ts` -- Fix transfer_call tool format
-- `supabase/functions/manage-retell-agent/index.ts` -- Verify/fix same pattern for consistency
+- `supabase/functions/optimize-retell-agent/index.ts` -- Update best practices doc, add apply-time validation, skip voice changes
 
