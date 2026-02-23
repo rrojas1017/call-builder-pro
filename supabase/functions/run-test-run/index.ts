@@ -115,7 +115,7 @@ serve(async (req) => {
 
     const callIds: string[] = [];
 
-    // Pre-flight: fetch agent to get llm_id and fix transfer agent flag
+    // Pre-flight: fetch agent to get llm_id, fix transfer flag, and sync ambient_sound
     let agentLlmId: string | null = null;
     try {
       const agentCheckRes = await fetch(`https://api.retellai.com/get-agent/${retellAgentId}`, {
@@ -152,6 +152,22 @@ serve(async (req) => {
         }
 
         await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      // Sync ambient_sound from spec
+      const ambientSound = spec?.background_track || null;
+      if (ambientSound) {
+        const ambientPatch: Record<string, unknown> = { ambient_sound: ambientSound };
+        const ambientRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
+          body: JSON.stringify(ambientPatch),
+        });
+        if (ambientRes.ok) {
+          console.log(`Set ambient_sound to "${ambientSound}" on agent ${retellAgentId}`);
+        } else {
+          console.error("Failed to set ambient_sound:", await ambientRes.text());
+        }
       }
     } catch (preflight: any) {
       console.error("Transfer agent pre-flight check failed:", preflight.message);

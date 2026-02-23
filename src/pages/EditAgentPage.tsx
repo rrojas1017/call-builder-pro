@@ -40,6 +40,7 @@ export default function EditAgentPage() {
   const [retellAgentId, setRetellAgentId] = useState("");
   const [fromNumber, setFromNumber] = useState("auto");
   const [voicemailMessage, setVoicemailMessage] = useState("");
+  const [ambientSound, setAmbientSound] = useState("none");
 
   // AI Optimization
   const { optimizeAgent } = useRetellAgent(retellAgentId || null);
@@ -71,6 +72,7 @@ export default function EditAgentPage() {
         setRetellAgentId((spec as any).retell_agent_id || "");
         setFromNumber((spec as any).from_number || "auto");
         setVoicemailMessage((spec as any).voicemail_message || "");
+        setAmbientSound((spec as any).background_track || "none");
       }
       setLoading(false);
     };
@@ -100,7 +102,7 @@ export default function EditAgentPage() {
           persona_name: personaName.trim() || null,
           transfer_required: transferEnabled,
           transfer_phone_number: formattedPhone,
-          background_track: null,
+          background_track: ambientSound === "none" ? null : ambientSound,
           voice_provider: "retell",
           retell_agent_id: retellAgentId || null,
           from_number: fromNumber === "auto" ? null : fromNumber || null,
@@ -321,6 +323,24 @@ export default function EditAgentPage() {
           onSelect={setSelectedVoice}
           sampleText={openingLine || undefined}
         />
+        <div className="space-y-2 pt-2 border-t border-border">
+          <Label>Ambient Sound</Label>
+          <p className="text-xs text-muted-foreground">Add background noise to make calls sound more natural and reduce echo.</p>
+          <Select value={ambientSound} onValueChange={setAmbientSound}>
+            <SelectTrigger>
+              <SelectValue placeholder="No ambient sound" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              <SelectItem value="coffee-shop">Coffee Shop</SelectItem>
+              <SelectItem value="convention-hall">Convention Hall</SelectItem>
+              <SelectItem value="summer-outdoor">Summer Outdoor</SelectItem>
+              <SelectItem value="mountain-outdoor">Mountain Outdoor</SelectItem>
+              <SelectItem value="static-noise">Static Noise</SelectItem>
+              <SelectItem value="call-center">Call Center</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Transfer */}
