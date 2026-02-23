@@ -1,34 +1,34 @@
 
-# Rename "Agent Name" to "Agent Profile" with Subtitle
 
-## Overview
-Change the first field label in the agent creation wizard from "Agent Name" to "Agent Profile" to better distinguish it from the persona name field. The actual input field stays the same -- only the label text changes.
+# Fix "Bucket not found" Error on Agent Creation
 
-## Changes
+## Problem
+When creating a new agent with a document upload, the app throws "Bucket not found" because the code uploads to a storage bucket called `agent_sources` which does not exist. The only existing bucket is `agent_knowledge_sources`.
 
-### File: `src/pages/CreateAgentPage.tsx`
+## Solution
+Create the missing `agent_sources` storage bucket via a database migration.
 
-Update the `agentNameLabel` string in all 6 language translation objects:
+### Database Migration
+Run SQL to create the `agent_sources` bucket with appropriate RLS policies:
+- Create the bucket (private, not public)
+- Add RLS policy on `storage.objects` allowing authenticated users to upload files to this bucket
+- Add RLS policy allowing the service role (edge functions) to read/download files
 
-| Language | Current | New |
-|----------|---------|-----|
-| English | "Agent Name" | "Agent Profile" |
-| Spanish | "Nombre del Agente" | "Perfil del Agente" |
-| French | "Nom de l'Agent" | "Profil de l'Agent" |
-| Portuguese | "Nome do Agente" | "Perfil do Agente" |
-| German | "Agentenname" | "Agentenprofil" |
-| Italian | "Nome dell'Agente" | "Profilo dell'Agente" |
+### Files Changed
 
-Also update the rendering section (~line 560-562) to show a smaller "Agent Name" subtitle beneath the "Agent Profile" heading, making it clear the input is for the agent's internal/project name:
+| File | Change |
+|------|--------|
+| Database migration (SQL) | Create `agent_sources` bucket + RLS policies for upload/download |
+
+No code changes needed -- both `CreateAgentPage.tsx` and `ingest-agent-source/index.ts` already reference the correct bucket name `agent_sources`. The bucket just needs to exist.
+
+### Technical Details
 
 ```text
-Agent Profile
-Agent Name
-[ Health Insurance Pre-Qualifier    ]
-
-Agent Persona Name
-[ Sofia                             ]
-This is the name your agent will introduce itself as on the call.
+SQL Migration:
+1. INSERT INTO storage.buckets (id, name, public) VALUES ('agent_sources', 'agent_sources', false)
+2. CREATE POLICY for authenticated users to INSERT (upload) objects
+3. CREATE POLICY for authenticated users to SELECT (download) their own objects
+4. Service role access is automatic (bypasses RLS)
 ```
 
-The label becomes a slightly larger heading ("Agent Profile") with a smaller sub-label "Agent Name" directly above the input, so users understand this is the profile/project name -- not the name spoken on calls.
