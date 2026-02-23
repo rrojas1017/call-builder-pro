@@ -1,80 +1,105 @@
 
 
-# Fix Live Call Transcription
+# Live Call Transcription via Retell Custom LLM WebSocket
 
-## Root Cause
+## Why It Doesn't Work Today
 
-The Retell REST API (`GET /v2/get-call/{call_id}`) does not expose transcript data while a call is ongoing. All transcript fields (`transcript`, `transcript_object`, `transcript_with_tool_calls`) return `undefined` until the call reaches `ended` status. This is a documented Retell API limitation -- live transcripts are only available through their Custom LLM WebSocket integration, which requires a persistent WebSocket server (not feasible with serverless edge functions).
+The Retell REST API (`GET /v2/get-call/{call_id}`) returns empty transcript fields during active calls. Transcript data only appears after the call reaches `ended` status. There are no mid-call transcript webhook events either. This is a fundamental Retell API limitation.
 
-## What We Can Do
+## Solution: Custom LLM WebSocket
 
-Since true real-time streaming isn't possible with the current architecture, we can dramatically improve the experience with these changes:
-
-### 1. Show the opening line immediately when the call starts
-
-When `run-test-run` initiates the call, we already know the `begin_message` (opening line). Store it on the `test_run_contacts` record right away so the Live Monitor can display it instantly instead of showing a blank "waiting" state.
-
-**File**: `supabase/functions/run-test-run/index.ts`
-- After successfully creating the Retell call, write the `begin_message` as an initial transcript to the contact record
-
-### 2. Use Supabase Realtime for instant transcript updates
-
-Instead of polling the database every 3 seconds after the call ends, subscribe to real-time changes on the `test_run_contacts` table. When the webhook writes the transcript, it appears on-screen within milliseconds.
-
-**File**: `src/components/LiveCallMonitor.tsx`
-- Replace database polling with a Supabase Realtime subscription on the contact row
-- Show the opening line from the DB immediately during the call
-- Transcript appears instantly when the webhook fires (no 3-second delay)
-- Remove the edge function polling entirely (it never works during live calls)
-
-### 3. Enable Realtime on test_run_contacts
-
-**Database migration**: Add the `test_run_contacts` table to the Supabase Realtime publication so changes are pushed to connected clients.
-
-```sql
-ALTER PUBLICATION supabase_realtime ADD TABLE public.test_run_contacts;
-```
-
-### 4. Improve "in progress" UX messaging
-
-Update the waiting message to be more accurate:
-
-- During call: "Call in progress -- opening line delivered. Full transcript will appear when the call completes."
-- Show the known opening line as the first bubble immediately
-
-### 5. Remove dead REST polling
-
-The `live-call-stream` edge function polling during active calls is unnecessary since it never returns data. Remove that code path from `LiveCallMonitor` and only keep the Realtime subscription.
-
-## Technical Details
-
-### LiveCallMonitor changes
+Retell supports a **Custom LLM WebSocket** integration where Retell connects to YOUR server during the call and streams live transcript updates in real time. Instead of using Retell's built-in "single prompt" agent, we run our own LLM that receives transcript updates and sends back responses.
 
 ```text
-Current flow:
-  Call starts --> poll REST API every 3s --> always empty --> call ends --> poll DB every 3s --> transcript appears
+Current architecture:
+  Retell manages LLM internally --> no live transcript access
 
-New flow:
-  Call starts --> show opening line immediately --> subscribe to Realtime --> webhook fires --> transcript appears instantly
+New architecture:
+  Retell <--WebSocket--> Our Edge Function <--writes transcript--> Database <--Realtime--> UI
+                              |
+                              +--> Calls Lovable AI to generate agent responses
 ```
 
-### Files Modified
+## Implementation Steps
+
+### 1. Create Custom LLM WebSocket Edge Function
+
+**New file**: `supabase/functions/retell-llm-ws/index.ts`
+
+This edge function upgrades HTTP to WebSocket and handles the Retell Custom LLM protocol:
+
+- **On connect**: Retell sends `call_details` with metadata (test_run_contact_id, org_id, etc.)
+- **On `update_only` events**: Retell sends live transcript updates. We write the latest transcript to `test_run_contacts.transcript` in the database.
+- **On `response_required` events**: We send the transcript to Lovable AI (using the agent's `general_prompt` as the system prompt) and stream the response back to Retell.
+- **On `reminder_required` events**: We send a brief follow-up response.
+
+The function uses Deno's native WebSocket support, which is available in Supabase Edge Functions.
+
+### 2. Register the Custom LLM with Retell
+
+**Modified file**: `supabase/functions/manage-retell-agent/index.ts`
+
+When creating or updating a Retell LLM, switch from `model`-based configuration to `custom_llm_websocket_url` pointing to our new edge function:
+
+```text
+wss://<project-id>.supabase.co/functions/v1/retell-llm-ws
+```
+
+This replaces the current approach of setting `general_prompt` on Retell's built-in LLM.
+
+### 3. Build Agent Responses with Lovable AI
+
+**Within the WebSocket function**, when Retell requests a response:
+
+- Construct a system prompt from the agent spec (same `buildTaskPrompt` logic already used)
+- Send the full transcript history to Lovable AI (e.g., `google/gemini-2.5-flash` for speed)
+- Stream the response tokens back to Retell via WebSocket
+
+### 4. Write Live Transcript to Database
+
+Every time Retell sends a transcript update (which happens after each utterance), the WebSocket function writes the formatted transcript to `test_run_contacts.transcript`. Since Realtime is already enabled on this table, the `LiveCallMonitor` component picks up changes instantly -- no polling needed.
+
+### 5. Update LiveCallMonitor UI
+
+**Modified file**: `src/components/LiveCallMonitor.tsx`
+
+- Show a typing indicator when a new user utterance arrives but the agent hasn't responded yet
+- Update the "LIVE" badge to pulse while transcript is actively streaming
+- Remove the static "transcript will appear when the call completes" message
+
+### 6. Update Agent Sync Logic
+
+**Modified file**: `supabase/functions/manage-retell-agent/index.ts`
+
+- When syncing agent configuration, create/update the LLM with `custom_llm_websocket_url` instead of `model` and `general_prompt`
+- Transfer tool definitions (like `transfer_call`) remain the same -- they're passed to the Custom LLM via the WebSocket protocol
+
+## Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/run-test-run/index.ts` | Store `begin_message` as initial transcript snippet on the contact row |
-| `src/components/LiveCallMonitor.tsx` | Replace polling with Realtime subscription, show opening line immediately |
-| Database migration | Enable Realtime on `test_run_contacts` table |
+| `supabase/functions/retell-llm-ws/index.ts` | **New** -- WebSocket handler for Retell Custom LLM protocol |
+| `supabase/functions/manage-retell-agent/index.ts` | Switch LLM config from built-in model to custom WebSocket URL |
+| `src/components/LiveCallMonitor.tsx` | Add typing indicator, remove "wait for completion" messaging |
+| `supabase/config.toml` | Add `[functions.retell-llm-ws]` with `verify_jwt = false` |
 
-### What This Won't Do
+## What Changes for Users
 
-- This won't show word-by-word live transcription during the call. That requires Retell's Custom LLM WebSocket integration with a persistent server, which is a much larger architectural change.
-- The full transcript still arrives when the call ends, but it now appears instantly (via Realtime) instead of with a 3-6 second polling delay.
+- During a live call, each utterance (both agent and caller) appears in the transcript panel within 1-2 seconds of being spoken
+- The agent still follows the same persona, opening line, and qualification rules -- the prompt logic is identical
+- Transfer, voicemail detection, and all webhook flows remain unchanged
 
-## Expected Outcome
+## Risks and Considerations
 
-- Opening line appears as a chat bubble the moment the call connects
-- Full transcript appears within 1 second of the call ending (instead of up to 6 seconds)
-- No more wasted API calls to Retell during the call
-- Clearer messaging about what to expect during live calls
+- **LLM latency**: Response time now depends on our AI call speed. Using `gemini-2.5-flash` keeps latency low (~1-2s). Retell's built-in LLM may have been faster since it's co-located.
+- **Edge function timeout**: Supabase Edge Functions have a ~150s execution limit. For calls longer than ~2.5 minutes, the WebSocket may disconnect. We can mitigate with Retell's auto-reconnect or by keeping responses fast.
+- **Rollback**: If issues arise, we can revert the LLM config back to Retell's built-in model with a single sync operation.
+- **Cost**: Each utterance now incurs an AI API call, versus Retell handling it internally. This adds marginal cost per call.
+
+## Testing Plan
+
+1. Create a test agent and run a call to verify the WebSocket connects and transcript streams live
+2. Verify the agent responds correctly using the same qualification logic
+3. Confirm transfer functionality still works through the Custom LLM protocol
+4. Test edge function timeout behavior on longer calls
 
