@@ -184,10 +184,23 @@ serve(async (req) => {
     // Inject prompt into the Retell LLM
     if (agentLlmId) {
       try {
+        // Build general_tools from spec
+        const generalTools: any[] = [
+          { type: "end_call", name: "end_call", description: "End the call when conversation is complete." }
+        ];
+        if (spec?.transfer_required && spec?.transfer_phone_number) {
+          generalTools.push({
+            type: "transfer_call",
+            name: "transfer_to_agent",
+            description: "Transfer the call to a live agent when the lead is qualified and ready.",
+            number: spec.transfer_phone_number,
+          });
+        }
+
         const llmPromptRes = await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
-          body: JSON.stringify({ general_prompt: trimmedRetellPrompt }),
+          body: JSON.stringify({ general_prompt: trimmedRetellPrompt, general_tools: generalTools }),
         });
         if (llmPromptRes.ok) {
           console.log(`Injected task prompt into LLM ${agentLlmId} (${trimmedRetellPrompt.length} chars)`);
