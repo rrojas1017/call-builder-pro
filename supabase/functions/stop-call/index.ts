@@ -16,12 +16,13 @@ serve(async (req) => {
     const RETELL_API_KEY = Deno.env.get("RETELL_API_KEY");
     if (!RETELL_API_KEY) throw new Error("RETELL_API_KEY not configured");
 
-    const stopRes = await fetch(`https://api.retellai.com/v2/end-call/${call_id}`, {
+    const stopRes = await fetch("https://api.retellai.com/v2/end-call", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${RETELL_API_KEY}`,
         "Content-Type": "application/json",
       },
+      body: JSON.stringify({ call_id }),
     });
 
     if (!stopRes.ok) {
