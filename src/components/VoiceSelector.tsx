@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -185,7 +185,7 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
       )}
 
       {/* Scrollable list */}
-      <ScrollArea className="max-h-[420px]">
+      <div className="max-h-[420px] overflow-y-auto">
         <div className="space-y-4 pr-3">
           {customVoices.length > 0 && (
             <div className="space-y-2">
@@ -221,7 +221,7 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
             />
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
