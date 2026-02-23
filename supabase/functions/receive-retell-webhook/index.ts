@@ -233,10 +233,7 @@ serve(async (req) => {
         }).catch((e) => console.error("Error triggering run-test-run:", e));
       }
 
-      // Upsert CRM record for test lab calls
-      if (metadata.org_id && metadata.phone) {
-        await upsertCrmRecord(supabase, metadata, extractedData, outcome, null);
-      }
+      // Test lab calls never populate CRM
 
       return new Response(JSON.stringify({ success: true, flow: "test_lab" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -356,9 +353,23 @@ serve(async (req) => {
         .catch((e) => console.error("[receive-retell-webhook] Error triggering tick:", e));
     }
 
-    // Upsert CRM record for campaign calls
+    // Upsert CRM record for campaign calls (skip if test campaign)
     if (metadata.org_id && metadata.phone) {
-      await upsertCrmRecord(supabase, metadata, extractedData, outcome, metadata.campaign_id || null);
+      let skipCrm = false;
+      if (metadata.campaign_id) {
+        const { data: camp } = await supabase
+          .from("campaigns")
+          .select("is_test")
+          .eq("id", metadata.campaign_id)
+          .single();
+        if (camp?.is_test) {
+          skipCrm = true;
+          console.log(`[CRM] Skipping upsert for test campaign ${metadata.campaign_id}`);
+        }
+      }
+      if (!skipCrm) {
+        await upsertCrmRecord(supabase, metadata, extractedData, outcome, metadata.campaign_id || null);
+      }
     }
 
     return new Response(JSON.stringify({ success: true }), {
