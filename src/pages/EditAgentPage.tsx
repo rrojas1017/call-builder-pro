@@ -32,7 +32,7 @@ export default function EditAgentPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { voices: retellVoices, loading: retellVoicesLoading } = useRetellVoices();
+  const { voices: retellVoices, loading: retellVoicesLoading, refetch: refetchVoices } = useRetellVoices();
   const { numbers: trustedNumbers } = useOutboundNumbers();
 
   const [loading, setLoading] = useState(true);
@@ -443,6 +443,7 @@ export default function EditAgentPage() {
           onSelect={setSelectedVoice}
           sampleText={openingLine || undefined}
           defaultLanguageFilter="english"
+          onRefreshVoices={refetchVoices}
         />
         <div className="space-y-2 pt-2 border-t border-border">
           <Label>Ambient Sound</Label>

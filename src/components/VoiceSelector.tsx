@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Search, Mic, Loader2, Globe } from "lucide-react";
 import { VoicePlayButton } from "@/components/VoicePlayButton";
+import { VoiceImportPanel } from "@/components/VoiceImportPanel";
 import type { Voice } from "@/hooks/useRetellVoices";
 
 interface VoiceSelectorProps {
@@ -15,11 +16,12 @@ interface VoiceSelectorProps {
   onSelect: (voiceId: string) => void;
   sampleText?: string;
   defaultLanguageFilter?: string;
+  onRefreshVoices?: () => void;
 }
 
 type GenderFilter = "all" | "male" | "female";
 
-export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sampleText, defaultLanguageFilter }: VoiceSelectorProps) {
+export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sampleText, defaultLanguageFilter, onRefreshVoices }: VoiceSelectorProps) {
   const [search, setSearch] = useState("");
   const [languageFilter, setLanguageFilter] = useState(defaultLanguageFilter ?? "all");
   const [genderFilter, setGenderFilter] = useState<GenderFilter>("all");
@@ -207,8 +209,16 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
               </div>
             </div>
           )}
-          {filtered.length === 0 && (
+          {filtered.length === 0 && !pinnedVoice && (
             <p className="text-sm text-muted-foreground text-center py-4">No voices match your filters</p>
+          )}
+
+          {/* Import panel for non-English languages */}
+          {languageFilter === "spanish" && onRefreshVoices && (
+            <VoiceImportPanel
+              existingVoiceNames={voices.map((v) => v.name)}
+              onImported={onRefreshVoices}
+            />
           )}
         </div>
       </ScrollArea>
