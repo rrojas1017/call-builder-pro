@@ -15,6 +15,12 @@ const LANG_MAP: Record<string, string> = {
   hi: "hi-IN", ru: "ru-RU", nl: "nl-NL", pl: "pl-PL", sv: "sv-SE",
 };
 
+function isValidRetellVoiceId(id?: string): boolean {
+  if (!id) return false;
+  const validPrefixes = ["11labs-", "cartesia-", "openai-", "minimax-", "eleven_", "deepgram-", "playht-"];
+  return validPrefixes.some(prefix => id.startsWith(prefix));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -28,7 +34,6 @@ serve(async (req) => {
 
     const db = createClient(supabaseUrl, serviceKey);
 
-    // Fetch all specs missing a retell_agent_id, joined with project info
     const { data: specs, error: dbErr } = await db
       .from("agent_specs")
       .select("id, project_id, voice_id, language, persona_name, agent_projects(name, description, source_text)")
@@ -48,7 +53,7 @@ serve(async (req) => {
       const projectName = project?.name || "Unnamed";
 
       try {
-        // Map language code — handle multi-language values like "en, es"
+        // Map language code
         const lang = spec.language || "en";
         let retellLang: string;
         if (lang.includes(",")) {
@@ -60,18 +65,45 @@ serve(async (req) => {
           }
         }
 
-        // 1. Create the Retell agent
+        // Build prompt from project description + source_text
+        const promptParts: string[] = [];
+        if (project?.description) promptParts.push(project.description);
+        if (project?.source_text) promptParts.push(project.source_text);
+        const generalPrompt = promptParts.join("\n\n");
+        const trimmedPrompt = generalPrompt.length > 28000
+          ? generalPrompt.substring(0, 28000) + "\n\n[Trimmed for length]"
+          : generalPrompt;
+
+        // 1. Create Retell LLM first
+        const llmBody: Record<string, unknown> = {};
+        if (trimmedPrompt.length > 0) {
+          llmBody.general_prompt = trimmedPrompt;
+        }
+
+        const llmRes = await fetch(`${RETELL_BASE}/create-retell-llm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellKey}` },
+          body: JSON.stringify(llmBody),
+        });
+        const llmData = await llmRes.json();
+        if (!llmRes.ok) throw new Error(`Failed to create LLM: ${llmData.error_message || JSON.stringify(llmData)}`);
+        const llmId = llmData.llm_id;
+        console.log(`Created LLM ${llmId} for ${projectName}`);
+
+        // 2. Create the Retell agent with the LLM id
+        const voiceId = isValidRetellVoiceId(spec.voice_id) ? spec.voice_id : "11labs-Adrian";
+
         const createBody: Record<string, unknown> = {
           agent_name: projectName,
+          voice_id: voiceId,
           language: retellLang,
-          response_engine: { type: "retell-llm" },
+          response_engine: { type: "retell-llm", llm_id: llmId },
           webhook_url: webhookUrl,
           post_call_analysis_data: [
             { description: "Whether the lead was qualified", name: "qualified", type: "boolean" },
             { description: "Brief summary of the call", name: "call_summary", type: "string" },
           ],
         };
-        if (spec.voice_id) createBody.voice_id = spec.voice_id;
 
         const createRes = await fetch(`${RETELL_BASE}/create-agent`, {
           method: "POST",
@@ -82,31 +114,6 @@ serve(async (req) => {
         if (!createRes.ok) throw new Error(agentData.error_message || agentData.message || JSON.stringify(agentData));
 
         const newAgentId = agentData.agent_id;
-        const llmId = agentData.response_engine?.llm_id;
-
-        // 2. Inject prompt if we have description/source_text
-        const promptParts: string[] = [];
-        if (project?.description) promptParts.push(project.description);
-        if (project?.source_text) promptParts.push(project.source_text);
-        const generalPrompt = promptParts.join("\n\n");
-
-        if (llmId && generalPrompt.length > 0) {
-          const trimmed = generalPrompt.length > 28000
-            ? generalPrompt.substring(0, 28000) + "\n\n[Trimmed for length]"
-            : generalPrompt;
-          try {
-            const llmRes = await fetch(`${RETELL_BASE}/update-retell-llm/${llmId}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellKey}` },
-              body: JSON.stringify({ general_prompt: trimmed }),
-            });
-            const llmData = await llmRes.json();
-            if (!llmRes.ok) console.error(`LLM prompt injection failed for ${projectName}:`, llmData);
-            else console.log(`Injected prompt into LLM ${llmId} for ${projectName} (${trimmed.length} chars)`);
-          } catch (e) {
-            console.error(`LLM prompt error for ${projectName}:`, e);
-          }
-        }
 
         // 3. Update agent_specs with new retell_agent_id
         const { error: updateErr } = await db
