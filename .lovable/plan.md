@@ -1,72 +1,71 @@
 
 
-# Campaign Detail Page: Modern Dashboard Redesign
+# List Detail View with Campaign Performance Stats
 
-## Problem
-The current Campaign Detail page uses a flat, basic layout with plain KPI cards in a cramped row, a simple pie chart, and uniform card styling throughout. It looks like a spreadsheet rather than a modern analytics dashboard.
-
-## Design Direction
-Modernize the dashboard with visual hierarchy, gradient accents, better spacing, improved chart presentation, and the existing utility classes (`glass-card`, `gradient-border`, `glow-primary`, `text-gradient-primary`) already defined in the CSS but unused on this page.
+## Overview
+When a user clicks on a list, open a detail panel/dialog showing comprehensive stats about that list's performance across all campaigns it has been used in: total contacts, contacted, connected, DNC, available to dial, penetration rate, conversion rate, and which campaigns used the list.
 
 ## What Changes
 
-### 1. Header Section Overhaul
-- Larger campaign name with gradient text for the status badge
-- Campaign metadata (agent, date, concurrency) displayed as subtle chips instead of raw text
-- Action buttons grouped in a pill-shaped container with better visual weight
-- HIPAA and TEST badges with icon+color styling
+### 1. Clickable List Cards
+- Each list card in the list view becomes clickable
+- Clicking opens a detail dialog/sheet with full stats
+- Delete button remains separate (does not trigger detail view)
 
-### 2. Progress Bar Enhancement
-- Taller progress bar with gradient fill (orange-to-amber)
-- Percentage shown as a large bold number beside the bar
-- Animated shimmer effect when campaign is running
+### 2. List Detail Dialog
+When opened, queries:
+- `contacts` table filtered by `list_id` to get all contact records across all campaigns
+- `campaign_lists` joined with `campaigns` to show which campaigns used this list
+- `calls` joined via contacts to get outcome data
 
-### 3. KPI Cards Redesign
-- Reduce from 9 cramped cards to 4 primary hero KPIs (Total Contacts, Qualified, Conversion Rate, Avg Score) displayed prominently with larger numbers and subtle icon backgrounds
-- Secondary metrics (In Progress, Terminal, Retryable, Failed, Avg Duration) shown as a compact inline row below
-- Use `gradient-border` class on the primary KPIs for visual pop
-- Color-coded values: green for qualified/conversion, orange for in-progress, red for failed
+**KPI Cards displayed:**
+- **Total Contacts** -- `row_count` from the list
+- **Contacted** -- contacts with status != "queued" (have been attempted)
+- **Connected** -- contacts with status = "completed" (call actually happened)
+- **Available to Dial** -- contacts with status = "queued" and attempts < max
+- **DNC** -- contacts with outcome containing "dnc" or "do_not_call"
+- **Penetration Rate** -- (Contacted / Total) as percentage
+- **Conversion Rate** -- (Qualified or successful outcome / Contacted) as percentage
 
-### 4. Charts Section Upgrade
-- Replace basic Recharts PieChart with a donut chart (inner radius) and center label showing total
-- Add subtle gradient backgrounds to chart cards
-- Use the project's `ChartContainer` and `ChartTooltipContent` from `src/components/ui/chart.tsx` for consistent themed tooltips
-- Performance by List table gets alternating row backgrounds and progress bars for completion rate instead of plain percentages
+**Campaigns Section:**
+- List of campaigns that use this list (via `campaign_lists` join)
+- Each shows campaign name, status, and contact count from this list in that campaign
 
-### 5. Live Calls Section
-- More prominent pulsing indicator with a frosted glass card (`glass-card` class)
-- Each live call row gets a subtle green left border accent
-- Better phone number formatting and elapsed time display
+**Contact Preview Table:**
+- Scrollable table showing contacts from this list with their status, outcome, attempts, and last called date
+- Paginated or limited to first 100 rows
 
-### 6. Contacts Table
-- Sticky header with subtle blur background
-- Row hover with left-border accent color based on outcome
-- Status badges use filled pill style instead of outline
-- Better spacing and typography hierarchy
-
-### 7. Contact Detail Drawer
-- Evaluation scores displayed as circular progress rings instead of plain numbers
-- Better visual grouping with section dividers
-- Recording link styled as a prominent audio player-like button
+### 3. Progress Indicators on List Cards
+- Add a mini progress bar to each list card showing penetration rate (contacted/total)
+- Show key stats inline: "245/500 contacted -- 48% penetration"
 
 ## Technical Details
 
+### Data Fetching (on dialog open)
+```text
+-- Get contacts for this list across all campaigns
+SELECT * FROM contacts WHERE list_id = <list_id>;
+
+-- Get campaigns using this list
+SELECT c.* FROM campaigns c 
+JOIN campaign_lists cl ON cl.campaign_id = c.id 
+WHERE cl.list_id = <list_id>;
+```
+
+### Stat Computation (frontend)
+```text
+const total = contacts.length;
+const contacted = contacts.filter(c => c.status !== 'queued').length;
+const completed = contacts.filter(c => c.status === 'completed').length;
+const queued = contacts.filter(c => c.status === 'queued').length;
+const dnc = contacts.filter(c => c.status === 'completed' && c.last_error?.includes('dnc')).length;
+// Use outcome from calls table for more accurate DNC/qualified counts
+const penetration = total > 0 ? (contacted / total * 100) : 0;
+```
+
 ### Files to modify
-- `src/pages/CampaignDetailPage.tsx` -- full visual overhaul of the render section (logic stays the same)
+- `src/pages/ListsPage.tsx` -- add detail dialog, clickable cards, progress indicators, and stat computation
 
-### Approach
-- All existing logic, state management, data fetching, and realtime subscriptions remain untouched
-- Only the JSX return block and some styling constants change
-- Leverage existing Tailwind utilities and CSS custom classes already defined in `index.css`
-- No new dependencies needed
-
-### Key styling patterns to apply
-- `glass-card` on the Live Calls section
-- `gradient-border` on hero KPI cards
-- `text-gradient-primary` on key metric values
-- `hover-lift` on interactive cards
-- `mesh-gradient` as subtle background on the header area
-- Donut chart with `innerRadius={60}` and center text label
-- Progress bars inside the list performance table for visual rate display
-- Consistent use of `rounded-xl` instead of `rounded-lg` for a softer, modern feel
-
+### No database changes needed
+- All required data already exists in `contacts`, `campaign_lists`, and `campaigns` tables
+- `contacts.list_id` provides the link from contacts back to their source list
