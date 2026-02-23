@@ -23,15 +23,39 @@ serve(async (req) => {
       throw new Error("provider_voice_id and voice_name are required");
     }
 
+    // Resolve public_user_id from ElevenLabs API if not provided
+    let resolvedPublicUserId = public_user_id;
+    if (!resolvedPublicUserId) {
+      const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+      if (ELEVENLABS_API_KEY) {
+        try {
+          const searchRes = await fetch(
+            `https://api.elevenlabs.io/v1/shared-voices?page_size=20&search=${encodeURIComponent(voice_name.split(" – ")[0])}`,
+            { headers: { "xi-api-key": ELEVENLABS_API_KEY } }
+          );
+          if (searchRes.ok) {
+            const searchData = await searchRes.json();
+            const voices = searchData.voices || [];
+            const match = voices.find((v: any) => v.voice_id === provider_voice_id);
+            if (match?.public_owner_id) {
+              resolvedPublicUserId = match.public_owner_id;
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to resolve public_user_id from ElevenLabs:", e);
+        }
+      }
+      if (!resolvedPublicUserId) {
+        throw new Error("public_user_id is required and could not be auto-resolved. Please provide it manually.");
+      }
+    }
+
     const body: Record<string, string> = {
       provider_voice_id,
       voice_name,
       voice_provider: "elevenlabs",
+      public_user_id: resolvedPublicUserId,
     };
-
-    if (public_user_id) {
-      body.public_user_id = public_user_id;
-    }
 
     const res = await fetch("https://api.retellai.com/add-community-voice", {
       method: "POST",
