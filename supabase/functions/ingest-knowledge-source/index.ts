@@ -117,6 +117,9 @@ Return ONLY the JSON array, no markdown fences. Aim for 3-15 entries depending o
       ];
     }
 
+    // Extract file name from file_path
+    const fileName = file_path ? file_path.split("/").pop() || null : null;
+
     // Insert entries into agent_knowledge
     const rows = entries.map((e) => ({
       project_id,
@@ -124,6 +127,7 @@ Return ONLY the JSON array, no markdown fences. Aim for 3-15 entries depending o
       content: e.content,
       source_type: sourceType,
       source_url: sourceUrl,
+      file_name: fileName,
     }));
 
     const { data: inserted, error: insertErr } = await supabase
