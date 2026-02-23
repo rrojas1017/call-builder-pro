@@ -1,31 +1,41 @@
 
 
-# Fix: Bulk Sync Function Missing LLM Creation Step
+# Fix: Agent Evolution Graph Not Showing
 
-## Problem
+## Root Cause
 
-The `bulk-sync-retell-agents` function sends `response_engine: { type: "retell-llm" }` to Retell's Create Agent API **without** first creating a Retell LLM and passing its `llm_id`. Retell now requires one of `llm_id`, `llm_websocket_url`, or `conversation_flow_id` in the `response_engine` object.
+The "Agent Humanness Progress" evolution graph is not appearing because **all call evaluations are failing**. The `evaluate-call` function uses your Anthropic API key to run Claude, but the Anthropic account has run out of credits:
 
-All 6 unpaired agents failed with this error.
+> "Your credit balance is too low to access the Anthropic API"
+
+Since no evaluations complete, there's no humanness/naturalness score data, and the chart is hidden (it only renders when data exists).
 
 ## Solution
 
-Update the bulk sync function to match the pattern already used in `manage-retell-agent`:
+Migrate the `evaluate-call` function from the direct Anthropic API to **Lovable AI**, which provides access to equivalent models without needing a separate API key. This eliminates the dependency on external API billing.
 
-1. **Create a Retell LLM first** (via `POST /create-retell-llm`) with the agent's prompt/description
-2. **Pass the resulting `llm_id`** in the `response_engine` when creating the agent
-3. **Add voice ID validation** using the same prefix-check logic (fallback to `11labs-Adrian` for legacy IDs like `maya` or raw UUIDs)
+### Changes
 
-## Technical Details
+**1. Update `supabase/functions/_shared/ai-client.ts`**
+- Add a `callLovableAI` function that routes requests through the Lovable AI gateway (using the existing `LOVABLE_API_KEY` secret)
+- Support the same interface as the current `callClaude` function
 
-Changes to `supabase/functions/bulk-sync-retell-agents/index.ts`:
+**2. Update `supabase/functions/evaluate-call/index.ts`**
+- Switch from `callClaude` to `callLovableAI` using a supported model (e.g., `google/gemini-2.5-flash` or `openai/gpt-5-mini`) for evaluation
+- Keep the same prompt structure and tool-calling pattern
+- The evaluation logic, scoring rubric, and auto-graduation checks remain unchanged
 
-- Before creating each Retell agent, call `POST /create-retell-llm` with `general_prompt` built from the project description and source text
-- Pass `{ type: "retell-llm", llm_id: <new_llm_id> }` in the create-agent body
-- Add the `isValidRetellVoiceId` helper (same as in `manage-retell-agent`) to validate voice IDs and default to `11labs-Adrian` for invalid ones
-- Remove the separate "inject prompt into LLM" step (since the prompt is set during LLM creation)
+**3. Add an empty state to the evolution graph in `src/pages/UniversityPage.tsx`**
+- When there are completed test contacts but no evaluations yet, show a placeholder message like "Evaluations pending -- scores will appear here after calls are graded" instead of hiding the chart entirely
+- This gives users visibility that the feature exists even before data populates
+
+### Why Lovable AI?
+
+The `LOVABLE_API_KEY` is already configured in your secrets. Models like `openai/gpt-5-mini` or `google/gemini-2.5-flash` provide strong reasoning capabilities sufficient for call evaluation, without requiring you to maintain a separate Anthropic billing account.
 
 ## Expected Result
 
-After this fix, re-running the bulk sync should successfully provision all 6 agents with green "synced" status.
-
+After this change:
+- Completed test calls will be automatically evaluated using Lovable AI
+- The evolution graph will appear on the University/Test page showing humanness and naturalness trends
+- No more dependency on Anthropic API credits for evaluations
