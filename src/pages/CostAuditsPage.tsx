@@ -4,6 +4,7 @@ import { DollarSign, Clock, Phone, TrendingUp, AlertTriangle, Building2 } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import CallDetailReport, { type CallDetail } from "@/components/CallDetailReport";
 
 type Period = "today" | "7d" | "30d" | "all";
 
@@ -33,6 +34,9 @@ export default function CostAuditsPage() {
   const [loading, setLoading] = useState(true);
   const [threshold, setThreshold] = useState(DEFAULT_THRESHOLD);
   const [search, setSearch] = useState("");
+  const [callDetails, setCallDetails] = useState<CallDetail[]>([]);
+  const [orgNameMap, setOrgNameMap] = useState<Record<string, string>>({});
+  const [agentNameMap, setAgentNameMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadCosts();
@@ -51,7 +55,7 @@ export default function CostAuditsPage() {
 
     let query = supabase
       .from("calls")
-      .select("cost_estimate_usd, duration_seconds, org_id")
+      .select("id, started_at, duration_seconds, cost_estimate_usd, org_id, project_id, outcome, direction")
       .not("cost_estimate_usd", "is", null);
 
     const dateFilter = getDateFilter();
@@ -62,9 +66,13 @@ export default function CostAuditsPage() {
     if (!calls || calls.length === 0) {
       setStats({ totalSpend: 0, totalMinutes: 0, totalCalls: 0, avgPerMinute: 0, orgCount: 0 });
       setOrgs([]);
+      setCallDetails([]);
       setLoading(false);
       return;
     }
+
+    // Store call details for the detail report
+    setCallDetails(calls as CallDetail[]);
 
     const orgMap: Record<string, { cost: number; seconds: number; count: number }> = {};
     let totalSpend = 0;
@@ -85,13 +93,20 @@ export default function CostAuditsPage() {
     const totalMinutes = totalSeconds / 60;
     const orgIds = Object.keys(orgMap);
 
-    const { data: organizations } = await supabase
-      .from("organizations")
-      .select("id, name")
-      .in("id", orgIds);
+    const projectIds = [...new Set(calls.map((c) => c.project_id))];
+
+    const [{ data: organizations }, { data: agentProjects }] = await Promise.all([
+      supabase.from("organizations").select("id, name").in("id", orgIds),
+      supabase.from("agent_projects").select("id, name").in("id", projectIds),
+    ]);
 
     const nameMap: Record<string, string> = {};
     (organizations || []).forEach((o) => (nameMap[o.id] = o.name));
+    setOrgNameMap(nameMap);
+
+    const agentMap: Record<string, string> = {};
+    (agentProjects || []).forEach((a) => (agentMap[a.id] = a.name));
+    setAgentNameMap(agentMap);
 
     const orgRows: OrgCostRow[] = orgIds
       .map((oid) => ({
@@ -265,6 +280,13 @@ export default function CostAuditsPage() {
               </Table>
             </div>
           </div>
+
+          {/* Call Detail Report */}
+          <CallDetailReport
+            calls={callDetails}
+            orgNameMap={orgNameMap}
+            agentNameMap={agentNameMap}
+          />
         </>
       )}
     </div>
