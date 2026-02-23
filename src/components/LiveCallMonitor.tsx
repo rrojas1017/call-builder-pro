@@ -37,34 +37,16 @@ function parseTranscript(raw: string): TranscriptLine[] {
 
 export default function LiveCallMonitor({ retellCallId, contactId, contactStatus, isActive }: LiveCallMonitorProps) {
   const [lines, setLines] = useState<TranscriptLine[]>([]);
-  const [transcript, setTranscript] = useState<string | null>(null);
+  const [hasTranscript, setHasTranscript] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const isCalling = contactStatus === "calling" || contactStatus === "queued";
 
-  // Poll Retell API for live transcript during active calls
+  // Fetch initial transcript + subscribe to Realtime updates
   useEffect(() => {
-    if (!isActive || !retellCallId || !isCalling) return;
+    if (!isActive || !contactId) return;
 
-    const fetchLiveTranscript = async () => {
-      const { data } = await supabase.functions.invoke("live-call-stream", {
-        body: { call_id: retellCallId, action: "transcript" },
-      });
-      if (data?.transcripts?.length > 0) {
-        setLines(data.transcripts);
-      }
-    };
-
-    fetchLiveTranscript();
-    const interval = setInterval(fetchLiveTranscript, 3000);
-    return () => clearInterval(interval);
-  }, [isActive, retellCallId, isCalling]);
-
-  // Poll database for transcript after call ends
-  useEffect(() => {
-    if (!isActive || !contactId || isCalling) return;
-
-    const fetchTranscript = async () => {
+    const fetchAndParse = async () => {
       const { data } = await supabase
         .from("test_run_contacts")
         .select("transcript, status")
@@ -72,15 +54,39 @@ export default function LiveCallMonitor({ retellCallId, contactId, contactStatus
         .single();
 
       if (data?.transcript) {
-        setTranscript(data.transcript);
+        setHasTranscript(true);
         setLines(parseTranscript(data.transcript));
       }
     };
 
-    fetchTranscript();
-    const interval = setInterval(fetchTranscript, 3000);
-    return () => clearInterval(interval);
-  }, [isActive, contactId, isCalling]);
+    // Initial fetch (picks up opening line written by run-test-run)
+    fetchAndParse();
+
+    // Subscribe to realtime changes on this contact row
+    const channel = supabase
+      .channel(`live-call-${contactId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "test_run_contacts",
+          filter: `id=eq.${contactId}`,
+        },
+        (payload) => {
+          const newRecord = payload.new as any;
+          if (newRecord?.transcript) {
+            setHasTranscript(true);
+            setLines(parseTranscript(newRecord.transcript));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isActive, contactId]);
 
   // Auto-scroll
   useEffect(() => {
@@ -90,7 +96,7 @@ export default function LiveCallMonitor({ retellCallId, contactId, contactStatus
   if (!isActive || !contactId) return null;
 
   const showInProgress = isCalling && lines.length === 0;
-  const showNoTranscript = !isCalling && !transcript;
+  const showNoTranscript = !isCalling && !hasTranscript;
 
   return (
     <div className="surface-elevated rounded-xl p-6 space-y-3 border border-primary/20">
@@ -126,7 +132,7 @@ export default function LiveCallMonitor({ retellCallId, contactId, contactStatus
             ))}
           </div>
           <p className="text-sm text-muted-foreground animate-pulse">
-            Call in progress — transcript will appear when the call ends...
+            Call in progress — transcript will appear when the call completes...
           </p>
           <style>{`
             @keyframes audioWave {
@@ -178,7 +184,7 @@ export default function LiveCallMonitor({ retellCallId, contactId, contactStatus
 
       {isCalling && lines.length > 0 && (
         <p className="text-xs text-muted-foreground text-center">
-          Transcript updates as the call progresses.
+          Opening line delivered. Full transcript will appear when the call completes.
         </p>
       )}
     </div>
