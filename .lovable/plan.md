@@ -1,74 +1,64 @@
 
 
-# Expand Spanish Voice Selection
+# Fix Sofia's Accent Switching Mid-Call
 
 ## Problem
 
-There are two issues causing the Spanish voice options to feel limited:
+The Custom LLM WebSocket (`retell-llm-ws`) generates agent responses via Lovable AI (Gemini), but it never tells the AI **what language to respond in**. So mid-conversation, the AI defaults to English. When Sofia's Spanish voice reads English text, her accent shifts from Hispanic to American.
 
-1. **Miscategorized voices** -- 3 Spanish voices are being classified as English:
-   - "Mexican" accent voices (Miguel, Sofia) are not recognized as Spanish
-   - "Hailey Latin America Spanish" has accent="American" in the API data, so it falls through to English
-   
-2. **Limited selection** -- Retell's built-in library only has ~9 Spanish voices total. ElevenLabs has hundreds of Spanish community voices that can be imported into Retell.
+## Root Cause
 
-## Solution
+1. The `run-test-run` function passes `metadata` to the Retell call (test_run_id, project_id, etc.) but **does not include the agent's language setting**
+2. The `retell-llm-ws` WebSocket receives this metadata but has no language info to work with
+3. The system prompt loaded from the DB may not contain an explicit "respond in Spanish" instruction
+4. Gemini defaults to English, causing the TTS voice to switch accents
 
-### Part 1: Fix language detection (quick fix)
+## Fix (2 files)
 
-Update the `deriveLanguage` function in `src/hooks/useRetellVoices.ts` to also check:
-- "mexican" accent --> Spanish
-- "latin" in voice name or voice_id --> Spanish  
-- voice_id containing "spanish" --> Spanish
+### 1. Pass language in call metadata
 
-This immediately surfaces 3 more voices under the Spanish filter.
+**File**: `supabase/functions/run-test-run/index.ts`
 
-### Part 2: Add ElevenLabs Spanish voice import
+Add the agent spec's `language` field to the metadata object passed to the Retell call:
 
-Retell has an API endpoint (`POST /add-community-voice`) that lets you import voices from the ElevenLabs community library directly into your Retell account. We can build a feature that:
-
-1. Creates a new backend function `import-retell-voice` that calls Retell's add-community-voice API
-2. Adds a curated list of high-quality ElevenLabs Spanish voices (pre-selected IDs) that users can import with one click
-3. Shows an "Import More Spanish Voices" button in the VoiceSelector when the Spanish language filter is active
-
-### Files to modify
-
-| File | Change |
-|------|--------|
-| `src/hooks/useRetellVoices.ts` | Fix `deriveLanguage` to handle "mexican", "latin", and voice_id-based detection |
-| `supabase/functions/import-retell-voice/index.ts` | **New** -- backend function to call Retell's add-community-voice API |
-| `src/components/VoiceSelector.tsx` | Add "Import More Voices" button when filtered to Spanish (or any non-English language) |
-| `supabase/config.toml` | Register the new edge function |
-
-### Technical Details
-
-**Language detection fix:**
-```
-deriveLanguage(accent, name, voiceId):
-  - "mexican" in accent --> spanish
-  - "latin" in name/voiceId + "spanish" in name/voiceId --> spanish
-  - "spanish" in accent/name/voiceId --> spanish
-  - (existing rules for other languages)
-```
-
-**Import voice API call:**
-```
-POST https://api.retellai.com/add-community-voice
-{
-  "provider_voice_id": "<elevenlabs_voice_id>",
-  "voice_name": "Voice Name",
-  "voice_provider": "elevenlabs",
-  "public_user_id": "<elevenlabs_user_id>"
+```text
+metadata: {
+  test_run_id, test_run_contact_id: contact.id,
+  org_id: testRun.org_id, project_id: testRun.project_id,
+  spec_version: testRun.spec_version,
+  language: spec?.language || "en-US",   // <-- ADD THIS
 }
 ```
 
-**Curated Spanish ElevenLabs voices to pre-load:**
-We will include a hardcoded list of well-known ElevenLabs Spanish voice IDs (male and female, various accents like Latin American, Castilian, Mexican) that users can import. After import, they appear in the regular voice list on next refresh.
+### 2. Inject language instruction into the AI system prompt
 
-**Import flow in UI:**
-1. User selects "Spanish" language filter
-2. Sees existing Spanish voices plus an "Import More Spanish Voices" panel at the bottom
-3. Panel shows available community voices with preview and "Import" button
-4. On click, calls the backend function which imports the voice into Retell
-5. Voice list refreshes and the new voice appears
+**File**: `supabase/functions/retell-llm-ws/index.ts`
 
+When processing the call metadata, read the `language` field and append a strict language instruction to the system prompt:
+
+```text
+// After loading systemPrompt from DB...
+const language = metadata.language || "en-US";
+if (language.startsWith("es") || language === "multi") {
+  systemPrompt += "\n\nCRITICAL: You MUST respond ENTIRELY in Spanish. 
+  Every word you say must be in Spanish. Never switch to English 
+  under any circumstances.";
+} else if (!language.startsWith("en")) {
+  // Handle other non-English languages similarly
+  systemPrompt += `\n\nCRITICAL: Respond in the language matching 
+  locale code "${language}". Never switch to English.`;
+}
+```
+
+This ensures the AI model always generates text in the correct language, so the voice never has to switch accents.
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `supabase/functions/run-test-run/index.ts` | Add `language` to Retell call metadata |
+| `supabase/functions/retell-llm-ws/index.ts` | Read language from metadata, append language enforcement to system prompt |
+
+## Expected Result
+
+Sofia will maintain her natural Hispanic Spanish accent throughout the entire call because every AI-generated response will be in Spanish.
