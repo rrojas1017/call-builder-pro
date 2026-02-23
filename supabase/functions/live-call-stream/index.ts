@@ -45,6 +45,14 @@ serve(async (req) => {
       }
 
       const data = await res.json();
+
+      // Diagnostic logging
+      console.log("Retell response keys:", Object.keys(data));
+      console.log("transcript type:", typeof data.transcript, "length:", data.transcript?.length);
+      console.log("transcript_object:", Array.isArray(data.transcript_object), data.transcript_object?.length);
+      console.log("transcript_with_tool_calls:", Array.isArray(data.transcript_with_tool_calls), data.transcript_with_tool_calls?.length);
+      console.log("call_status:", data.call_status || data.status);
+
       const transcripts: any[] = [];
 
       if (typeof data.transcript === "string" && data.transcript.trim()) {
