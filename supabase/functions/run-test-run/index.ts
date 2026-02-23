@@ -325,8 +325,15 @@ serve(async (req) => {
 
         if (retellData.call_id) {
           callIds.push(retellData.call_id);
+          // Build initial transcript from the opening line so the UI shows it immediately
+          const agentName = spec?.persona_name || "Agent";
+          const resolvedOpening = spec?.opening_line
+            ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, agentName)
+            : null;
+          const initialTranscript = resolvedOpening ? `Agent: ${resolvedOpening}` : null;
           await supabase.from("test_run_contacts").update({
             status: "calling", retell_call_id: retellData.call_id, called_at: new Date().toISOString(),
+            ...(initialTranscript ? { transcript: initialTranscript } : {}),
           } as any).eq("id", contact.id);
         } else {
           await supabase.from("test_run_contacts").update({
