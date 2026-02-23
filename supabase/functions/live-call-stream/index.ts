@@ -73,6 +73,20 @@ serve(async (req) => {
         }
       }
 
+      // Fallback: parse live transcript from transcript_with_tool_calls (populated during active calls)
+      if (transcripts.length === 0 && Array.isArray(data.transcript_with_tool_calls)) {
+        for (let i = 0; i < data.transcript_with_tool_calls.length; i++) {
+          const entry = data.transcript_with_tool_calls[i];
+          if (entry.role && entry.content) {
+            transcripts.push({
+              id: `live-${i}`,
+              text: entry.content,
+              role: entry.role === "agent" ? "agent" : "caller",
+            });
+          }
+        }
+      }
+
       return new Response(JSON.stringify({
         transcripts,
         status: data.call_status || data.status || null,

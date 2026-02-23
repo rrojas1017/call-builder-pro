@@ -241,6 +241,8 @@ export default function UniversityPage() {
     if (!testRunId) return;
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
+    let graceTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let callDoneAt: number | null = null;
 
     const fetchContact = async () => {
       const { data } = await supabase
@@ -251,15 +253,35 @@ export default function UniversityPage() {
         .single();
       if (data) {
         setContact(data as TestContact);
-        if (!["queued", "calling"].includes(data.status)) {
+        const callFinished = !["queued", "calling"].includes(data.status);
+
+        if (callFinished) {
           setRunning(false);
-          // Stop polling once call is done
-          if (intervalId) {
-            clearInterval(intervalId);
-            intervalId = null;
+
+          // If evaluation is present, stop polling immediately
+          if (data.evaluation != null) {
+            if (intervalId) { clearInterval(intervalId); intervalId = null; }
+            if (graceTimeoutId) { clearTimeout(graceTimeoutId); graceTimeoutId = null; }
+            loadHistory();
+            return;
           }
-          // Refresh history when test completes
-          loadHistory();
+
+          // Start grace period: keep polling up to 60s for evaluation
+          if (!callDoneAt) {
+            callDoneAt = Date.now();
+            graceTimeoutId = setTimeout(() => {
+              // Force stop after 60s even without evaluation
+              if (intervalId) { clearInterval(intervalId); intervalId = null; }
+              loadHistory();
+            }, 60000);
+          }
+
+          // If we've been waiting > 60s, stop
+          if (Date.now() - callDoneAt > 60000) {
+            if (intervalId) { clearInterval(intervalId); intervalId = null; }
+            if (graceTimeoutId) { clearTimeout(graceTimeoutId); graceTimeoutId = null; }
+            loadHistory();
+          }
         }
       }
     };
@@ -285,6 +307,7 @@ export default function UniversityPage() {
     return () => {
       channel.unsubscribe();
       if (intervalId) clearInterval(intervalId);
+      if (graceTimeoutId) clearTimeout(graceTimeoutId);
     };
   }, [testRunId]);
 
