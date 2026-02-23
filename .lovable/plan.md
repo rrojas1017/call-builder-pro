@@ -1,85 +1,65 @@
 
 
-# Fix Live Transcription + Verify Transfer/Persona Fixes
+# Fix: Voice ID Validation Blocking Valid Voices + Transfer Verification
 
-## Status of Transfer & Persona Issues
+## Problems Found (Verified via Backend Testing)
 
-The transfer_call format fix and voice/name sync are **already deployed** as of 06:03 UTC. The test you saw was run at 05:57 UTC -- 6 minutes BEFORE the deployment completed. A new test will use the corrected code.
+### 1. Voice ID validation is broken
+The `isValidRetellVoiceId()` function only allows voice IDs starting with specific prefixes (`11labs-`, `cartesia-`, `minimax-`, etc.). This blocks:
+- Short Retell preset names like `"maya"` (stored in DB for some agents)
+- Custom cloned voice UUIDs like `ff2c405b-3dba-41e0-9261-bc8ee3f91f46`
 
-No code changes needed for transfer or persona -- just a re-test.
+Result: voice_id is silently skipped during agent updates, so the agent stays on the default `11labs-Adrian`.
 
-## What Needs Fixing: Live Transcription
+### 2. Some agents have invalid voice IDs in the database
+Two agents have `voice_id: "maya"` which is NOT a valid Retell voice ID. The correct ID from Retell's voice list would be something like `minimax-Maya` or similar. However, `"maya"` doesn't appear in the available voices at all -- it may have been entered manually or from an old provider.
 
-The `LiveCallMonitor` component only polls the database (`test_run_contacts.transcript`), which is populated by the webhook AFTER the call ends. During an active call, it just shows "Call in progress" with no transcript.
+### 3. Transfer call format -- CONFIRMED WORKING
+The transfer_call format with `type: "predefined"` and `transfer_option` is correct and deployed. The LLM patch succeeded in my backend test (no errors). This just needs a fresh test call.
 
-### Fix: Dual-polling strategy in `LiveCallMonitor.tsx`
+## Fixes
 
-**During active calls** (status = "calling" or "queued"):
-- Poll the `live-call-stream` edge function every 3 seconds
-- This calls Retell's `get-call` API and returns whatever transcript data is available
-- Show transcript lines as chat bubbles as they arrive
+### A. Remove the broken `isValidRetellVoiceId` gate (`manage-retell-agent/index.ts`)
 
-**After the call ends** (status changes):
-- Switch to polling the database for the final complete transcript
-- This is the reliable source once the webhook has fired
+Replace the restrictive prefix-based validation with a simple truthy check. If a voice_id is provided, send it to Retell and let Retell validate it (Retell returns a clear error if invalid).
 
-### Technical Changes
-
-**File: `src/components/LiveCallMonitor.tsx`**
-
-Replace the single database polling effect with two effects:
-
-1. **Retell API polling (during active calls):**
+**In `buildAgentBody`** (line 52): Change from prefix check to simple existence check:
 ```typescript
-useEffect(() => {
-  if (!isActive || !retellCallId || !isCalling) return;
+// Before: silently defaults to Adrian if prefix doesn't match
+const voiceId = isValidRetellVoiceId(config.voice_id) ? config.voice_id : "11labs-Adrian";
 
-  const fetchLiveTranscript = async () => {
-    const { data } = await supabase.functions.invoke("live-call-stream", {
-      body: { call_id: retellCallId, action: "transcript" },
-    });
-    if (data?.transcripts?.length > 0) {
-      setLines(data.transcripts);
-    }
-  };
-
-  fetchLiveTranscript();
-  const interval = setInterval(fetchLiveTranscript, 3000);
-  return () => clearInterval(interval);
-}, [isActive, retellCallId, isCalling]);
+// After: send whatever voice_id is provided, fallback only if empty
+const voiceId = config.voice_id || "11labs-Adrian";
 ```
 
-2. **Database polling (after call ends):**
+**In update action** (around line 243): Same change -- remove the `isValidRetellVoiceId` guard:
 ```typescript
-useEffect(() => {
-  if (!isActive || !contactId || isCalling) return;
+// Before
+if (config?.voice_id && isValidRetellVoiceId(config.voice_id)) {
+  body.voice_id = config.voice_id;
+}
 
-  const fetchTranscript = async () => {
-    const { data } = await supabase
-      .from("test_run_contacts")
-      .select("transcript, status")
-      .eq("id", contactId)
-      .single();
-    if (data?.transcript) {
-      setTranscript(data.transcript);
-      setLines(parseTranscript(data.transcript));
-    }
-  };
-
-  fetchTranscript();
-  const interval = setInterval(fetchTranscript, 3000);
-  return () => clearInterval(interval);
-}, [isActive, contactId, isCalling]);
+// After
+if (config?.voice_id) {
+  body.voice_id = config.voice_id;
+}
 ```
 
-The `live-call-stream` edge function already handles parsing Retell's `transcript`, `transcript_object`, and `transcript_with_tool_calls` fields, so no backend changes are needed.
+### B. Fix the bad voice_id data in the database
+
+The two agents with `voice_id: "maya"` need to be corrected. Based on the user's screenshots showing "Ashley" selected, and the Retell voice list showing `minimax-Ashley` as the correct ID, update these records.
+
+### C. Keep the `isValidRetellVoiceId` function for reference but stop using it as a gate
+
+The function can remain for logging/diagnostics but should not block voice updates.
 
 ## Files to Modify
-- `src/components/LiveCallMonitor.tsx` -- Add dual-polling (Retell API during calls, DB after)
+- `supabase/functions/manage-retell-agent/index.ts` -- Remove voice_id validation gate in create and update actions
+- Database: Fix `voice_id` from `"maya"` to `"minimax-Ashley"` for affected agents
 
 ## Expected Outcome
-- During active calls: transcript bubbles appear in real-time as the conversation happens
-- After call ends: full transcript loads from the database
-- Agent will say "Alex" (not Ashley) because the LLM patch will now succeed
-- Transfer will work because the correct tool schema is deployed
+- Voice updates will actually reach Retell
+- The agent will use the voice the user selected in the UI
+- Invalid voice IDs will get a clear Retell error instead of being silently ignored
+- Transfer calls confirmed working (format is correct, just needs re-test)
 
