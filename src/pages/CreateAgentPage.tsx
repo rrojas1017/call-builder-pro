@@ -449,7 +449,7 @@ export default function CreateAgentPage() {
         voice_id: voiceId || undefined,
         transfer_required: transferEnabled,
         transfer_phone_number: formattedPhone,
-        background_track: null,
+        background_track: null, // configurable in Edit Agent
         voice_provider: "retell",
         retell_agent_id: finalRetellAgentId || null,
         mode: agentMode,

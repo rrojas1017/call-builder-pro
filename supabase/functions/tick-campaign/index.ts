@@ -181,6 +181,21 @@ serve(async (req) => {
         console.log(`Auto-fixed transfer flags on agent ${retellAgentId}`);
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
+
+      // Sync ambient_sound from spec
+      const ambientSound = spec.background_track || null;
+      if (ambientSound) {
+        const ambientRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
+          body: JSON.stringify({ ambient_sound: ambientSound }),
+        });
+        if (ambientRes.ok) {
+          console.log(`Set ambient_sound to "${ambientSound}" on agent ${retellAgentId}`);
+        } else {
+          console.error("Failed to set ambient_sound:", await ambientRes.text());
+        }
+      }
     } catch (preflight: any) {
       console.error("Transfer agent pre-flight check failed:", preflight.message);
     }
