@@ -9,6 +9,9 @@ const corsHeaders = {
 
 const RETELL_BASE = "https://api.retellai.com";
 
+// Parameters the AI should NEVER recommend changing
+const SKIP_PARAMS = new Set(["voice_id", "voice_provider"]);
+
 const RETELL_BEST_PRACTICES = `
 ## Retell AI Agent Configuration Best Practices
 
@@ -37,12 +40,36 @@ const RETELL_BEST_PRACTICES = `
 - general_tools: array — Built-in tools like end_call, transfer_call, press_digit
 - states: array — Multi-step conversation flow with state transitions
 
+### transfer_call Tool Format (REQUIRED — use EXACTLY this structure)
+When recommending general_tools that include transfer_call, you MUST use this exact format:
+\`\`\`json
+{
+  "type": "transfer_call",
+  "name": "transfer_to_agent",
+  "description": "Transfer the call to a live agent when the lead is qualified and ready.",
+  "transfer_destination": {
+    "type": "predefined",
+    "number": "+1XXXXXXXXXX",
+    "ignore_e164_validation": false
+  },
+  "transfer_option": {
+    "type": "cold_transfer",
+    "show_transferee_as_caller": false
+  }
+}
+\`\`\`
+CRITICAL: "transfer_destination" must have "type": "predefined" (NOT "phone_number"). "transfer_option" is REQUIRED.
+
 ### Outbound Call Best Practices
 - Always set begin_message for outbound calls (agent speaks first)
 - Use general_tools with end_call for graceful termination
 - Add transfer_call tool if transferring to live agents
 - Set voicemail detection + message for outbound campaigns
 - Use boosted_keywords for brand names, product names, key terms
+
+### IMPORTANT RESTRICTIONS
+- NEVER recommend changing voice_id — voice selection is a user preference, not an optimization target
+- NEVER recommend changing voice_provider
 `;
 
 serve(async (req) => {
@@ -144,7 +171,7 @@ Analyze the gap between current config and best practices. Return optimization r
       provider: "gemini",
       model: "google/gemini-3-pro-preview",
       messages: [
-        { role: "system", content: "You are a Retell AI configuration expert. Analyze agent configs and provide actionable optimization recommendations. Use the suggest_optimizations tool to return structured results." },
+        { role: "system", content: "You are a Retell AI configuration expert. Analyze agent configs and provide actionable optimization recommendations. Use the suggest_optimizations tool to return structured results.\n\nCRITICAL RULES:\n1. NEVER recommend changing voice_id or voice_provider — these are user preferences.\n2. When recommending general_tools with transfer_call, you MUST use the EXACT format from the best practices document including transfer_destination (type: predefined) and transfer_option (type: cold_transfer). Missing either field will cause Retell API rejection." },
         { role: "user", content: prompt },
       ],
       tools: [
@@ -193,6 +220,11 @@ Analyze the gap between current config and best practices. Return optimization r
       result = { recommendations: [], overall_score: 0, summary: aiResponse.content || "No recommendations generated" };
     }
 
+    // Filter out skip-listed params from recommendations
+    if (result.recommendations) {
+      result.recommendations = result.recommendations.filter((r: any) => !SKIP_PARAMS.has(r.retell_param));
+    }
+
     // Auto-apply if requested
     if (apply && result.recommendations?.length > 0) {
       const autoRecs = result.recommendations.filter((r: any) => r.auto_apply);
@@ -204,9 +236,32 @@ Analyze the gap between current config and best practices. Return optimization r
 
         for (const rec of autoRecs) {
           const param = rec.retell_param;
+          if (SKIP_PARAMS.has(param)) continue;
+
           const value = rec.recommended_value;
           let parsedValue: unknown;
           try { parsedValue = JSON.parse(value); } catch { parsedValue = value; }
+
+          // Validate and fix general_tools transfer_call entries
+          if (param === "general_tools" && Array.isArray(parsedValue)) {
+            parsedValue = (parsedValue as any[]).map((tool: any) => {
+              if (tool.type === "transfer_call") {
+                // Force correct transfer_destination format
+                tool.transfer_destination = {
+                  type: "predefined",
+                  number: spec.transfer_phone_number || tool.transfer_destination?.number || "",
+                  ignore_e164_validation: false,
+                };
+                // Force required transfer_option
+                tool.transfer_option = tool.transfer_option || {
+                  type: "cold_transfer",
+                  show_transferee_as_caller: false,
+                };
+                if (!tool.transfer_option.type) tool.transfer_option.type = "cold_transfer";
+              }
+              return tool;
+            });
+          }
 
           const llmParams = ["model", "model_temperature", "begin_message", "general_tools", "states"];
           if (llmParams.includes(param)) {
