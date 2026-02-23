@@ -442,6 +442,7 @@ export default function EditAgentPage() {
           selectedVoice={selectedVoice}
           onSelect={setSelectedVoice}
           sampleText={openingLine || undefined}
+          defaultLanguageFilter="english"
         />
         <div className="space-y-2 pt-2 border-t border-border">
           <Label>Ambient Sound</Label>

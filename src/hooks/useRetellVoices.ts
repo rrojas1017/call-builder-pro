@@ -12,6 +12,22 @@ export interface Voice {
   preview_url?: string;
 }
 
+function deriveLanguage(accent?: string, name?: string): string {
+  const s = `${accent ?? ""} ${name ?? ""}`.toLowerCase();
+  if (s.includes("spanish")) return "spanish";
+  if (s.includes("brazilian") || s.includes("portugese") || s.includes("portuguese")) return "portuguese";
+  if (s.includes("french")) return "french";
+  if (s.includes("german")) return "german";
+  if (s.includes("italian")) return "italian";
+  if (s.includes("japanese")) return "japanese";
+  if (s.includes("korean")) return "korean";
+  if (s.includes("chinese") || s.includes("mandarin")) return "chinese";
+  if (s.includes("hindi")) return "hindi";
+  if (s.includes("arabic")) return "arabic";
+  if (["american", "british", "australian", "irish", "scottish", "south african"].some(a => s.includes(a))) return "english";
+  return "english";
+}
+
 export function useRetellVoices() {
   const [voices, setVoices] = useState<Voice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +44,7 @@ export function useRetellVoices() {
           name: v.voice_name ?? v.name ?? "Unknown",
           description: v.provider ?? "",
           is_custom: v.voice_type === "custom",
-          language: v.language ?? undefined,
+          language: deriveLanguage(v.accent, v.voice_name ?? v.name),
           gender: v.gender?.toLowerCase() ?? undefined,
           accent: v.accent?.toLowerCase() ?? undefined,
           preview_url: v.preview_audio_url ?? undefined,
