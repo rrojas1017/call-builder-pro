@@ -23,9 +23,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Loader2, PhoneIncoming, Plus, RefreshCw, Tag, Trash2,
+  Loader2, Phone, PhoneIncoming, Plus, RefreshCw, Tag, Trash2, Users, UserCheck, UserX,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import PhoneNumberDetailDialog from "@/components/PhoneNumberDetailDialog";
 
 interface InboundNumber {
   id: string;
@@ -57,7 +59,7 @@ export default function InboundNumbersPage() {
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [callCounts, setCallCounts] = useState<Record<string, number>>({});
   const [orgId, setOrgId] = useState<string | null>(null);
-  
+  const [selectedNumber, setSelectedNumber] = useState<InboundNumber | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -88,19 +90,22 @@ export default function InboundNumbersPage() {
     if (user && orgId) loadData();
   }, [user, orgId]);
 
+  // --- Stats ---
+  const totalNumbers = numbers.length;
+  const assignedCount = numbers.filter((n) => n.project_id).length;
+  const unassignedCount = totalNumbers - assignedCount;
+  const totalCalls = Object.values(callCounts).reduce((sum, c) => sum + c, 0);
+
   const extractError = async (error: any): Promise<string> => {
-    // Try reading the Response body from FunctionsHttpError
     try {
       const body = await error?.context?.json?.();
       if (body?.error) return body.error;
     } catch { /* body may already be consumed */ }
-    // Fallback: try parsing JSON from the error message itself
     const msg = error?.message || "";
     try {
       const parsed = JSON.parse(msg);
       if (parsed?.error) return parsed.error;
     } catch { /* not JSON */ }
-    // Try extracting JSON embedded in the message string (e.g. "Edge function returned 400: Error, {"error":"..."}")
     const jsonMatch = msg.match(/\{[^}]+\}/);
     if (jsonMatch) {
       try {
@@ -186,12 +191,20 @@ export default function InboundNumbersPage() {
     return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
+  const stats = [
+    { label: "Total Numbers", value: totalNumbers, icon: Phone, color: "text-primary" },
+    { label: "Assigned", value: assignedCount, icon: UserCheck, color: "text-green-500" },
+    { label: "Unassigned", value: unassignedCount, icon: UserX, color: "text-amber-500" },
+    { label: "Inbound Calls", value: totalCalls, icon: PhoneIncoming, color: "text-blue-500" },
+  ];
+
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Inbound Numbers</h1>
-          <p className="text-muted-foreground mt-1">Purchase and manage phone numbers for inbound calls</p>
+          <h1 className="text-2xl font-bold text-foreground">Phone Numbers</h1>
+          <p className="text-muted-foreground mt-1">Purchase and manage your phone numbers</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleSync} disabled={syncing}>
@@ -204,7 +217,7 @@ export default function InboundNumbersPage() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Purchase Inbound Number</DialogTitle>
+                <DialogTitle>Purchase Phone Number</DialogTitle>
                 <DialogDescription>Select an area code to purchase a new phone number.</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -236,17 +249,39 @@ export default function InboundNumbersPage() {
         </div>
       </div>
 
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="surface-elevated rounded-xl p-4">
+            <div className="flex items-center gap-3">
+              <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10", stat.color)}>
+                <stat.icon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                <p className="text-xs text-muted-foreground">{stat.label}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Numbers List */}
       {numbers.length === 0 ? (
         <div className="surface-elevated rounded-xl p-12 text-center">
           <PhoneIncoming className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <p className="text-muted-foreground">No inbound numbers yet. Purchase one to get started.</p>
+          <p className="text-muted-foreground">No phone numbers yet. Purchase one to get started.</p>
         </div>
       ) : (
         <div className="space-y-3">
           {numbers.map((num) => {
             const agent = agents.find((a) => a.id === num.project_id);
             return (
-              <div key={num.id} className="surface-elevated rounded-xl p-4 flex items-center justify-between gap-4">
+              <div
+                key={num.id}
+                className="surface-elevated rounded-xl p-4 flex items-center justify-between gap-4 cursor-pointer hover:ring-1 hover:ring-primary/30 transition-all"
+                onClick={() => setSelectedNumber(num)}
+              >
                 <div className="flex items-center gap-4 min-w-0">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                     <PhoneIncoming className="h-5 w-5 text-primary" />
@@ -262,13 +297,18 @@ export default function InboundNumbersPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  {agent ? (
+                    <Badge variant="default" className="mr-1">{agent.name}</Badge>
+                  ) : (
+                    <Badge variant="secondary" className="mr-1">Unassigned</Badge>
+                  )}
                   <Select
                     value={num.project_id || "unassigned"}
                     onValueChange={(val) => handleAssign(num.id, val === "unassigned" ? "unassign" : val)}
                     disabled={assigningId === num.id}
                   >
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-40">
                       <SelectValue placeholder="Assign agent..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -288,6 +328,16 @@ export default function InboundNumbersPage() {
           })}
         </div>
       )}
+
+      {/* Detail Dialog */}
+      <PhoneNumberDetailDialog
+        number={selectedNumber}
+        agents={agents}
+        callCount={selectedNumber ? (callCounts[selectedNumber.id] || 0) : 0}
+        open={!!selectedNumber}
+        onOpenChange={(open) => { if (!open) setSelectedNumber(null); }}
+        onLabelUpdated={loadData}
+      />
     </div>
   );
 }
