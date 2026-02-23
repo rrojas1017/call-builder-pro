@@ -9,10 +9,18 @@ const corsHeaders = {
 const RETELL_BASE = "https://api.retellai.com";
 
 /** Build enhanced agent body from config + spec fields */
+/** Check if a voice_id looks like a valid Retell voice (UUID or 11labs- prefix) */
+function isValidRetellVoiceId(id?: string): boolean {
+  if (!id) return false;
+  // Valid formats: UUID-like, 11labs-*, eleven_*, or contains a hyphen (provider-name pattern)
+  return /^[0-9a-f]{8}-/.test(id) || id.startsWith("11labs-") || id.startsWith("eleven_") || id.includes("-");
+}
+
 function buildAgentBody(config: Record<string, any>, webhookUrl: string): Record<string, unknown> {
+  const voiceId = isValidRetellVoiceId(config.voice_id) ? config.voice_id : "11labs-Adrian";
   const body: Record<string, unknown> = {
     agent_name: config.agent_name || "Appendify Agent",
-    voice_id: config.voice_id || "11labs-Adrian",
+    voice_id: voiceId,
     language: config.language || "en-US",
     webhook_url: webhookUrl,
     // Enhanced Retell features
@@ -193,7 +201,7 @@ serve(async (req) => {
 
       const body: Record<string, unknown> = { webhook_url: webhookUrl };
       if (config?.agent_name) body.agent_name = config.agent_name;
-      if (config?.voice_id && (config.voice_id.includes("-") || config.voice_id.startsWith("eleven_"))) {
+      if (config?.voice_id && isValidRetellVoiceId(config.voice_id)) {
         body.voice_id = config.voice_id;
       }
       if (config?.language) body.language = config.language;
