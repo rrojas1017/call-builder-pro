@@ -28,8 +28,13 @@ serve(async (req) => {
     if (url) {
       // Fetch URL content
       sourceType = "url";
-      sourceUrl = url;
-      const resp = await fetch(url, {
+      // Auto-prefix protocol if missing
+      let normalizedUrl = url.trim();
+      if (!/^https?:\/\//i.test(normalizedUrl)) {
+        normalizedUrl = `https://${normalizedUrl}`;
+      }
+      sourceUrl = normalizedUrl;
+      const resp = await fetch(normalizedUrl, {
         headers: { "User-Agent": "Appendify-Bot/1.0" },
       });
       if (!resp.ok) throw new Error(`Failed to fetch URL: ${resp.status}`);
