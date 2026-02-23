@@ -285,7 +285,7 @@ interface WizardQuestion {
 }
 
 export default function CreateAgentPage() {
-  const { voices: retellVoices, loading: voicesLoading } = useRetellVoices();
+  const { voices: retellVoices, loading: voicesLoading, refetch: refetchVoices } = useRetellVoices();
   const { numbers: trustedNumbers } = useOutboundNumbers();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -775,6 +775,7 @@ export default function CreateAgentPage() {
               onSelect={setSelectedVoice}
               sampleText={spec?.opening_line || t.voicePreviewText}
               defaultLanguageFilter={agentLanguage !== "en" ? agentLanguage : undefined}
+              onRefreshVoices={refetchVoices}
             />
             {selectedVoice === "custom" && (
               <div className="space-y-2">
