@@ -1,38 +1,31 @@
 
 
-# Test: Create Append Agent, then Optimize with AI
+# Fix: Bulk Sync Function Missing LLM Creation Step
 
-## What to Do (Step-by-Step)
+## Problem
 
-1. **Navigate to the agent's edit page** (you're already on `/agents/f153e2b5-55f0-4441-8de8-71cb67723e6b/edit`)
+The `bulk-sync-retell-agents` function sends `response_engine: { type: "retell-llm" }` to Retell's Create Agent API **without** first creating a Retell LLM and passing its `llm_id`. Retell now requires one of `llm_id`, `llm_websocket_url`, or `conversation_flow_id` in the `response_engine` object.
 
-2. **Create the Append Agent**
-   - In the "Voice Provider" section, click the **"Create Append Agent"** button
-   - Wait for the toast confirmation showing the new Agent ID
-   - The RetellAgentManager card should switch to the "Append Agent Connected" status view
+All 6 unpaired agents failed with this error.
 
-3. **Save the agent** by clicking the Save button at the bottom -- this persists the new `retell_agent_id` to the database
+## Solution
 
-4. **Click "Optimize with AI"** in the top-right header
-   - Wait for the AI analysis to complete (uses Gemini 3 Pro)
-   - The modal should open showing the optimization score and recommendations
+Update the bulk sync function to match the pattern already used in `manage-retell-agent`:
 
-5. **Click "Apply All Auto-Applicable Optimizations"**
-   - This time, since a Retell agent exists, it should patch the **live Retell Agent API** and **Retell LLM API** directly
-   - The green success banners should show "Applied X agent settings" and/or "Applied X LLM settings" (NOT the yellow "saved to spec" banner)
+1. **Create a Retell LLM first** (via `POST /create-retell-llm`) with the agent's prompt/description
+2. **Pass the resulting `llm_id`** in the `response_engine` when creating the agent
+3. **Add voice ID validation** using the same prefix-check logic (fallback to `11labs-Adrian` for legacy IDs like `maya` or raw UUIDs)
 
-## What Success Looks Like
+## Technical Details
 
-- Green banner: "Applied N agent settings" (patches sent to Retell Agent API)
-- Green banner: "Applied N LLM settings" (patches sent to Retell LLM API)
-- Toast: "Optimizations applied! N settings updated."
-- No yellow "saved to spec" fallback banner
+Changes to `supabase/functions/bulk-sync-retell-agents/index.ts`:
 
-## No Code Changes Needed
+- Before creating each Retell agent, call `POST /create-retell-llm` with `general_prompt` built from the project description and source text
+- Pass `{ type: "retell-llm", llm_id: <new_llm_id> }` in the create-agent body
+- Add the `isValidRetellVoiceId` helper (same as in `manage-retell-agent`) to validate voice IDs and default to `11labs-Adrian` for invalid ones
+- Remove the separate "inject prompt into LLM" step (since the prompt is set during LLM creation)
 
-The existing implementation already handles both paths:
-- **With `retell_agent_id`**: Patches are sent directly to the Retell API (`update-agent` and `update-retell-llm` endpoints)
-- **Without `retell_agent_id`**: Falls back to saving to local `agent_specs` table
+## Expected Result
 
-The only prerequisite is creating the agent first (step 2) so the `retell_agent_id` is populated.
+After this fix, re-running the bulk sync should successfully provision all 6 agents with green "synced" status.
 
