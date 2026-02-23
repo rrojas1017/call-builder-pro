@@ -1,48 +1,79 @@
 
 
-# Fix ACA Qualifier Agent Configuration
+# Fix Campaign Prompt + Opening Line Injection
 
 ## Problem
-Two issues were found with the bulk calling test:
+The `tick-campaign` edge function injects the `general_prompt` (full task instructions) into the Retell LLM before each batch, but it does NOT update the `begin_message` (the opening line the agent actually says first). This means the agent may greet callers with a stale or mismatched opening line from a previous configuration, making it sound like a completely different profile.
 
-1. **Agent says "[Agent Name]" literally on calls** -- The `persona_name` field is null, and the `opening_line` uses `[Agent Name]` (square brackets) instead of the template syntax `{{agent_name}}`. The prompt builder only substitutes `{{agent_name}}`, so the square-bracket text passes through verbatim.
-
-2. **No webhook callbacks received** -- Retell dispatched the batch successfully (batch_call_f0738896dc8fdd4d39a3d, status 200), but no call outcome data was received. This means the Retell agent likely doesn't have the webhook URL configured in the Retell dashboard.
+Additionally, the Retell agent's `voice_id` is not synced from the spec during campaign execution, so voice mismatches can occur.
 
 ## Changes
 
-### 1. Fix the ACA Qualifier agent spec in the database
-- Set `persona_name` to a real name (e.g., "Ashley" to match the voice, or another name of your choosing)
-- Replace the `opening_line`'s `[Agent Name]` with the proper template variable `{{agent_name}}`
+### 1. Update `tick-campaign/index.ts` to inject `begin_message` alongside `general_prompt`
+In the LLM prompt injection section (around line 186), add the resolved opening line as `begin_message` so the Retell LLM uses the correct greeting for each campaign run.
 
-**Before:**
-```
-persona_name: null
-opening_line: "Hi there, this is [Agent Name] with the ACA Savings Center..."
-```
+```text
+Current code only sends:
+  { general_prompt: taskPrompt }
 
-**After:**
-```
-persona_name: "Ashley"
-opening_line: "Hi there, this is {{agent_name}} with the ACA Savings Center..."
+Updated code sends:
+  { general_prompt: taskPrompt, begin_message: resolvedOpeningLine }
 ```
 
-### 2. Add a safety net in `buildTaskPrompt.ts`
-- Also replace `[Agent Name]` (square-bracket style) with the persona name, so any old-format opening lines are handled automatically
-- This prevents the same issue if other agents have the same bracket-style placeholder
+This requires resolving the opening line with template variables (agent_name, first_name) before injection. Since the opening line needs per-contact variables like `{{first_name}}`, and Retell handles dynamic variables at call time, we should resolve only `{{agent_name}}` at the LLM level and leave `{{first_name}}` for Retell's dynamic variable system.
 
-### 3. Add a safety net in `tick-campaign/index.ts`
-- In the dynamic variables block, ensure `agent_name` always has a fallback value (e.g., the project name) instead of an empty string when `persona_name` is null
+### 2. Sync `voice_id` from spec during tick-campaign pre-flight
+Add a step that updates the Retell agent's `voice_id` from the spec if one is configured, ensuring the correct voice is used for each campaign.
 
-## Manual Step Required
-In the **Retell dashboard**, verify that agent `agent_bff4d628c037a7c3526a122d5c` has the webhook URL set to:
-```
-https://kmwaqmowstrhwmevwweg.supabase.co/functions/v1/receive-retell-webhook
-```
-Without this, calls will complete but no outcome data will flow back into the system.
+### 3. Resolve the opening line properly
+Use the same `[Agent Name]` and `{{agent_name}}` replacement logic already in `buildTaskPrompt` to resolve the opening line before sending it to Retell as `begin_message`.
 
 ## Technical Details
-- The `buildTaskPrompt` function at line 107-109 substitutes `{{agent_name}}` but not `[Agent Name]`
-- The `tick-campaign` function at line 257 passes `spec.persona_name || ""` as the dynamic variable -- when null, the LLM receives an empty string
-- The database migration will update the existing agent spec record for project `66138346-0a1f-4c5f-b30b-fab52f15d3a3`
 
+### File: `supabase/functions/tick-campaign/index.ts`
+
+**Voice sync (in the pre-flight section, ~line 155):**
+- After syncing `ambient_sound`, also sync `voice_id` from the spec if it's set and valid.
+
+**Opening line injection (in the LLM prompt injection section, ~line 183):**
+- Build the resolved opening line using spec.opening_line with agent_name substitution
+- Include it in the PATCH to the Retell LLM as `begin_message`
+
+```typescript
+// Resolve opening line for begin_message
+const agentName = spec.persona_name || campaign.agent_projects?.name || "Agent";
+const resolvedOpening = spec.opening_line
+  ? spec.opening_line
+      .replace(/\{\{agent_name\}\}/gi, agentName)
+      .replace(/\[Agent Name\]/gi, agentName)
+  : null;
+
+// In the LLM PATCH body:
+const llmPatchBody: any = { general_prompt: taskPrompt };
+if (resolvedOpening) {
+  llmPatchBody.begin_message = resolvedOpening;
+}
+```
+
+**Voice sync addition:**
+```typescript
+// Sync voice_id from spec
+if (spec.voice_id) {
+  const voiceRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
+    body: JSON.stringify({ voice_id: spec.voice_id }),
+  });
+  if (voiceRes.ok) {
+    console.log(`Synced voice_id to "${spec.voice_id}" on agent ${retellAgentId}`);
+  }
+}
+```
+
+## Expected Outcome
+After this fix, every campaign tick will:
+1. Set the correct opening line (begin_message) on the Retell LLM
+2. Set the correct voice on the Retell agent
+3. Set the correct general_prompt (already working)
+
+This ensures the agent always matches the assigned profile regardless of what was previously configured on the Retell side.
