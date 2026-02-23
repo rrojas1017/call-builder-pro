@@ -6,6 +6,34 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ===== INBOUND DETECTION HELPER =====
+async function resolveInboundMetadata(supabase: any, callData: any) {
+  // Check to_number against inbound_numbers table
+  const toNumber = callData.to_number || callData.to;
+  if (!toNumber) return null;
+
+  const cleaned = toNumber.replace(/\D/g, "");
+  // Try exact match and cleaned variants
+  const { data: inboundNum } = await supabase
+    .from("inbound_numbers")
+    .select("id, org_id, project_id, phone_number")
+    .or(`phone_number.eq.${toNumber},phone_number.eq.+${cleaned},phone_number.eq.+1${cleaned}`)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+
+  if (!inboundNum || !inboundNum.org_id) return null;
+
+  console.log(`[Inbound] Resolved to_number=${toNumber} -> org=${inboundNum.org_id} project=${inboundNum.project_id} number_id=${inboundNum.id}`);
+  return {
+    org_id: inboundNum.org_id,
+    project_id: inboundNum.project_id,
+    inbound_number_id: inboundNum.id,
+    caller_phone: callData.from_number || callData.from || null,
+  };
+}
+
+// ===== CRM UPSERT =====
 async function upsertCrmRecord(
   supabase: any,
   metadata: any,
@@ -28,7 +56,6 @@ async function upsertCrmRecord(
     const transferred = outcome === "transfer_completed" || extractedData?.transferred === true;
     const email = extractedData?.email || null;
 
-    // Remove known fields from extractedData to store the rest as custom_fields
     const knownKeys = ["caller_name", "name", "state", "age", "household_size", "income_est_annual", "income", "coverage_type", "consent", "qualified", "transferred", "email"];
     const customFields: Record<string, any> = {};
     if (extractedData && typeof extractedData === "object") {
@@ -65,6 +92,54 @@ async function upsertCrmRecord(
   }
 }
 
+// ===== COST TRACKING =====
+async function trackCallCost(supabase: any, orgId: string, retellCallId: string, duration: number | null, phoneLabel: string) {
+  try {
+    const retellApiKey = Deno.env.get("RETELL_API_KEY");
+    if (!retellApiKey) return;
+
+    const costResp = await fetch(`https://api.retellai.com/v2/get-call/${retellCallId}`, {
+      headers: { "Authorization": `Bearer ${retellApiKey}` },
+    });
+    if (!costResp.ok) {
+      console.error("Failed to fetch Retell call cost:", costResp.status);
+      return;
+    }
+    const costData = await costResp.json();
+    const combinedCostCents = costData?.call_cost?.combined_cost;
+    if (combinedCostCents == null || combinedCostCents <= 0) return;
+
+    const costUsd = combinedCostCents / 100;
+    const durationMin = duration ? (duration / 60).toFixed(1) : "0";
+
+    await supabase.from("calls")
+      .update({ cost_estimate_usd: costUsd })
+      .eq("retell_call_id", retellCallId);
+
+    await supabase.from("credit_transactions").insert({
+      org_id: orgId,
+      amount: -costUsd,
+      type: "call_charge",
+      description: `Call to ${phoneLabel} (${durationMin} min) - $${costUsd.toFixed(2)}`,
+    });
+
+    const { data: orgData } = await supabase
+      .from("organizations")
+      .select("credits_balance")
+      .eq("id", orgId)
+      .single();
+    if (orgData) {
+      await supabase.from("organizations")
+        .update({ credits_balance: (orgData.credits_balance || 0) - costUsd })
+        .eq("id", orgId);
+    }
+
+    console.log(`Cost tracked: $${costUsd.toFixed(2)} for call ${retellCallId}`);
+  } catch (costErr) {
+    console.error("Error fetching/saving call cost:", costErr);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -76,15 +151,16 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Retell sends event type: "call_ended", "call_analyzed", "call_started", etc.
     const event = body.event || "call_ended";
 
-    // Handle call_started for live monitoring
+    // ===== CALL STARTED =====
     if (event === "call_started") {
       const callData = body.call || body;
       const metadata = callData.metadata || {};
       const retellCallId = callData.call_id;
+
       if (retellCallId && metadata.org_id && metadata.project_id) {
+        // Outbound call with metadata
         await supabase.from("calls").upsert({
           org_id: metadata.org_id,
           project_id: metadata.project_id,
@@ -97,13 +173,30 @@ serve(async (req) => {
           outcome: "in_progress",
           version: metadata.version || 1,
         }, { onConflict: "retell_call_id" });
+      } else if (retellCallId) {
+        // Possibly inbound — try to resolve
+        const inbound = await resolveInboundMetadata(supabase, callData);
+        if (inbound && inbound.project_id) {
+          await supabase.from("calls").upsert({
+            org_id: inbound.org_id,
+            project_id: inbound.project_id,
+            inbound_number_id: inbound.inbound_number_id,
+            direction: "inbound",
+            retell_call_id: retellCallId,
+            voice_provider: "retell",
+            started_at: new Date().toISOString(),
+            outcome: "in_progress",
+            version: 1,
+          }, { onConflict: "retell_call_id" });
+          console.log(`[call_started] Inbound call tracked: ${retellCallId}`);
+        }
       }
       return new Response(JSON.stringify({ success: true, event: "call_started" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Handle transfer events
+    // ===== TRANSFER EVENTS =====
     if (event === "transfer_started" || event === "transfer_bridged" || event === "transfer_ended") {
       const callData = body.call || body;
       const retellCallId = callData.call_id;
@@ -118,24 +211,53 @@ serve(async (req) => {
       });
     }
 
+    // ===== IGNORE OTHER EVENTS =====
     if (event !== "call_ended" && event !== "call_analyzed") {
       return new Response(JSON.stringify({ success: true, message: `Ignored event: ${event}` }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // ===== CALL ENDED / ANALYZED =====
     const callData = body.call || body;
     const retellCallId = callData.call_id;
     if (!retellCallId) throw new Error("No call_id in Retell webhook");
 
-    const metadata = callData.metadata || {};
+    let metadata = callData.metadata || {};
+    let direction = "outbound";
+    let inboundNumberId: string | null = null;
+
+    // ===== INBOUND DETECTION =====
+    if (!metadata.org_id || !metadata.project_id) {
+      const inbound = await resolveInboundMetadata(supabase, callData);
+      if (inbound) {
+        metadata = {
+          ...metadata,
+          org_id: inbound.org_id,
+          project_id: inbound.project_id,
+          phone: inbound.caller_phone, // caller's phone for CRM
+        };
+        inboundNumberId = inbound.inbound_number_id;
+        direction = "inbound";
+        console.log(`[Inbound] Detected inbound call ${retellCallId}, direction set to inbound`);
+      }
+    }
+
+    // If we still can't identify the org, we can't process
+    if (!metadata.org_id || !metadata.project_id) {
+      console.log(`[receive-retell-webhook] No org/project for call ${retellCallId}, skipping`);
+      return new Response(JSON.stringify({ success: true, message: "Unattributed call, skipped" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const transcript = callData.transcript || "";
     const recordingUrl = callData.recording_url || null;
     const duration = callData.end_timestamp && callData.start_timestamp
       ? Math.round((callData.end_timestamp - callData.start_timestamp) / 1000)
       : null;
 
-    // Map Retell disconnect reason to our status
+    // Map disconnect reason to status
     const disconnectReason = callData.disconnect_reason || callData.call_status || "";
     let contactStatus = "completed";
     if (disconnectReason === "no_answer" || disconnectReason === "dial_no_answer") contactStatus = "no_answer";
@@ -147,7 +269,7 @@ serve(async (req) => {
     else if (disconnectReason === "call_me_later" || disconnectReason === "callback") contactStatus = "call_me_later";
     else if (disconnectReason === "not_available") contactStatus = "not_available";
 
-    // Override with answering machine detection result (transcript-aware)
+    // Answering machine detection
     const answeredBy = callData.answered_by || null;
     const hasRealConversation = transcript && transcript.includes("user:") && transcript.length > 200;
     if ((answeredBy === "voicemail" || answeredBy === "machine") && !hasRealConversation) {
@@ -157,7 +279,7 @@ serve(async (req) => {
       contactStatus = "voicemail";
     }
 
-    // Extract analysis data if available
+    // Extract analysis data
     let outcome = contactStatus;
     let extractedData: any = null;
     const summary = callData.call_analysis || null;
@@ -170,7 +292,7 @@ serve(async (req) => {
 
     if (extractedData?.qualified === true) outcome = "qualified";
     else if (extractedData?.qualified === false) outcome = "disqualified";
-    console.log(`[receive-retell-webhook] call_id=${retellCallId} disconnectReason=${disconnectReason} answeredBy=${answeredBy} contactStatus=${contactStatus} outcome=${outcome}`);
+    console.log(`[receive-retell-webhook] call_id=${retellCallId} direction=${direction} disconnectReason=${disconnectReason} answeredBy=${answeredBy} contactStatus=${contactStatus} outcome=${outcome}`);
 
     // ===== TEST LAB FLOW =====
     if (metadata.test_run_contact_id) {
@@ -190,7 +312,6 @@ serve(async (req) => {
         } as any)
         .eq("id", metadata.test_run_contact_id);
 
-      // Upsert into calls table
       const callRecord: any = {
         org_id: metadata.org_id,
         project_id: metadata.project_id,
@@ -215,7 +336,6 @@ serve(async (req) => {
         .single();
       if (callErr) console.error("Error upserting Retell call:", callErr);
 
-      // Trigger evaluate-call
       if (upsertedCall?.id && transcript) {
         fetch(`${supabaseUrl}/functions/v1/evaluate-call`, {
           method: "POST",
@@ -224,7 +344,6 @@ serve(async (req) => {
         }).catch((e) => console.error("Error triggering evaluate-call:", e));
       }
 
-      // Trigger run-test-run to pick next contact
       if (metadata.test_run_id) {
         fetch(`${supabaseUrl}/functions/v1/run-test-run`, {
           method: "POST",
@@ -233,20 +352,19 @@ serve(async (req) => {
         }).catch((e) => console.error("Error triggering run-test-run:", e));
       }
 
-      // Test lab calls never populate CRM
-
       return new Response(JSON.stringify({ success: true, flow: "test_lab" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // ===== STANDARD CAMPAIGN FLOW =====
+    // ===== STANDARD FLOW (OUTBOUND + INBOUND) =====
     const callRecord: any = {
       org_id: metadata.org_id,
       project_id: metadata.project_id,
       campaign_id: metadata.campaign_id || null,
       contact_id: metadata.contact_id || null,
-      direction: "outbound",
+      inbound_number_id: inboundNumberId,
+      direction,
       retell_call_id: retellCallId,
       voice_provider: "retell",
       started_at: callData.start_timestamp ? new Date(callData.start_timestamp).toISOString() : new Date().toISOString(),
@@ -267,59 +385,13 @@ serve(async (req) => {
       .single();
     if (callErr) console.error("Error upserting Retell call:", callErr);
 
-    // ===== FETCH REAL COST FROM RETELL & DEDUCT CREDITS =====
+    // ===== COST TRACKING =====
     if (metadata.org_id && retellCallId) {
-      try {
-        const retellApiKey = Deno.env.get("RETELL_API_KEY");
-        if (retellApiKey) {
-          const costResp = await fetch(`https://api.retellai.com/v2/get-call/${retellCallId}`, {
-            headers: { "Authorization": `Bearer ${retellApiKey}` },
-          });
-          if (costResp.ok) {
-            const costData = await costResp.json();
-            const combinedCostCents = costData?.call_cost?.combined_cost;
-            if (combinedCostCents != null && combinedCostCents > 0) {
-              const costUsd = combinedCostCents / 100;
-              const durationMin = duration ? (duration / 60).toFixed(1) : "0";
-              const phoneLabel = metadata.phone || "unknown";
-
-              // Update call with real cost
-              await supabase.from("calls")
-                .update({ cost_estimate_usd: costUsd })
-                .eq("retell_call_id", retellCallId);
-
-              // Insert credit transaction
-              await supabase.from("credit_transactions").insert({
-                org_id: metadata.org_id,
-                amount: -costUsd,
-                type: "call_charge",
-                description: `Call to ${phoneLabel} (${durationMin} min) - $${costUsd.toFixed(2)}`,
-              });
-
-              // Decrement org balance
-              const { data: orgData } = await supabase
-                .from("organizations")
-                .select("credits_balance")
-                .eq("id", metadata.org_id)
-                .single();
-              if (orgData) {
-                await supabase.from("organizations")
-                  .update({ credits_balance: (orgData.credits_balance || 0) - costUsd })
-                  .eq("id", metadata.org_id);
-              }
-
-              console.log(`Cost tracked: $${costUsd.toFixed(2)} for call ${retellCallId}`);
-            }
-          } else {
-            console.error("Failed to fetch Retell call cost:", costResp.status);
-          }
-        }
-      } catch (costErr) {
-        console.error("Error fetching/saving call cost:", costErr);
-      }
+      const phoneLabel = metadata.phone || callData.from_number || "unknown";
+      await trackCallCost(supabase, metadata.org_id, retellCallId, duration, phoneLabel);
     }
 
-    // Update contact status and increment attempts
+    // Update contact status (outbound campaign calls)
     if (metadata.contact_id) {
       const { data: currentContact } = await supabase
         .from("contacts")
@@ -342,7 +414,7 @@ serve(async (req) => {
       }).catch((e) => console.error("Error triggering evaluate-call:", e));
     }
 
-    // Trigger tick-campaign
+    // Trigger tick-campaign (outbound only)
     if (metadata.campaign_id) {
       console.log(`[receive-retell-webhook] Re-triggering tick-campaign for campaign=${metadata.campaign_id}`);
       fetch(`${supabaseUrl}/functions/v1/tick-campaign`, {
@@ -353,7 +425,7 @@ serve(async (req) => {
         .catch((e) => console.error("[receive-retell-webhook] Error triggering tick:", e));
     }
 
-    // Upsert CRM record for campaign calls (skip if test campaign)
+    // CRM upsert (skip test campaigns)
     if (metadata.org_id && metadata.phone) {
       let skipCrm = false;
       if (metadata.campaign_id) {
@@ -372,7 +444,7 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, direction }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

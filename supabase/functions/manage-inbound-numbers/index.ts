@@ -35,10 +35,17 @@ serve(async (req) => {
         .from("agent_specs").select("retell_agent_id").eq("project_id", project_id).single();
       if (specErr || !spec?.retell_agent_id) throw new Error("This agent hasn't been deployed yet. Please open the agent and click 'Create Append Agent' first.");
 
+      // Look up org_id for this number
+      const { data: numRow } = await supabase
+        .from("inbound_numbers").select("org_id").eq("id", number_id).single();
+
       const retellResp = await fetch(`${RETELL_BASE}/update-phone-number/${encodeURIComponent(num.phone_number)}`, {
         method: "PATCH",
         headers: { "Authorization": `Bearer ${RETELL_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ inbound_agent_id: spec.retell_agent_id }),
+        body: JSON.stringify({
+          inbound_agent_id: spec.retell_agent_id,
+          nickname: `${numRow?.org_id || ""}::${project_id}`,
+        }),
       });
       const retellData = await retellResp.json();
       console.log("Retell assign response:", JSON.stringify(retellData));
