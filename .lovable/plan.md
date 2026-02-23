@@ -1,31 +1,34 @@
 
-# Improve Light Mode Contrast Across the App
+# Rename "Agent Name" to "Agent Profile" with Subtitle
 
-## Problem
-In light mode, cards are invisible because both `--background` and `--card` are pure white (`0 0% 100%`), and `--border` is very faint at 91% lightness. This makes card edges, sections, and UI hierarchy hard to distinguish.
+## Overview
+Change the first field label in the agent creation wizard from "Agent Name" to "Agent Profile" to better distinguish it from the persona name field. The actual input field stays the same -- only the label text changes.
 
-## Solution
-Update the light mode CSS variables in `src/index.css` to create clear visual separation between background and cards:
+## Changes
 
-### CSS Variable Changes (`:root` / light mode only)
+### File: `src/pages/CreateAgentPage.tsx`
 
-| Variable | Current | New | Why |
-|----------|---------|-----|-----|
-| `--background` | `0 0% 100%` (white) | `220 14% 96%` (light gray) | Tinted background so cards pop |
-| `--card` | `0 0% 100%` (white) | `0 0% 100%` (stays white) | Cards stay white on gray bg |
-| `--border` | `220 13% 91%` | `220 13% 85%` | Darker borders for definition |
-| `--input` | `220 13% 91%` | `220 13% 85%` | Match border for consistency |
-| `--muted` | `220 14% 96%` | `220 14% 93%` | Slightly darker muted surfaces |
-| `--sidebar-background` | `220 14% 97%` | `0 0% 100%` | Keep sidebar crisp white |
-| `--sidebar-border` | `220 13% 91%` | `220 13% 85%` | Match stronger borders |
+Update the `agentNameLabel` string in all 6 language translation objects:
 
-### Utility Class Updates
-Also update the `glass-card` utility to use stronger border opacity in light mode by changing the border alpha from `0.5` to `0.8`.
+| Language | Current | New |
+|----------|---------|-----|
+| English | "Agent Name" | "Agent Profile" |
+| Spanish | "Nombre del Agente" | "Perfil del Agente" |
+| French | "Nom de l'Agent" | "Profil de l'Agent" |
+| Portuguese | "Nome do Agente" | "Perfil do Agente" |
+| German | "Agentenname" | "Agentenprofil" |
+| Italian | "Nome dell'Agente" | "Profilo dell'Agente" |
 
-### File Changed
+Also update the rendering section (~line 560-562) to show a smaller "Agent Name" subtitle beneath the "Agent Profile" heading, making it clear the input is for the agent's internal/project name:
 
-| File | Change |
-|------|--------|
-| `src/index.css` | Adjust 7 light-mode CSS variable values and tweak glass-card border opacity |
+```text
+Agent Profile
+Agent Name
+[ Health Insurance Pre-Qualifier    ]
 
-Dark mode values remain untouched -- only the `:root` (light) theme is affected.
+Agent Persona Name
+[ Sofia                             ]
+This is the name your agent will introduce itself as on the call.
+```
+
+The label becomes a slightly larger heading ("Agent Profile") with a smaller sub-label "Agent Name" directly above the input, so users understand this is the profile/project name -- not the name spoken on calls.
