@@ -1,64 +1,70 @@
 
 
-# Fix Sofia's Accent Switching Mid-Call
+# Clean Up Retell Agent Sprawl and Keep Them in Sync
 
 ## Problem
 
-The Custom LLM WebSocket (`retell-llm-ws`) generates agent responses via Lovable AI (Gemini), but it never tells the AI **what language to respond in**. So mid-conversation, the AI defaults to English. When Sofia's Spanish voice reads English text, her accent shifts from Hispanic to American.
+Your database tracks 6 agents with correct voice assignments (cartesia-Sofia, minimax-Ashley, etc.), but the Retell dashboard shows 12+ agents -- most using the default "Adrian" voice. This happens because:
 
-## Root Cause
+1. Agent creation never checks if an orphan already exists -- it always creates new ones
+2. Deleted or recreated agents in your app leave behind orphan agents in Retell
+3. The default voice fallback is "Adrian", so orphaned agents all show Adrian
+4. The bulk-sync function creates new agents for any spec missing a `retell_agent_id`, even if a previous one existed
 
-1. The `run-test-run` function passes `metadata` to the Retell call (test_run_id, project_id, etc.) but **does not include the agent's language setting**
-2. The `retell-llm-ws` WebSocket receives this metadata but has no language info to work with
-3. The system prompt loaded from the DB may not contain an explicit "respond in Spanish" instruction
-4. Gemini defaults to English, causing the TTS voice to switch accents
+## Solution (3 parts)
 
-## Fix (2 files)
+### Part 1: Add a cleanup utility edge function
 
-### 1. Pass language in call metadata
+Create a new `cleanup-retell-agents` edge function that:
+- Lists all agents from Retell API (`GET /list-agents`)
+- Compares against `retell_agent_id` values in your `agent_specs` table
+- Identifies orphans (Retell agents not referenced by any DB record)
+- Supports dry-run mode (list orphans) and delete mode (remove them)
 
-**File**: `supabase/functions/run-test-run/index.ts`
+### Part 2: Prevent future orphans in manage-retell-agent
 
-Add the agent spec's `language` field to the metadata object passed to the Retell call:
+When the "create" action is called:
+- Before creating, check if the spec already has a `retell_agent_id` and if that agent still exists in Retell
+- If it exists, update it instead of creating a new one
+- Only create a new agent if there truly is no existing one
+
+### Part 3: Sync voice on creation (not just pre-flight)
+
+Update `manage-retell-agent` and `bulk-sync-retell-agents` to:
+- Always pass the voice_id directly from the spec without prefix validation (matching the existing sync strategy)
+- Remove the `isValidRetellVoiceId` check that forces fallback to Adrian
+
+## Technical Details
+
+### New file: `supabase/functions/cleanup-retell-agents/index.ts`
 
 ```text
-metadata: {
-  test_run_id, test_run_contact_id: contact.id,
-  org_id: testRun.org_id, project_id: testRun.project_id,
-  spec_version: testRun.spec_version,
-  language: spec?.language || "en-US",   // <-- ADD THIS
-}
+- GET /list-agents from Retell API
+- SELECT retell_agent_id FROM agent_specs WHERE retell_agent_id IS NOT NULL
+- Compute orphans = retell_agents - db_agents
+- If mode=delete: DELETE each orphan via Retell API
+- Return { orphans_found, deleted, kept }
 ```
 
-### 2. Inject language instruction into the AI system prompt
+### Modified: `supabase/functions/manage-retell-agent/index.ts`
 
-**File**: `supabase/functions/retell-llm-ws/index.ts`
+- In the "create" action, skip creation if the config already contains a valid `agent_id` that exists in Retell -- update instead
 
-When processing the call metadata, read the `language` field and append a strict language instruction to the system prompt:
+### Modified: `supabase/functions/bulk-sync-retell-agents/index.ts`
 
-```text
-// After loading systemPrompt from DB...
-const language = metadata.language || "en-US";
-if (language.startsWith("es") || language === "multi") {
-  systemPrompt += "\n\nCRITICAL: You MUST respond ENTIRELY in Spanish. 
-  Every word you say must be in Spanish. Never switch to English 
-  under any circumstances.";
-} else if (!language.startsWith("en")) {
-  // Handle other non-English languages similarly
-  systemPrompt += `\n\nCRITICAL: Respond in the language matching 
-  locale code "${language}". Never switch to English.`;
-}
-```
+- Remove `isValidRetellVoiceId` fallback to Adrian (line 94)
+- Pass `spec.voice_id` directly, letting Retell validate it
+- This matches the existing voice sync strategy used in `run-test-run`
 
-This ensures the AI model always generates text in the correct language, so the voice never has to switch accents.
-
-## Files Modified
+## Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/run-test-run/index.ts` | Add `language` to Retell call metadata |
-| `supabase/functions/retell-llm-ws/index.ts` | Read language from metadata, append language enforcement to system prompt |
+| `supabase/functions/cleanup-retell-agents/index.ts` | New -- orphan detection and cleanup |
+| `supabase/functions/manage-retell-agent/index.ts` | Prevent duplicate creation; remove Adrian fallback |
+| `supabase/functions/bulk-sync-retell-agents/index.ts` | Remove `isValidRetellVoiceId` fallback to Adrian |
 
-## Expected Result
+## Immediate Action
 
-Sofia will maintain her natural Hispanic Spanish accent throughout the entire call because every AI-generated response will be in Spanish.
+After deploying, you can run the cleanup function in dry-run mode first to see which agents are orphans, then run it in delete mode to clean up the Retell dashboard.
+
