@@ -1,34 +1,25 @@
 
 
-# Feed Uploaded Document Into Agent Knowledge
+# Fix Voice Selector to Show All Voices with Proper Scrolling
 
 ## Problem
-When you upload a document during agent creation, the content is used to generate the initial wizard questions but is **never stored as knowledge entries** that the agent can actually reference during calls. The document text is saved to `agent_projects.source_text` but the agent's runtime prompt only pulls from `agent_knowledge` entries and spec fields -- meaning the detailed information from your document is lost.
-
-Additionally, the knowledge summarization step has a bug that causes it to fail silently, so even existing knowledge entries wouldn't reach the agent.
+The voice selector appears to show only ~8 voices because the Radix `ScrollArea` with `max-h-[420px]` doesn't properly enable scrolling. The `max-height` on the Root component doesn't constrain the Viewport, so either all voices render without a visible scrollbar, or the container clips content without scroll capability.
 
 ## Solution
+Replace the Radix `ScrollArea` wrapper with a simple `div` that uses native CSS overflow scrolling. This is more reliable for dynamic content lists and guarantees scroll behavior.
 
-### 1. Auto-create knowledge entries from uploaded document
-After `ingest-agent-source` saves the document text to `source_text`, it should also break the content into categorized `agent_knowledge` entries so the agent can reference the full document during calls.
+## File Changed
 
-### 2. Fix the knowledge summarization bug
-The `summarize-agent-knowledge` function crashes because of a code pattern issue (`.catch()` on an RPC call). Fix the syntax so knowledge entries are properly compressed and injected into the agent's prompt at call time.
-
----
+| File | Change |
+|------|--------|
+| `src/components/VoiceSelector.tsx` | Replace `<ScrollArea className="max-h-[420px]">` with a plain `<div className="max-h-[420px] overflow-y-auto">` to ensure native scrolling works reliably for the full voice list. Remove the `ScrollArea` import since it's no longer needed. |
 
 ## Technical Details
 
-### File: `supabase/functions/ingest-agent-source/index.ts`
-- After saving `source_text`, call the Lovable AI gateway to break the document into categorized knowledge entries (product_knowledge, objection_handling, conversation_technique, etc.)
-- Insert each entry into the `agent_knowledge` table linked to the project
-- This ensures the document content persists as searchable, summarizable knowledge the agent uses on every call
+**VoiceSelector.tsx:**
+- Line 3: Remove `ScrollArea` from imports
+- Line 188: Change `<ScrollArea className="max-h-[420px]">` to `<div className="max-h-[420px] overflow-y-auto">`
+- Update matching closing tag from `</ScrollArea>` to `</div>`
 
-### File: `supabase/functions/summarize-agent-knowledge/index.ts`
-- Fix line 33: change `.rpc("increment_knowledge_usage", { entry_ids: entryIds }).catch(...)` to use a proper try/catch or `.then()` pattern compatible with the Supabase client version
-
-### Result
-- Uploaded documents will feed detailed knowledge entries to the agent
-- The agent will have access to the full context from your document during calls, not just the high-level spec fields
-- Knowledge summarization will work correctly, compressing entries into a briefing injected into every call prompt
+This is a one-line fix. The native `overflow-y-auto` on a `div` with `max-h-[420px]` will show a scrollbar when content exceeds the height, allowing users to scroll through all available voices after applying language/gender filters.
 
