@@ -1,34 +1,40 @@
 
-# Agent Name Visibility + Card/List View Toggle
 
-## Problem
-Agent names get truncated in the current card layout because the name shares a row with multiple badges (Outbound, Append, Training). There's also no way to switch to a more compact list view.
+# Add Diagnostic Logging to Bulk Calling Pipeline
 
-## Changes to `src/pages/AgentsPage.tsx`
+## Goal
+Add detailed logging to `tick-campaign` and `start-campaign` so you can trace exactly what happens (or fails) when running your first Retell bulk campaign.
 
-### 1. Add view toggle state
-- Add `viewMode` state: `"card" | "list"` (default `"card"`)
-- Import `LayoutGrid` and `List` icons from lucide-react for the toggle buttons
-- Import `ToggleGroup` and `ToggleGroupItem` from the existing UI components
+## Retell Webhook Setup (Manual Step)
+In your Retell dashboard, set the webhook URL for your agents to:
+```text
+https://kmwaqmowstrhwmevwweg.supabase.co/functions/v1/receive-retell-webhook
+```
+Without this, calls will complete but your system won't know about it.
 
-### 2. Add toggle buttons in the header
-- Place a `ToggleGroup` next to the "New Agent" button with two options: grid icon (card) and list icon (list)
+## Changes
 
-### 3. Fix name visibility in Card View
-- Move badges below the agent name instead of inline, so the name gets the full row width and never truncates
-- Layout becomes:
-  - Row 1: Mode icon + Agent name (full width, no truncation)
-  - Row 2: Badges (Outbound, Append, Training) + date
-  - Row 3: Description (if any)
-  - Row 4: Action links (Edit, Test, Knowledge, Delete)
+### 1. `supabase/functions/start-campaign/index.ts`
+- Log the campaign_id being started
+- Log the tick-campaign invocation result (status code) instead of fire-and-forget
+- Catch and log errors from the tick call
 
-### 4. Add List View
-- Render agents in a table-style layout when `viewMode === "list"`
-- Columns: Mode icon | Name (full text) | Badges | Date | Actions
-- Each row is clickable, linking to the same campaign route
-- Uses the existing `Table` components for consistency
+### 2. `supabase/functions/tick-campaign/index.ts`
+- Add a top-level log: campaign_id, org_id, agent_id
+- Log credit balance check result
+- Log number of trusted outbound numbers found
+- Log the from_number selected
+- Log the exact batch payload being sent to Retell (tasks count, agent_id, from_number)
+- Log the full Retell response body on both success and failure
+- Log contact IDs being marked as "calling"
+- Add timing: log total execution time at the end
 
-### Technical Summary
-- Only `src/pages/AgentsPage.tsx` is modified
-- No new dependencies or database changes
-- Uses existing `ToggleGroup` and `Table` UI components
+### 3. `supabase/functions/receive-retell-webhook/index.ts`
+- Log the full incoming webhook payload (already partially done, increase to 1000 chars)
+- Log the mapped contact status and outcome
+- Log whether tick-campaign re-trigger fired successfully
+
+## Technical Details
+- All changes are console.log/console.error additions -- no logic changes
+- Logs will be visible in the backend function logs viewer
+- No database or schema changes needed
