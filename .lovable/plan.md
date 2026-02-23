@@ -1,55 +1,81 @@
 
 
-# Fix: Missing Extracted Data Fields (email, phone, age, income, etc.)
+# Fix: Live Monitor Not Showing Transcripts
 
-## Problem
-The Retell agent's `post_call_analysis_data` configuration only defines 2 extraction fields:
-- `qualified` (boolean)
-- `call_summary` (string)
+## Root Cause
 
-So when Retell sends the `call_analysis` data back via webhook, it only contains those 2 fields. All other data points (email, age, income, state, household_size, coverage_type, consent, caller_name, zip_code) are never extracted.
+Retell's `GET /v2/get-call/{call_id}` REST endpoint returns empty transcript fields (`transcript`, `transcript_object`, `transcript_with_tool_calls`) while a call is active. These fields are only populated **after the call ends**. The current polling approach will never show live data.
 
 ## Solution
-Expand the `post_call_analysis_data` array in the Retell agent configuration to include all the fields the agent is instructed to collect. This needs to be updated in two places:
 
-1. **`supabase/functions/manage-retell-agent/index.ts`** -- where new agents are created/updated
-2. **`supabase/functions/bulk-sync-retell-agents/index.ts`** -- where agents are bulk-synced
+Two-part fix:
 
-Additionally, make the extraction fields dynamic based on the agent's `must_collect_fields` spec, so any custom fields are also extracted.
+### 1. Add diagnostic logging to confirm the issue (immediate)
+
+Add `console.log` of the raw Retell response keys in `live-call-stream` so we can see exactly what fields Retell returns during an active call. This will confirm whether any live transcript data is available via REST.
+
+### 2. Use Retell's WebSocket for real-time transcripts (main fix)
+
+Retell provides a **Server WebSocket** that streams transcript events in real-time during active calls. However, edge functions cannot maintain persistent WebSocket connections.
+
+**Alternative approach -- store transcripts from the webhook:**
+
+The Retell webhook (`receive-retell-webhook`) already receives `call_analyzed` and `call_ended` events, but it does NOT receive **mid-call transcript updates**. The most practical approach is:
+
+- **Option A: Use the Retell `register-call` webhook with `transcript_websocket_url`** -- Retell can push transcript updates to a webhook URL during the call. This requires registering a webhook endpoint that receives streaming transcript data.
+
+- **Option B (Simpler): Poll the database instead of Retell's API** -- Since the webhook fires `call_ended` with the full transcript, and during the call we have no REST transcript, we should change the Live Monitor to:
+  1. During "calling" status: show an animated "Agent is speaking..." indicator instead of a dead "Waiting for conversation" message
+  2. Once the call ends and the webhook writes the transcript to `test_run_contacts.transcript`, display the full transcript immediately from the database
+
+This is the pragmatic fix since Retell's REST API simply does not support live transcripts.
+
+**Recommended: Option B** -- it's honest about the limitation, provides a better UX, and requires no new infrastructure.
 
 ## Changes
 
-### 1. `supabase/functions/manage-retell-agent/index.ts`
-Replace the hardcoded 2-field `post_call_analysis_data` with a comprehensive list built from the agent spec's `must_collect_fields` plus standard fields:
+### `src/components/LiveCallMonitor.tsx`
+- Remove the polling to `live-call-stream` edge function (it returns empty data during calls)
+- Instead, poll `test_run_contacts` directly from the database for the transcript field
+- During "calling" status with no transcript yet, show an animated "Call in progress" indicator with a pulsing audio wave animation instead of "Waiting for conversation"
+- Once `transcript` is populated (after call ends), parse and display it as chat bubbles
+- Rename section from "Live Monitor" to "Call Transcript" to set correct expectations
 
+### `supabase/functions/live-call-stream/index.ts`
+- Add `console.log` of raw Retell response keys for diagnostics (keep for future debugging)
+- Keep the function working for post-call transcript retrieval (used elsewhere)
+
+### `src/pages/UniversityPage.tsx`
+- Pass `contactId` to LiveCallMonitor (already done)
+- Pass `status` so the monitor knows when to show "in progress" vs transcript
+
+## Technical Details
+
+### LiveCallMonitor new behavior
+
+```text
+if status == "calling" and no transcript:
+  Show animated "Call in progress..." with pulsing indicator
+  Poll test_run_contacts.transcript every 3s
+
+if transcript available:
+  Parse "Agent: ..." / "User: ..." lines into chat bubbles
+  Show full conversation
+
+if status == "completed" and no transcript:
+  Show "No transcript available"
 ```
-post_call_analysis_data: [
-  { name: "qualified", type: "boolean", description: "Whether the lead was qualified for transfer" },
-  { name: "caller_name", type: "string", description: "The caller's full name" },
-  { name: "email", type: "string", description: "The caller's email address" },
-  { name: "state", type: "string", description: "The caller's US state" },
-  { name: "zip_code", type: "string", description: "The caller's 5-digit zip code" },
-  { name: "age", type: "string", description: "The caller's age" },
-  { name: "household_size", type: "string", description: "Number of people in household" },
-  { name: "income_est_annual", type: "string", description: "Estimated annual household income" },
-  { name: "coverage_type", type: "string", description: "Current health coverage type" },
-  { name: "consent", type: "boolean", description: "Whether the caller gave consent to continue" },
-  { name: "transferred", type: "boolean", description: "Whether the call was transferred" },
-  { name: "call_summary", type: "string", description: "Brief summary of the call" },
-]
+
+### Diagnostic logging (live-call-stream)
+
+```text
+console.log("Retell response keys:", Object.keys(data));
+console.log("transcript type:", typeof data.transcript, "length:", data.transcript?.length);
+console.log("transcript_object:", Array.isArray(data.transcript_object), data.transcript_object?.length);
+console.log("transcript_with_tool_calls:", Array.isArray(data.transcript_with_tool_calls), data.transcript_with_tool_calls?.length);
 ```
 
-### 2. `supabase/functions/bulk-sync-retell-agents/index.ts`
-Same expanded field list for consistency when agents are bulk-synced.
-
-### 3. `supabase/functions/run-test-run/index.ts`
-When creating a test call via Retell's `create-phone-call`, also pass `post_call_analysis_data` as an override if the API supports per-call analysis config. If not, the fix in manage-retell-agent will cover it since test runs use the same Retell agent.
-
-## Impact
-After this change, all new and updated Retell agents will extract the full set of collected fields. Existing agents will need a re-sync (the bulk-sync function or editing the agent) to pick up the new analysis fields. The webhook already handles all these fields in the CRM upsert logic -- it just wasn't receiving them from Retell.
-
-## Technical Detail
-- The Retell API's `post_call_analysis_data` tells Retell's LLM which structured fields to extract from the transcript after the call ends
-- The extracted data arrives in the webhook payload as `call.call_analysis`
-- The webhook code already maps these fields to `extracted_data` and stores them in `calls` + `test_run_contacts` + CRM
+## Files to Modify
+- `src/components/LiveCallMonitor.tsx` -- Rewrite to poll database instead of edge function; add animated in-progress state
+- `supabase/functions/live-call-stream/index.ts` -- Add diagnostic logging
 
