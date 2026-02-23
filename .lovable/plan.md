@@ -1,30 +1,80 @@
 
 
-# Add Language Filter to Voice Selector
+# Fix Live Call Transcription
 
-## Problem
-The Retell API doesn't return a `language` field for voices -- it only returns `accent` (e.g., "American", "British", "Brazilian"). The `useRetellVoices` hook tries to map `v.language` but it's always undefined, so the language filter in VoiceSelector never appears (it's hidden when there are fewer than 2 languages).
+## Root Cause
 
-## Solution
-Derive language from the voice data (accent + voice name) in the `useRetellVoices` hook, so the language filter populates automatically.
+The Retell REST API (`GET /v2/get-call/{call_id}`) does not expose transcript data while a call is ongoing. All transcript fields (`transcript`, `transcript_object`, `transcript_with_tool_calls`) return `undefined` until the call reaches `ended` status. This is a documented Retell API limitation -- live transcripts are only available through their Custom LLM WebSocket integration, which requires a persistent WebSocket server (not feasible with serverless edge functions).
 
-### Language Mapping Logic
-Based on the actual Retell API data:
-- Accent "American" or "British" or "Australian" = **English**
-- Accent "Brazilian" or name containing "Portugese" = **Portuguese**  
-- Accent "Spanish" or name containing "Spanish" = **Spanish**
-- Accent "French" or name containing "French" = **French**
-- Accent "German" or name containing "German" = **German**
-- Accent "Italian" or name containing "Italian" = **Italian**
-- Fallback: **English**
+## What We Can Do
 
-### Files to Modify
+Since true real-time streaming isn't possible with the current architecture, we can dramatically improve the experience with these changes:
 
-**1. `src/hooks/useRetellVoices.ts`**
-- Add a `deriveLanguage(accent, name)` helper function that maps accent/name to a language string
-- Use it when mapping voice data: `language: deriveLanguage(v.accent, v.voice_name ?? v.name)`
+### 1. Show the opening line immediately when the call starts
 
-**2. `src/pages/EditAgentPage.tsx`**
-- Pass `defaultLanguageFilter` to VoiceSelector based on the agent's configured language, so the filter starts pre-set to the relevant language
+When `run-test-run` initiates the call, we already know the `begin_message` (opening line). Store it on the `test_run_contacts` record right away so the Live Monitor can display it instantly instead of showing a blank "waiting" state.
 
-No changes needed to VoiceSelector itself -- it already handles the language filter display when languages are available.
+**File**: `supabase/functions/run-test-run/index.ts`
+- After successfully creating the Retell call, write the `begin_message` as an initial transcript to the contact record
+
+### 2. Use Supabase Realtime for instant transcript updates
+
+Instead of polling the database every 3 seconds after the call ends, subscribe to real-time changes on the `test_run_contacts` table. When the webhook writes the transcript, it appears on-screen within milliseconds.
+
+**File**: `src/components/LiveCallMonitor.tsx`
+- Replace database polling with a Supabase Realtime subscription on the contact row
+- Show the opening line from the DB immediately during the call
+- Transcript appears instantly when the webhook fires (no 3-second delay)
+- Remove the edge function polling entirely (it never works during live calls)
+
+### 3. Enable Realtime on test_run_contacts
+
+**Database migration**: Add the `test_run_contacts` table to the Supabase Realtime publication so changes are pushed to connected clients.
+
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE public.test_run_contacts;
+```
+
+### 4. Improve "in progress" UX messaging
+
+Update the waiting message to be more accurate:
+
+- During call: "Call in progress -- opening line delivered. Full transcript will appear when the call completes."
+- Show the known opening line as the first bubble immediately
+
+### 5. Remove dead REST polling
+
+The `live-call-stream` edge function polling during active calls is unnecessary since it never returns data. Remove that code path from `LiveCallMonitor` and only keep the Realtime subscription.
+
+## Technical Details
+
+### LiveCallMonitor changes
+
+```text
+Current flow:
+  Call starts --> poll REST API every 3s --> always empty --> call ends --> poll DB every 3s --> transcript appears
+
+New flow:
+  Call starts --> show opening line immediately --> subscribe to Realtime --> webhook fires --> transcript appears instantly
+```
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `supabase/functions/run-test-run/index.ts` | Store `begin_message` as initial transcript snippet on the contact row |
+| `src/components/LiveCallMonitor.tsx` | Replace polling with Realtime subscription, show opening line immediately |
+| Database migration | Enable Realtime on `test_run_contacts` table |
+
+### What This Won't Do
+
+- This won't show word-by-word live transcription during the call. That requires Retell's Custom LLM WebSocket integration with a persistent server, which is a much larger architectural change.
+- The full transcript still arrives when the call ends, but it now appears instantly (via Realtime) instead of with a 3-6 second polling delay.
+
+## Expected Outcome
+
+- Opening line appears as a chat bubble the moment the call connects
+- Full transcript appears within 1 second of the call ending (instead of up to 6 seconds)
+- No more wasted API calls to Retell during the call
+- Clearer messaging about what to expect during live calls
+
