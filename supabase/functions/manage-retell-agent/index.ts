@@ -8,12 +8,42 @@ const corsHeaders = {
 
 const RETELL_BASE = "https://api.retellai.com";
 
-/** Build enhanced agent body from config + spec fields */
-/** Check if a voice_id looks like a valid Retell voice (UUID or 11labs- prefix) */
+/** Standard extraction fields for post-call analysis */
+const STANDARD_ANALYSIS_FIELDS = [
+  { name: "qualified", type: "boolean", description: "Whether the lead was qualified for transfer" },
+  { name: "caller_name", type: "string", description: "The caller's full name" },
+  { name: "email", type: "string", description: "The caller's email address" },
+  { name: "state", type: "string", description: "The caller's US state" },
+  { name: "zip_code", type: "string", description: "The caller's 5-digit zip code" },
+  { name: "age", type: "string", description: "The caller's age" },
+  { name: "household_size", type: "string", description: "Number of people in household" },
+  { name: "income_est_annual", type: "string", description: "Estimated annual household income" },
+  { name: "coverage_type", type: "string", description: "Current health coverage type" },
+  { name: "consent", type: "boolean", description: "Whether the caller gave consent to continue" },
+  { name: "transferred", type: "boolean", description: "Whether the call was transferred" },
+  { name: "call_summary", type: "string", description: "Brief summary of the call" },
+];
+
+/** Build post_call_analysis_data, merging standard fields with any custom must_collect_fields */
+function buildPostCallAnalysisFields(mustCollectFields?: unknown): Array<{ name: string; type: string; description: string }> {
+  const fields = [...STANDARD_ANALYSIS_FIELDS];
+  const existingNames = new Set(fields.map(f => f.name));
+
+  if (Array.isArray(mustCollectFields)) {
+    for (const field of mustCollectFields) {
+      const fieldName = typeof field === "string" ? field : field?.name;
+      if (fieldName && !existingNames.has(fieldName)) {
+        fields.push({ name: fieldName, type: "string", description: `Custom field: ${fieldName}` });
+        existingNames.add(fieldName);
+      }
+    }
+  }
+  return fields;
+}
+
+/** Check if a voice_id looks like a valid Retell voice */
 function isValidRetellVoiceId(id?: string): boolean {
   if (!id) return false;
-  // Retell voices use provider prefixes: 11labs-, cartesia-, openai-, minimax-, eleven_
-  // Raw UUIDs are NOT valid Retell voice IDs (they come from legacy providers)
   const validPrefixes = ["11labs-", "cartesia-", "openai-", "minimax-", "eleven_", "deepgram-", "playht-"];
   return validPrefixes.some(prefix => id.startsWith(prefix));
 }
@@ -29,10 +59,7 @@ function buildAgentBody(config: Record<string, any>, webhookUrl: string): Record
     normalize_for_speech: true,
     enable_backchannel: config.enable_backchannel !== false,
     enable_dynamic_voice_speed: true,
-    post_call_analysis_data: [
-      { description: "Whether the lead was qualified", name: "qualified", type: "boolean" },
-      { description: "Brief summary of the call", name: "call_summary", type: "string" },
-    ],
+    post_call_analysis_data: buildPostCallAnalysisFields(config?.must_collect_fields),
   };
 
   // Voice speed from spec's speaking_speed
