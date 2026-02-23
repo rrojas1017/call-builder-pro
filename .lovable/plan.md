@@ -1,81 +1,81 @@
 
 
-# Fix: Live Monitor Not Showing Transcripts
+# Fix: Agent Name, Transfer, and Extracted Data Issues
 
-## Root Cause
+## Root Cause (All Three Issues)
 
-Retell's `GET /v2/get-call/{call_id}` REST endpoint returns empty transcript fields (`transcript`, `transcript_object`, `transcript_with_tool_calls`) while a call is active. These fields are only populated **after the call ends**. The current polling approach will never show live data.
-
-## Solution
-
-Two-part fix:
-
-### 1. Add diagnostic logging to confirm the issue (immediate)
-
-Add `console.log` of the raw Retell response keys in `live-call-stream` so we can see exactly what fields Retell returns during an active call. This will confirm whether any live transcript data is available via REST.
-
-### 2. Use Retell's WebSocket for real-time transcripts (main fix)
-
-Retell provides a **Server WebSocket** that streams transcript events in real-time during active calls. However, edge functions cannot maintain persistent WebSocket connections.
-
-**Alternative approach -- store transcripts from the webhook:**
-
-The Retell webhook (`receive-retell-webhook`) already receives `call_analyzed` and `call_ended` events, but it does NOT receive **mid-call transcript updates**. The most practical approach is:
-
-- **Option A: Use the Retell `register-call` webhook with `transcript_websocket_url`** -- Retell can push transcript updates to a webhook URL during the call. This requires registering a webhook endpoint that receives streaming transcript data.
-
-- **Option B (Simpler): Poll the database instead of Retell's API** -- Since the webhook fires `call_ended` with the full transcript, and during the call we have no REST transcript, we should change the Live Monitor to:
-  1. During "calling" status: show an animated "Agent is speaking..." indicator instead of a dead "Waiting for conversation" message
-  2. Once the call ends and the webhook writes the transcript to `test_run_contacts.transcript`, display the full transcript immediately from the database
-
-This is the pragmatic fix since Retell's REST API simply does not support live transcripts.
-
-**Recommended: Option B** -- it's honest about the limitation, provides a better UX, and requires no new infrastructure.
-
-## Changes
-
-### `src/components/LiveCallMonitor.tsx`
-- Remove the polling to `live-call-stream` edge function (it returns empty data during calls)
-- Instead, poll `test_run_contacts` directly from the database for the transcript field
-- During "calling" status with no transcript yet, show an animated "Call in progress" indicator with a pulsing audio wave animation instead of "Waiting for conversation"
-- Once `transcript` is populated (after call ends), parse and display it as chat bubbles
-- Rename section from "Live Monitor" to "Call Transcript" to set correct expectations
-
-### `supabase/functions/live-call-stream/index.ts`
-- Add `console.log` of raw Retell response keys for diagnostics (keep for future debugging)
-- Keep the function working for post-call transcript retrieval (used elsewhere)
-
-### `src/pages/UniversityPage.tsx`
-- Pass `contactId` to LiveCallMonitor (already done)
-- Pass `status` so the monitor knows when to show "in progress" vs transcript
-
-## Technical Details
-
-### LiveCallMonitor new behavior
+The LLM prompt injection in `run-test-run` **failed completely** because the Retell API rejected the `general_tools` payload. The error:
 
 ```text
-if status == "calling" and no transcript:
-  Show animated "Call in progress..." with pulsing indicator
-  Poll test_run_contacts.transcript every 3s
-
-if transcript available:
-  Parse "Agent: ..." / "User: ..." lines into chat bubbles
-  Show full conversation
-
-if status == "completed" and no transcript:
-  Show "No transcript available"
+general_tools/1/type must be equal to one of the allowed values: end_call,
+general_tools/1 must have required property 'transfer_destination'
 ```
 
-### Diagnostic logging (live-call-stream)
+The code sends `{ type: "transfer_call", number: "+13054332275" }` but Retell's API requires `{ type: "transfer_call", transfer_destination: { type: "phone_number", number: "+13054332275" } }`.
 
-```text
-console.log("Retell response keys:", Object.keys(data));
-console.log("transcript type:", typeof data.transcript, "length:", data.transcript?.length);
-console.log("transcript_object:", Array.isArray(data.transcript_object), data.transcript_object?.length);
-console.log("transcript_with_tool_calls:", Array.isArray(data.transcript_with_tool_calls), data.transcript_with_tool_calls?.length);
+Because the **entire LLM PATCH was rejected**, none of the following took effect:
+- `general_prompt` (new prompt with "Alex") -- so old "Ashley" prompt remained
+- `general_tools` (transfer tool) -- so no transfer capability
+- `begin_message` (opening line with "Alex") -- so old "Ashley" greeting remained
+
+The `tick-campaign` function has the exact same bug (line 242-246).
+
+The extracted data and evaluation being null is a secondary issue: the webhook processed the call, but the `call_analyzed` event's `call_analysis` field likely returned minimal data since the `post_call_analysis_data` was only applied at the agent level (which is fine), but the evaluate-call function may not have fired properly for the cancelled test contact.
+
+## Fix
+
+### 1. `supabase/functions/run-test-run/index.ts` (lines 220-227)
+Fix the transfer_call tool format to match Retell's API schema:
+
+```typescript
+// Before (WRONG):
+generalTools.push({
+  type: "transfer_call",
+  name: "transfer_to_agent",
+  description: "Transfer the call to a live agent when the lead is qualified and ready.",
+  number: spec.transfer_phone_number,
+});
+
+// After (CORRECT):
+generalTools.push({
+  type: "transfer_call",
+  name: "transfer_to_agent",
+  description: "Transfer the call to a live agent when the lead is qualified and ready.",
+  transfer_destination: {
+    type: "phone_number",
+    number: spec.transfer_phone_number,
+  },
+});
 ```
+
+### 2. `supabase/functions/tick-campaign/index.ts` (lines 240-247)
+Same fix for the campaign flow:
+
+```typescript
+generalTools.push({
+  type: "transfer_call",
+  name: "transfer_to_agent",
+  description: "Transfer the call to a live agent when the lead is qualified and ready.",
+  transfer_destination: {
+    type: "phone_number",
+    number: spec.transfer_phone_number,
+  },
+});
+```
+
+### 3. `supabase/functions/manage-retell-agent/index.ts`
+Check and fix the same pattern wherever `transfer_call` tools are built (for consistency during agent creation/sync).
+
+## Expected Outcome
+
+After this fix:
+- The LLM PATCH will succeed, injecting the correct prompt with "Alex" as persona name
+- The `begin_message` will be set with the resolved opening line using "Alex"
+- The `transfer_call` tool will be properly configured, enabling call transfers
+- Extracted data will flow correctly since the `post_call_analysis_data` (set at agent level) is already correct
 
 ## Files to Modify
-- `src/components/LiveCallMonitor.tsx` -- Rewrite to poll database instead of edge function; add animated in-progress state
-- `supabase/functions/live-call-stream/index.ts` -- Add diagnostic logging
+- `supabase/functions/run-test-run/index.ts` -- Fix transfer_call tool format
+- `supabase/functions/tick-campaign/index.ts` -- Fix transfer_call tool format
+- `supabase/functions/manage-retell-agent/index.ts` -- Verify/fix same pattern for consistency
 
