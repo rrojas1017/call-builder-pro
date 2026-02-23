@@ -151,8 +151,13 @@ function buildLlmBody(config: Record<string, any>): Record<string, unknown> {
       name: "transfer_to_agent",
       description: "Transfer the call to a live agent when the lead is qualified and ready.",
       transfer_destination: {
-        type: "phone_number",
+        type: "predefined",
         number: config.transfer_phone_number,
+        ignore_e164_validation: false,
+      },
+      transfer_option: {
+        type: "cold_transfer",
+        show_transferee_as_caller: false,
       },
     });
   }

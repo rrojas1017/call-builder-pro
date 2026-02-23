@@ -156,6 +156,8 @@ serve(async (req) => {
 
       // Sync ambient_sound and post_call_analysis_data from spec
       const agentPatch: Record<string, unknown> = {};
+      if (spec?.voice_id) agentPatch.voice_id = spec.voice_id;
+      if (spec?.persona_name) agentPatch.agent_name = spec.persona_name;
       const ambientSound = spec?.background_track || null;
       if (ambientSound) agentPatch.ambient_sound = ambientSound;
 
@@ -223,8 +225,13 @@ serve(async (req) => {
             name: "transfer_to_agent",
             description: "Transfer the call to a live agent when the lead is qualified and ready.",
             transfer_destination: {
-              type: "phone_number",
+              type: "predefined",
               number: spec.transfer_phone_number,
+              ignore_e164_validation: false,
+            },
+            transfer_option: {
+              type: "cold_transfer",
+              show_transferee_as_caller: false,
             },
           });
         }
