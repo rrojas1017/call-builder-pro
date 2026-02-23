@@ -42,7 +42,7 @@ function buildPostCallAnalysisFields(mustCollectFields?: unknown): Array<{ name:
 }
 
 function buildAgentBody(config: Record<string, any>, webhookUrl: string): Record<string, unknown> {
-  const voiceId = config.voice_id || "11labs-Adrian";
+  const voiceId = config.voice_id;
   const body: Record<string, unknown> = {
     agent_name: config.agent_name || "Appendify Agent",
     voice_id: voiceId,

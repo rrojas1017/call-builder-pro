@@ -101,3 +101,6 @@ verify_jwt = false
 
 [functions.retell-llm-ws]
 verify_jwt = false
+
+[functions.bulk-sync-voices]
+verify_jwt = false
