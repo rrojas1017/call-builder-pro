@@ -138,7 +138,15 @@ Deno.serve(async (req) => {
           }
         }
 
-        console.log(`Call metadata loaded. contactId=${contactId}`);
+        // Enforce language in system prompt based on metadata
+        const language = metadata.language || "en-US";
+        if (language.startsWith("es") || language === "multi") {
+          systemPrompt += "\n\nCRITICAL: You MUST respond ENTIRELY in Spanish. Every word you say must be in Spanish. Never switch to English under any circumstances.";
+        } else if (!language.startsWith("en")) {
+          systemPrompt += `\n\nCRITICAL: Respond in the language matching locale code "${language}". Never switch to English.`;
+        }
+
+        console.log(`Call metadata loaded. contactId=${contactId}, language=${language}`);
       }
 
       // Write live transcript to DB on every update

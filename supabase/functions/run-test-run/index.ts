@@ -282,6 +282,7 @@ serve(async (req) => {
             test_run_id, test_run_contact_id: contact.id,
             org_id: testRun.org_id, project_id: testRun.project_id,
             spec_version: testRun.spec_version,
+            language: spec?.language || "en-US",
           },
         };
         if (spec?.from_number) {
