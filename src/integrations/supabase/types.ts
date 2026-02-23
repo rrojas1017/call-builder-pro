@@ -585,6 +585,7 @@ export type Database = {
       crm_records: {
         Row: {
           age: string | null
+          campaign_ids: string[]
           consent: boolean | null
           coverage_type: string | null
           created_at: string
@@ -610,6 +611,7 @@ export type Database = {
         }
         Insert: {
           age?: string | null
+          campaign_ids?: string[]
           consent?: boolean | null
           coverage_type?: string | null
           created_at?: string
@@ -635,6 +637,7 @@ export type Database = {
         }
         Update: {
           age?: string | null
+          campaign_ids?: string[]
           consent?: boolean | null
           coverage_type?: string | null
           created_at?: string

@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Search, Download, Phone, Calendar, Hash, CheckCircle2, XCircle, ArrowUpDown, User, Building2 } from "lucide-react";
+import { Search, Download, Phone, Calendar, Hash, CheckCircle2, XCircle, ArrowUpDown, User, Building2, Megaphone } from "lucide-react";
 import { format } from "date-fns";
 
 interface CrmRecord {
@@ -37,6 +37,7 @@ interface CrmRecord {
   source: string | null;
   created_at: string;
   updated_at: string;
+  campaign_ids: string[];
 }
 
 type SortField = "name" | "phone" | "state" | "last_contacted_at" | "total_calls" | "qualified";
@@ -47,6 +48,7 @@ export default function CRMPage() {
   const [search, setSearch] = useState("");
   const [qualFilter, setQualFilter] = useState<string>("all");
   const [stateFilter, setStateFilter] = useState<string>("all");
+  const [campaignFilter, setCampaignFilter] = useState<string>("all");
   const [selectedRecord, setSelectedRecord] = useState<CrmRecord | null>(null);
   const [sortField, setSortField] = useState<SortField>("last_contacted_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -82,7 +84,7 @@ export default function CRMPage() {
     enabled: isSuperAdmin,
   });
 
-  // Fetch campaigns for display
+  // Fetch campaigns for display and filter
   const { data: campaigns = [] } = useQuery({
     queryKey: ["campaigns-for-crm", activeOrgId],
     queryFn: async () => {
@@ -111,6 +113,16 @@ export default function CRMPage() {
     return Array.from(states).sort();
   }, [records]);
 
+  // Campaigns that actually appear in records (for filter dropdown)
+  const recordCampaignIds = useMemo(() => {
+    const ids = new Set<string>();
+    records.forEach((r) => {
+      if (r.campaign_ids?.length) r.campaign_ids.forEach((id) => ids.add(id));
+      else if (r.last_campaign_id) ids.add(r.last_campaign_id);
+    });
+    return Array.from(ids);
+  }, [records]);
+
   // Filter + sort
   const filtered = useMemo(() => {
     let result = records;
@@ -132,6 +144,13 @@ export default function CRMPage() {
     if (stateFilter !== "all") result = result.filter((r) => r.state === stateFilter);
     if (isSuperAdmin && orgFilter !== "all") result = result.filter((r) => r.org_id === orgFilter);
 
+    if (campaignFilter !== "all") {
+      result = result.filter((r) => {
+        if (r.campaign_ids?.length) return r.campaign_ids.includes(campaignFilter);
+        return r.last_campaign_id === campaignFilter;
+      });
+    }
+
     // Sort
     result = [...result].sort((a, b) => {
       let cmp = 0;
@@ -147,7 +166,26 @@ export default function CRMPage() {
     });
 
     return result;
-  }, [records, search, qualFilter, stateFilter, orgFilter, sortField, sortDir, isSuperAdmin]);
+  }, [records, search, qualFilter, stateFilter, orgFilter, campaignFilter, sortField, sortDir, isSuperAdmin]);
+
+  // Discover dynamic custom_fields keys from filtered records
+  const dynamicKeys = useMemo(() => {
+    const keyCounts: Record<string, number> = {};
+    filtered.forEach((r) => {
+      if (r.custom_fields && typeof r.custom_fields === "object") {
+        Object.keys(r.custom_fields).forEach((k) => {
+          if (r.custom_fields![k] != null) keyCounts[k] = (keyCounts[k] || 0) + 1;
+        });
+      }
+    });
+    // Only show keys that appear in at least 10% of filtered records or at least 2 records
+    const threshold = Math.max(2, Math.floor(filtered.length * 0.1));
+    return Object.entries(keyCounts)
+      .filter(([, count]) => count >= threshold || (filtered.length <= 10 && count >= 1))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5) // max 5 dynamic columns
+      .map(([key]) => key);
+  }, [filtered]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -155,17 +193,23 @@ export default function CRMPage() {
   };
 
   const exportCsv = () => {
-    const headers = ["Name", "Phone", "Email", "State", "Age", "Household Size", "Income", "Coverage", "Qualified", "Transferred", "Total Calls", "Last Contact", "Last Outcome"];
-    const rows = filtered.map((r) => [
-      r.name || "", r.phone, r.email || "", r.state || "", r.age || "",
-      r.household_size || "", r.income_est_annual || "", r.coverage_type || "",
-      r.qualified == null ? "" : r.qualified ? "Yes" : "No",
-      r.transferred ? "Yes" : "No",
-      r.total_calls,
-      r.last_contacted_at ? format(new Date(r.last_contacted_at), "yyyy-MM-dd") : "",
-      r.last_outcome || "",
-    ]);
-    const csv = [headers.join(","), ...rows.map((r) => r.map((v) => `"${v}"`).join(","))].join("\n");
+    const baseHeaders = ["Name", "Phone", "Email", "State", "Qualified", "Transferred", "Total Calls", "Last Contact", "Last Outcome", "Campaigns"];
+    const allHeaders = [...baseHeaders, ...dynamicKeys.map(formatFieldName)];
+    const rows = filtered.map((r) => {
+      const base = [
+        r.name || "", r.phone, r.email || "", r.state || "",
+        r.qualified == null ? "" : r.qualified ? "Yes" : "No",
+        r.transferred ? "Yes" : "No",
+        r.total_calls,
+        r.last_contacted_at ? format(new Date(r.last_contacted_at), "yyyy-MM-dd") : "",
+        r.last_outcome || "",
+        (r.campaign_ids?.length ? r.campaign_ids : r.last_campaign_id ? [r.last_campaign_id] : [])
+          .map((id) => campaignMap[id] || id).join("; "),
+      ];
+      const dynamic = dynamicKeys.map((k) => r.custom_fields?.[k] ?? "");
+      return [...base, ...dynamic];
+    });
+    const csv = [allHeaders.join(","), ...rows.map((r) => r.map((v) => `"${v}"`).join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -193,7 +237,7 @@ export default function CRMPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">CRM Records</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Centralized repository of all contacts gathered across campaigns and test runs
+            Centralized repository of all contacts gathered across campaigns
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={exportCsv} disabled={filtered.length === 0}>
@@ -213,6 +257,18 @@ export default function CRMPage() {
             className="pl-9"
           />
         </div>
+        <Select value={campaignFilter} onValueChange={setCampaignFilter}>
+          <SelectTrigger className="w-[200px]">
+            <Megaphone className="h-4 w-4 mr-2" />
+            <SelectValue placeholder="Campaign" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Campaigns</SelectItem>
+            {recordCampaignIds.map((id) => (
+              <SelectItem key={id} value={id}>{campaignMap[id] || id.slice(0, 8)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={qualFilter} onValueChange={setQualFilter}>
           <SelectTrigger className="w-[150px]">
             <SelectValue placeholder="Qualification" />
@@ -275,8 +331,13 @@ export default function CRMPage() {
                 <SortHeader field="qualified">Qualified</SortHeader>
                 <SortHeader field="last_contacted_at">Last Contact</SortHeader>
                 <SortHeader field="total_calls">Calls</SortHeader>
-                <TableHead>Campaign</TableHead>
+                <TableHead>Campaigns</TableHead>
                 <TableHead>Outcome</TableHead>
+                {dynamicKeys.map((k) => (
+                  <TableHead key={k} className="capitalize text-xs">
+                    {formatFieldName(k)}
+                  </TableHead>
+                ))}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -313,14 +374,19 @@ export default function CRMPage() {
                   <TableCell>
                     <Badge variant="outline">{r.total_calls}</Badge>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground max-w-[140px] truncate">
-                    {r.last_campaign_id ? (campaignMap[r.last_campaign_id] || "—") : "—"}
+                  <TableCell className="max-w-[180px]">
+                    <CampaignBadges record={r} campaignMap={campaignMap} />
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="capitalize text-xs">
                       {r.last_outcome || "—"}
                     </Badge>
                   </TableCell>
+                  {dynamicKeys.map((k) => (
+                    <TableCell key={k} className="text-sm text-muted-foreground truncate max-w-[120px]">
+                      {r.custom_fields?.[k] != null ? String(r.custom_fields[k]) : "—"}
+                    </TableCell>
+                  ))}
                 </TableRow>
               ))}
             </TableBody>
@@ -340,6 +406,25 @@ export default function CRMPage() {
   );
 }
 
+function CampaignBadges({ record, campaignMap }: { record: CrmRecord; campaignMap: Record<string, string> }) {
+  const ids = record.campaign_ids?.length ? record.campaign_ids : record.last_campaign_id ? [record.last_campaign_id] : [];
+  if (ids.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+  
+  return (
+    <div className="flex flex-wrap gap-1">
+      {ids.slice(0, 3).map((id) => (
+        <Badge key={id} variant="outline" className="text-xs truncate max-w-[100px]">
+          <Megaphone className="h-2.5 w-2.5 mr-1 shrink-0" />
+          {campaignMap[id] || id.slice(0, 6)}
+        </Badge>
+      ))}
+      {ids.length > 3 && (
+        <Badge variant="outline" className="text-xs">+{ids.length - 3}</Badge>
+      )}
+    </div>
+  );
+}
+
 function CrmDetailDialog({
   record,
   onClose,
@@ -353,21 +438,16 @@ function CrmDetailDialog({
   orgMap: Record<string, string>;
   isSuperAdmin: boolean;
 }) {
-  // Fetch call history for this phone
   const { data: callHistory = [] } = useQuery({
     queryKey: ["crm-call-history", record?.org_id, record?.phone],
     queryFn: async () => {
       if (!record) return [];
-      // We'll search calls by matching phone from contacts table or by org
       const { data } = await supabase
         .from("calls")
         .select("id, started_at, duration_seconds, outcome, campaign_id, transcript, extracted_data, recording_url")
         .eq("org_id", record.org_id)
         .order("started_at", { ascending: false })
         .limit(50);
-
-      // Filter to calls matching this phone (from contacts table or extracted_data)
-      // For now return all org calls - in practice you'd filter by contact_id or phone
       return data || [];
     },
     enabled: !!record,
@@ -375,21 +455,27 @@ function CrmDetailDialog({
 
   if (!record) return null;
 
-  const fields = [
+  const standardFields = [
     { label: "Phone", value: formatPhone(record.phone), icon: Phone },
     { label: "Email", value: record.email },
     { label: "State", value: record.state },
-    { label: "Age", value: record.age },
-    { label: "Household Size", value: record.household_size },
-    { label: "Est. Annual Income", value: record.income_est_annual },
-    { label: "Coverage Type", value: record.coverage_type },
     { label: "Consent Given", value: record.consent == null ? null : record.consent ? "Yes" : "No" },
     { label: "Transferred", value: record.transferred ? "Yes" : "No" },
   ];
 
+  // Legacy ACA fields - only show if they have data
+  const legacyFields = [
+    { label: "Age", value: record.age },
+    { label: "Household Size", value: record.household_size },
+    { label: "Est. Annual Income", value: record.income_est_annual },
+    { label: "Coverage Type", value: record.coverage_type },
+  ].filter((f) => f.value);
+
   const customEntries = record.custom_fields && typeof record.custom_fields === "object"
     ? Object.entries(record.custom_fields).filter(([, v]) => v != null)
     : [];
+
+  const campaignIds = record.campaign_ids?.length ? record.campaign_ids : record.last_campaign_id ? [record.last_campaign_id] : [];
 
   return (
     <Dialog open={!!record} onOpenChange={() => onClose()}>
@@ -419,11 +505,26 @@ function CrmDetailDialog({
               )}
             </div>
 
-            {/* Gathered Fields */}
+            {/* Campaign Tags */}
+            {campaignIds.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-2">Campaigns</h3>
+                <div className="flex flex-wrap gap-2">
+                  {campaignIds.map((id) => (
+                    <Badge key={id} variant="outline">
+                      <Megaphone className="h-3 w-3 mr-1" />
+                      {campaignMap[id] || id.slice(0, 8)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Standard Fields */}
             <div>
-              <h3 className="text-sm font-semibold text-foreground mb-3">Gathered Information</h3>
+              <h3 className="text-sm font-semibold text-foreground mb-3">Contact Information</h3>
               <div className="grid grid-cols-2 gap-3">
-                {fields.map(({ label, value }) => (
+                {standardFields.map(({ label, value }) => (
                   <div key={label} className="space-y-0.5">
                     <p className="text-xs text-muted-foreground">{label}</p>
                     <p className="text-sm font-medium">{value || "—"}</p>
@@ -432,14 +533,29 @@ function CrmDetailDialog({
               </div>
             </div>
 
-            {/* Custom Fields */}
+            {/* Legacy ACA fields (only if present) */}
+            {legacyFields.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-3">Standard Fields</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  {legacyFields.map(({ label, value }) => (
+                    <div key={label} className="space-y-0.5">
+                      <p className="text-xs text-muted-foreground">{label}</p>
+                      <p className="text-sm font-medium">{value || "—"}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Custom / Dynamic Fields */}
             {customEntries.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold text-foreground mb-3">Additional Fields</h3>
+                <h3 className="text-sm font-semibold text-foreground mb-3">Gathered Data</h3>
                 <div className="grid grid-cols-2 gap-3">
                   {customEntries.map(([key, val]) => (
                     <div key={key} className="space-y-0.5">
-                      <p className="text-xs text-muted-foreground capitalize">{key.replace(/_/g, " ")}</p>
+                      <p className="text-xs text-muted-foreground">{formatFieldName(key)}</p>
                       <p className="text-sm font-medium">{String(val)}</p>
                     </div>
                   ))}
@@ -491,4 +607,8 @@ function formatPhone(phone: string): string {
   if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
   return phone;
+}
+
+function formatFieldName(key: string): string {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
