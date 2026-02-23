@@ -1,67 +1,115 @@
 
 
-# Fix: Transfer Call Tool Not Being Synced to Retell LLM
+# CRM Records: Centralized Contact Repository
 
-## Problem
-The agent's `transfer_call` tool is only configured when the agent is **first created** (in `manage-retell-agent`). However, both `run-test-run` and `tick-campaign` patch the LLM's `general_prompt` and `begin_message` before each call -- but they never sync the `general_tools` array. This means if the LLM's tools were lost, overwritten, or never included the `transfer_call` tool, the agent has no mechanism to transfer calls even though:
-- `transfer_required = true` in the spec
-- `transfer_phone_number = +13054332275` is configured
-- The prompt text says "TRANSFER: If qualified... transfer to +13054332275"
+## Overview
+Create a new "CRM" section that aggregates all gathered information from calls into a unified, per-contact repository. Each record represents a unique person (identified by phone number) with their accumulated data from all interactions across campaigns and test runs.
 
-The prompt **tells** the agent to transfer, but the agent doesn't have the `transfer_call` **tool** available to actually do it.
+## What You Get
+- A new **CRM Records** page accessible from the sidebar under a new "CRM" section
+- Each record shows: name, phone, state, gathered fields (age, income, household size, coverage type, etc.), qualification status, consent, email if captured
+- Historical timeline per record: every call attempt, campaign, date, outcome, duration
+- Data is automatically populated from existing call records -- no manual entry needed
+- Multi-tenant isolation: each organization sees only their own records
+- Super admins can view all organizations' CRM data
 
-## Changes
+## Database Design
 
-### 1. `supabase/functions/tick-campaign/index.ts` -- Sync `general_tools` during LLM injection
-In the LLM patch section (around line 236), build the `general_tools` array from the spec and include it in the PATCH body:
+### New table: `crm_records`
 
-```typescript
-// Build general_tools from spec
-const generalTools: any[] = [
-  { type: "end_call", name: "end_call", description: "End the call when conversation is complete." }
-];
-if (spec.transfer_required && spec.transfer_phone_number) {
-  generalTools.push({
-    type: "transfer_call",
-    name: "transfer_to_agent",
-    description: "Transfer the call to a live agent when the lead is qualified and ready.",
-    number: spec.transfer_phone_number,
-  });
-}
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid (PK) | Auto-generated |
+| org_id | uuid (NOT NULL) | Organization isolation |
+| phone | text (NOT NULL) | Primary identifier, unique per org |
+| name | text | Best-known name from calls |
+| email | text | Captured email if any |
+| state | text | Geographic state |
+| zip_code | text | Zip if captured |
+| age | text | Age or age range |
+| household_size | text | Household size |
+| income_est_annual | text | Estimated income |
+| coverage_type | text | Coverage type |
+| consent | boolean | Whether consent was given |
+| qualified | boolean | Whether contact was qualified |
+| transferred | boolean | Whether transfer completed |
+| custom_fields | jsonb | Any additional extracted fields |
+| first_contacted_at | timestamptz | First call date |
+| last_contacted_at | timestamptz | Most recent call date |
+| total_calls | integer | Count of all call interactions |
+| last_campaign_id | uuid | Most recent campaign |
+| last_outcome | text | Most recent call outcome |
+| source | text | How the record was created (e.g., "call_webhook") |
+| created_at | timestamptz | Record creation |
+| updated_at | timestamptz | Last update |
 
-const llmPatchBody: any = { general_prompt: taskPrompt, general_tools: generalTools };
-if (resolvedOpening) {
-  llmPatchBody.begin_message = resolvedOpening;
-}
+**Unique constraint**: `(org_id, phone)` -- one record per phone per org.
+
+### RLS Policies
+- Org members can SELECT their own org's records
+- Admins can manage (ALL) their org's records
+- Super admins can SELECT all records across orgs
+
+## Backend Changes
+
+### Update `receive-retell-webhook` edge function
+After processing a call (both campaign and test lab flows), upsert a CRM record:
+1. Extract structured fields from `extracted_data` (name, state, age, income, etc.)
+2. Upsert into `crm_records` matching on `(org_id, phone)`
+3. Increment `total_calls`, update `last_contacted_at`, merge any new fields
+
+This ensures every completed call automatically feeds the CRM.
+
+## Frontend Changes
+
+### New page: `src/pages/CRMPage.tsx`
+- Table view with sortable columns: Name, Phone, State, Qualified, Last Contact, Total Calls, Last Campaign, Last Outcome
+- Search by name or phone
+- Filters: qualified/disqualified/all, state, campaign, date range
+- Click a row to expand a detail panel showing:
+  - All gathered fields
+  - Call history timeline (linked from `calls` table)
+  - Campaign associations
+- CSV export button
+- Super admin view: org name column + org filter dropdown
+
+### Sidebar update
+Add "CRM" item under the MONITOR section in `useSidebarConfig.ts`.
+
+### Route
+Add `/crm` route in `App.tsx` inside the protected layout.
+
+## Technical Details
+
+### Migration SQL
+- Create `crm_records` table with unique constraint on `(org_id, phone)`
+- Enable RLS with org-scoped policies
+- Add indexes on `org_id`, `phone`, `qualified`, `last_contacted_at`
+
+### Webhook upsert logic (in `receive-retell-webhook`)
+```
+-- Pseudocode for the upsert
+INSERT INTO crm_records (org_id, phone, name, state, ...)
+VALUES (metadata.org_id, phone, extracted.caller_name, ...)
+ON CONFLICT (org_id, phone) DO UPDATE SET
+  name = COALESCE(EXCLUDED.name, crm_records.name),
+  last_contacted_at = now(),
+  total_calls = crm_records.total_calls + 1,
+  last_outcome = EXCLUDED.last_outcome,
+  qualified = COALESCE(EXCLUDED.qualified, crm_records.qualified),
+  ...
 ```
 
-### 2. `supabase/functions/run-test-run/index.ts` -- Same fix for University tests
-Apply the identical `general_tools` sync in the LLM prompt injection section (around line 187), so University test calls also have the transfer tool available:
+### CRM page queries
+- Main list: `SELECT * FROM crm_records WHERE org_id = ? ORDER BY last_contacted_at DESC`
+- Call history for a record: `SELECT * FROM calls WHERE org_id = ? AND contact_id IN (...) OR retell_call_id IN (...) ORDER BY started_at DESC`
+- For super admin: remove org filter, join with `organizations` for org name
 
-```typescript
-const generalTools: any[] = [
-  { type: "end_call", name: "end_call", description: "End the call when conversation is complete." }
-];
-if (spec?.transfer_required && spec?.transfer_phone_number) {
-  generalTools.push({
-    type: "transfer_call",
-    name: "transfer_to_agent",
-    description: "Transfer the call to a live agent when the lead is qualified and ready.",
-    number: spec.transfer_phone_number,
-  });
-}
-
-// Include general_tools in the LLM PATCH
-body: JSON.stringify({ general_prompt: trimmedRetellPrompt, general_tools: generalTools })
-```
-
-### 3. Deploy both edge functions
-
-## Expected Outcome
-After this fix, every call (University test or campaign) will ensure the Retell LLM has:
-- The correct `general_prompt` (already working)
-- The correct `begin_message` (already working)
-- The correct `general_tools` including `transfer_call` when transfer is enabled
-
-The agent will then be able to actually execute the transfer to +13054332275 when a lead qualifies.
+## Implementation Order
+1. Database migration (create table + RLS + indexes)
+2. Update `receive-retell-webhook` to upsert CRM records
+3. Create `CRMPage.tsx` with table view and detail panel
+4. Add route and sidebar entry
+5. Deploy the updated edge function
+6. Backfill existing call data into CRM records (one-time script via edge function)
 
