@@ -205,6 +205,58 @@ serve(async (req) => {
       .single();
     if (callErr) console.error("Error upserting Retell call:", callErr);
 
+    // ===== FETCH REAL COST FROM RETELL & DEDUCT CREDITS =====
+    if (metadata.org_id && retellCallId) {
+      try {
+        const retellApiKey = Deno.env.get("RETELL_API_KEY");
+        if (retellApiKey) {
+          const costResp = await fetch(`https://api.retellai.com/v2/get-call/${retellCallId}`, {
+            headers: { "Authorization": `Bearer ${retellApiKey}` },
+          });
+          if (costResp.ok) {
+            const costData = await costResp.json();
+            const combinedCostCents = costData?.call_cost?.combined_cost;
+            if (combinedCostCents != null && combinedCostCents > 0) {
+              const costUsd = combinedCostCents / 100;
+              const durationMin = duration ? (duration / 60).toFixed(1) : "0";
+              const phoneLabel = metadata.phone || "unknown";
+
+              // Update call with real cost
+              await supabase.from("calls")
+                .update({ cost_estimate_usd: costUsd })
+                .eq("retell_call_id", retellCallId);
+
+              // Insert credit transaction
+              await supabase.from("credit_transactions").insert({
+                org_id: metadata.org_id,
+                amount: -costUsd,
+                type: "call_charge",
+                description: `Call to ${phoneLabel} (${durationMin} min) - $${costUsd.toFixed(2)}`,
+              });
+
+              // Decrement org balance
+              const { data: orgData } = await supabase
+                .from("organizations")
+                .select("credits_balance")
+                .eq("id", metadata.org_id)
+                .single();
+              if (orgData) {
+                await supabase.from("organizations")
+                  .update({ credits_balance: (orgData.credits_balance || 0) - costUsd })
+                  .eq("id", metadata.org_id);
+              }
+
+              console.log(`Cost tracked: $${costUsd.toFixed(2)} for call ${retellCallId}`);
+            }
+          } else {
+            console.error("Failed to fetch Retell call cost:", costResp.status);
+          }
+        }
+      } catch (costErr) {
+        console.error("Error fetching/saving call cost:", costErr);
+      }
+    }
+
     // Update contact status and increment attempts
     if (metadata.contact_id) {
       const { data: currentContact } = await supabase

@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, CreditCard, DollarSign, Plus, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import UsageSummary from "@/components/billing/UsageSummary";
 
 interface CreditTransaction {
   id: string;
@@ -163,6 +164,9 @@ export default function BillingPage() {
           </Button>
         </div>
       </div>
+
+      {/* Usage Summary */}
+      <UsageSummary />
 
       {/* Transaction History */}
       {transactions.length > 0 && (
