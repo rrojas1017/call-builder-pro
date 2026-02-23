@@ -150,7 +150,10 @@ function buildLlmBody(config: Record<string, any>): Record<string, unknown> {
       type: "transfer_call",
       name: "transfer_to_agent",
       description: "Transfer the call to a live agent when the lead is qualified and ready.",
-      number: config.transfer_phone_number,
+      transfer_destination: {
+        type: "phone_number",
+        number: config.transfer_phone_number,
+      },
     });
   }
 

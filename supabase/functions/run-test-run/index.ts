@@ -222,7 +222,10 @@ serve(async (req) => {
             type: "transfer_call",
             name: "transfer_to_agent",
             description: "Transfer the call to a live agent when the lead is qualified and ready.",
-            number: spec.transfer_phone_number,
+            transfer_destination: {
+              type: "phone_number",
+              number: spec.transfer_phone_number,
+            },
           });
         }
 
