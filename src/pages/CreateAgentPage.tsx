@@ -304,7 +304,7 @@ export default function CreateAgentPage() {
   const [file, setFile] = useState<File | null>(null);
   const [knowledgeUrl, setKnowledgeUrl] = useState("");
   const [knowledgeExtracted, setKnowledgeExtracted] = useState(false);
-  const [selectedVoice, setSelectedVoice] = useState("maya");
+  const [selectedVoice, setSelectedVoice] = useState("");
   const [customVoiceId, setCustomVoiceId] = useState("");
   const [saving, setSaving] = useState(false);
   const [transferEnabled, setTransferEnabled] = useState(false);
@@ -748,7 +748,7 @@ export default function CreateAgentPage() {
                 retellAgentId={retellAgentId}
                 onAgentIdChange={setRetellAgentId}
                 personaName={personaName}
-                voiceId={selectedVoice !== "maya" ? selectedVoice : undefined}
+                voiceId={selectedVoice || undefined}
                 language={agentLanguage}
               />
               {trustedNumbers.length === 0 && (
