@@ -23,9 +23,17 @@ serve(async (req) => {
     // Fetch ALL knowledge entries (no limit)
     const { data: entries, error } = await supabase
       .from("agent_knowledge")
-      .select("category, content")
+      .select("id, category, content")
       .eq("project_id", project_id)
       .order("created_at", { ascending: false });
+
+    // Increment usage_count for all entries being pulled into a prompt
+    if (entries && entries.length > 0) {
+      const entryIds = entries.map((e: any) => e.id);
+      await supabase.rpc("increment_knowledge_usage", { entry_ids: entryIds }).catch((err: any) => {
+        console.warn("Failed to increment usage_count:", err.message);
+      });
+    }
 
     if (error) throw error;
 
