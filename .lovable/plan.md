@@ -1,87 +1,90 @@
 
 
-# CRM: Multi-Campaign Type Organization
+# Campaign Management: Delete, Edit, and Reset
 
-## Problem
-The CRM currently has hardcoded ACA-specific fields (age, household_size, income, coverage_type) in both the table schema and UI. When campaigns span different verticals (ACA, Medicare, Loans, Credit Repair, Spanish-language campaigns, etc.), the fixed columns become irrelevant and the UI shows empty fields everywhere.
-
-## Solution: Campaign-Aware Dynamic CRM
-
-### 1. Add a Campaign Filter to the CRM Page
-- Add a campaign dropdown filter alongside the existing State and Qualification filters
-- When a campaign is selected, the table and detail panel dynamically show only the fields relevant to that campaign's records
-- "All Campaigns" shows the universal columns (name, phone, state, qualified, calls, outcome)
-
-### 2. Leverage `custom_fields` as the Primary Data Store
-The existing `custom_fields` JSONB column already captures ALL extracted data from calls. Instead of relying on the hardcoded ACA columns, the system will:
-- Continue storing common fields (name, phone, state, email, consent, qualified) in their dedicated columns
-- Store ALL vertical-specific fields in `custom_fields` (e.g., `{"medicare_id": "...", "part_preference": "A"}` or `{"credit_score": "720", "loan_amount": "25000"}`)
-- The detail panel already renders `custom_fields` dynamically -- this just needs better prominence
-
-### 3. Smart Column Display
-When filtering by a specific campaign, the table will:
-- Scan the `custom_fields` of the filtered records to discover which fields exist
-- Display those as additional columns in the table (up to a reasonable limit)
-- This means an ACA campaign view shows "Age, Income, Coverage Type" columns while a Loan campaign shows "Credit Score, Loan Amount" columns -- automatically
-
-### 4. Campaign Tags on Records
-- Store ALL campaign IDs that touched a record (not just the last one) in a new `campaign_ids` array column
-- Display campaign tags/badges on each record so you can see which campaigns have interacted with a contact
-- This enables filtering: "Show me everyone touched by my Spanish Medicare campaign"
+## Overview
+Add full campaign lifecycle management (edit, reset, delete) while preserving all historical data in the CRM and calls tables. Deleting a campaign removes the campaign configuration and its contacts, but CRM records and call history remain untouched as historical data.
 
 ## What Changes
 
-### Database
-- Add `campaign_ids uuid[]` column to `crm_records` to track all campaigns that touched the record (not just last)
-- Update the `upsert_crm_record` function to append campaign IDs to the array instead of overwriting
+### 1. Database: Set Foreign Keys to Allow Orphaned Historical Data
+Currently, `contacts.campaign_id` and `calls.campaign_id` reference the campaigns table. To allow campaign deletion while preserving call history:
+- Set `calls.campaign_id` to `SET NULL` on delete (calls remain as historical records with a null campaign reference)
+- Delete `contacts` when campaign is deleted (they are campaign-specific operational data, not historical)
+- Delete `campaign_lists` when campaign is deleted
 
-### Webhook (receive-retell-webhook)
-- Update the CRM upsert call to pass the campaign_id for array accumulation
-- No changes to how `extracted_data` feeds into `custom_fields` -- this already works
+The `crm_records` table stores `campaign_ids` as a UUID array with no FK -- already safe.
 
-### CRM Page UI
-- Add campaign filter dropdown (populated from campaigns table)
-- When a campaign is selected, dynamically extract unique keys from `custom_fields` of the filtered records and display them as extra table columns
-- Show campaign badges on each record row
-- In the detail panel, group "Gathered Information" by campaign context
-- Rename the hardcoded ACA section to "Standard Fields" and keep it as a fallback display
+### 2. Campaign Detail Page: Add Edit and Reset Actions
 
-### CSV Export
-- When filtered by campaign, include the dynamic `custom_fields` columns in the export
-- Column headers adapt based on the filtered dataset
+**Edit Campaign** (for draft/paused campaigns):
+- Inline-editable fields: name, max concurrent calls, max attempts, redial delay, retryable statuses, HIPAA toggle, test mode toggle, voicemail message
+- Save button to persist changes
+- Cannot change agent or lists after creation (would require re-importing contacts)
+
+**Reset Campaign** (for paused/completed campaigns):
+- Resets all contacts back to "queued" status with attempts = 0
+- Clears called_at, bland_call_id, retell_call_id, last_error
+- Sets campaign status back to "draft"
+- Does NOT touch calls table or CRM records (historical data preserved)
+- Requires confirmation dialog with clear warning
+
+**Delete Campaign** (any status except running):
+- Deletes contacts, campaign_lists, then the campaign itself
+- Calls are preserved (campaign_id set to null via cascade)
+- CRM records untouched (they store campaign_ids independently)
+- Requires confirmation dialog
+- Cannot delete while campaign is running (must pause first)
+
+### 3. Campaigns List Page: Add Delete Action
+- Add a trash icon button next to each campaign in the list view
+- Confirmation dialog before deletion
+- Disabled for running campaigns
 
 ## Technical Details
 
 ### Migration
 ```text
-ALTER TABLE crm_records ADD COLUMN campaign_ids uuid[] NOT NULL DEFAULT '{}';
--- Backfill from last_campaign_id
-UPDATE crm_records SET campaign_ids = ARRAY[last_campaign_id] WHERE last_campaign_id IS NOT NULL;
+-- Update FK on calls.campaign_id to SET NULL on delete
+ALTER TABLE calls DROP CONSTRAINT IF EXISTS calls_campaign_id_fkey;
+ALTER TABLE calls ADD CONSTRAINT calls_campaign_id_fkey 
+  FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL;
+
+-- Update FK on contacts.campaign_id to CASCADE delete
+ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_campaign_id_fkey;
+ALTER TABLE contacts ADD CONSTRAINT contacts_campaign_id_fkey 
+  FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE;
+
+-- Update FK on campaign_lists.campaign_id to CASCADE delete
+ALTER TABLE campaign_lists DROP CONSTRAINT IF EXISTS campaign_lists_campaign_id_fkey;
+ALTER TABLE campaign_lists ADD CONSTRAINT campaign_lists_campaign_id_fkey 
+  FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE;
 ```
 
-### Updated upsert function (pseudo)
+### Delete logic (frontend)
+Simply delete the campaign row -- cascades handle contacts and campaign_lists, calls get nullified.
+
+### Reset logic (frontend)
 ```text
--- In the ON CONFLICT DO UPDATE:
-campaign_ids = array(SELECT DISTINCT unnest(crm_records.campaign_ids || ARRAY[_campaign_id]))
+-- Reset all contacts for this campaign
+UPDATE contacts SET status = 'queued', attempts = 0, called_at = NULL, 
+  retell_call_id = NULL, bland_call_id = NULL, last_error = NULL
+WHERE campaign_id = ?;
+
+-- Reset campaign status
+UPDATE campaigns SET status = 'draft' WHERE id = ?;
 ```
 
-### Dynamic column discovery (frontend)
-```text
-// After filtering records by campaign:
-const dynamicKeys = new Set();
-filteredRecords.forEach(r => {
-  if (r.custom_fields) Object.keys(r.custom_fields).forEach(k => dynamicKeys.add(k));
-});
-// Render these as additional table columns
-```
+### Edit logic (frontend)
+Standard UPDATE on the campaigns table for editable fields.
 
 ### Files to modify
-- New migration for `campaign_ids` column + updated upsert function
-- `supabase/functions/receive-retell-webhook/index.ts` -- pass campaign_id for array accumulation
-- `src/pages/CRMPage.tsx` -- add campaign filter, dynamic columns, campaign badges
+- New migration for FK cascade rules
+- `src/pages/CampaignDetailPage.tsx` -- add edit form, reset button, improve delete handler
+- `src/pages/CampaignsPage.tsx` -- add delete button with confirmation to list view
 
 ## Implementation Order
-1. Database migration (add column, update function)
-2. Update webhook to accumulate campaign IDs
-3. Update CRM page with campaign filter and dynamic columns
-4. Deploy edge function
+1. Database migration (FK cascade rules)
+2. Update CampaignDetailPage with edit, reset, and improved delete
+3. Update CampaignsPage list with delete action
+
