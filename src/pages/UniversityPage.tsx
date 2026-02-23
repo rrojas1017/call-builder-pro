@@ -452,7 +452,7 @@ export default function UniversityPage() {
       )}
 
       {/* Humanness Trend Chart */}
-      {hasTrendData && (
+      {hasTrendData ? (
         <div className="surface-elevated rounded-xl p-6 space-y-3">
           <h2 className="text-lg font-semibold text-foreground">Agent Humanness Progress</h2>
           <p className="text-xs text-muted-foreground">Last 20 evaluated calls. Dashed line = auto-improvement threshold (80).</p>
@@ -478,7 +478,13 @@ export default function UniversityPage() {
             </ResponsiveContainer>
           </div>
         </div>
-      )}
+      ) : agentId && !trendLoading ? (
+        <div className="surface-elevated rounded-xl p-6 space-y-2 text-center">
+          <h2 className="text-lg font-semibold text-foreground">Agent Humanness Progress</h2>
+          <p className="text-sm text-muted-foreground">Evaluations pending — scores will appear here after calls are graded.</p>
+          <GraduationCap className="h-8 w-8 text-muted-foreground mx-auto mt-2" />
+        </div>
+      ) : null}
 
       {/* Results */}
       {contact && (

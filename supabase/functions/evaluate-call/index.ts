@@ -16,7 +16,7 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    // LOVABLE_API_KEY no longer needed for evaluation — using Claude via ai-client
+    // Using Lovable AI gateway (Gemini) for evaluation — no external API key needed
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data: call, error: callErr } = await supabase
@@ -170,7 +170,8 @@ VOICE TUNING RECOMMENDATIONS:
     const userPrompt = `AGENT SPECIFICATION:\n${JSON.stringify(spec, null, 2)}\n\nCALL TRANSCRIPT:\n${call.transcript}`;
 
     const aiResponse = await callAI({
-      provider: "claude",
+      provider: "gemini",
+      model: "google/gemini-2.5-flash",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -221,7 +222,7 @@ VOICE TUNING RECOMMENDATIONS:
 
     const toolResult = aiResponse.tool_calls[0]?.arguments;
     if (!toolResult) {
-      throw new Error("Claude did not return structured evaluation");
+      throw new Error("AI did not return structured evaluation");
     }
     let evaluation: any = toolResult;
 
