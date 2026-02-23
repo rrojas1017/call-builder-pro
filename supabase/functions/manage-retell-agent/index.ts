@@ -49,7 +49,7 @@ function isValidRetellVoiceId(id?: string): boolean {
 }
 
 function buildAgentBody(config: Record<string, any>, webhookUrl: string): Record<string, unknown> {
-  const voiceId = isValidRetellVoiceId(config.voice_id) ? config.voice_id : "11labs-Adrian";
+  const voiceId = config.voice_id || "11labs-Adrian";
   const body: Record<string, unknown> = {
     agent_name: config.agent_name || "Appendify Agent",
     voice_id: voiceId,
@@ -239,7 +239,7 @@ serve(async (req) => {
 
       const body: Record<string, unknown> = { webhook_url: webhookUrl };
       if (config?.agent_name) body.agent_name = config.agent_name;
-      if (config?.voice_id && isValidRetellVoiceId(config.voice_id)) {
+      if (config?.voice_id) {
         body.voice_id = config.voice_id;
       }
       if (config?.language) body.language = config.language;
