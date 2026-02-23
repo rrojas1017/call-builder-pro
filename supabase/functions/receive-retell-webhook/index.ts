@@ -17,8 +17,48 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Retell sends event type: "call_ended", "call_analyzed", etc.
+    // Retell sends event type: "call_ended", "call_analyzed", "call_started", etc.
     const event = body.event || "call_ended";
+
+    // Handle call_started for live monitoring
+    if (event === "call_started") {
+      const callData = body.call || body;
+      const metadata = callData.metadata || {};
+      const retellCallId = callData.call_id;
+      if (retellCallId && metadata.org_id && metadata.project_id) {
+        await supabase.from("calls").upsert({
+          org_id: metadata.org_id,
+          project_id: metadata.project_id,
+          campaign_id: metadata.campaign_id || null,
+          contact_id: metadata.contact_id || null,
+          direction: "outbound",
+          retell_call_id: retellCallId,
+          voice_provider: "retell",
+          started_at: new Date().toISOString(),
+          outcome: "in_progress",
+          version: metadata.version || 1,
+        }, { onConflict: "retell_call_id" });
+      }
+      return new Response(JSON.stringify({ success: true, event: "call_started" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Handle transfer events
+    if (event === "transfer_started" || event === "transfer_bridged" || event === "transfer_ended") {
+      const callData = body.call || body;
+      const retellCallId = callData.call_id;
+      if (retellCallId) {
+        const transferStatus = event === "transfer_ended" ? "transfer_completed" : "transfer_in_progress";
+        await supabase.from("calls")
+          .update({ outcome: transferStatus })
+          .eq("retell_call_id", retellCallId);
+      }
+      return new Response(JSON.stringify({ success: true, event }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (event !== "call_ended" && event !== "call_analyzed") {
       return new Response(JSON.stringify({ success: true, message: `Ignored event: ${event}` }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
