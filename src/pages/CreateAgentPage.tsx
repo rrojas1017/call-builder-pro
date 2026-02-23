@@ -309,6 +309,7 @@ export default function CreateAgentPage() {
   const [saving, setSaving] = useState(false);
   const [transferEnabled, setTransferEnabled] = useState(false);
   const [transferPhone, setTransferPhone] = useState("");
+  const [aiAssistLoading, setAiAssistLoading] = useState<number | null>(null);
   
   const [retellAgentId, setRetellAgentId] = useState("");
   const [agentMode, setAgentMode] = useState<"outbound" | "inbound" | "hybrid">("outbound");
@@ -370,7 +371,7 @@ export default function CreateAgentPage() {
       setQuestions((specResult.data.questions || []).map((q: any) => ({
         ...q,
         suggested_default: q.answer || "",
-        answer: "",
+        answer: q.answer || "",
       })));
       setSpec(specResult.data.spec);
       setStep(1);
@@ -479,6 +480,30 @@ export default function CreateAgentPage() {
 
   const updateAnswer = (idx: number, answer: string) => {
     setQuestions((prev) => prev.map((q, i) => (i === idx ? { ...q, answer } : q)));
+  };
+
+  const handleAiAssist = async (idx: number) => {
+    setAiAssistLoading(idx);
+    try {
+      const q = questions[idx];
+      const { data, error } = await supabase.functions.invoke("wizard-ai-assist", {
+        body: {
+          question: q.question,
+          current_answer: q.answer,
+          agent_description: sourceText || description,
+          agent_name: agentName,
+          language: agentLanguage,
+        },
+      });
+      if (error) throw error;
+      if (data?.suggested_answer) {
+        updateAnswer(idx, data.suggested_answer);
+      }
+    } catch (err: any) {
+      toast({ title: "AI Assist failed", description: err.message, variant: "destructive" });
+    } finally {
+      setAiAssistLoading(null);
+    }
   };
 
   return (
@@ -605,7 +630,23 @@ export default function CreateAgentPage() {
           )}
           {questions.map((q, i) => (
             <div key={i} className="space-y-3 p-4 rounded-lg bg-muted/30 border border-border">
-              <Label className="text-foreground font-medium">{q.question}</Label>
+              <div className="flex items-start justify-between gap-2">
+                <Label className="text-foreground font-medium">{q.question}</Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 text-xs gap-1"
+                  disabled={aiAssistLoading === i}
+                  onClick={() => handleAiAssist(i)}
+                >
+                  {aiAssistLoading === i ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3 w-3" />
+                  )}
+                  AI Assist
+                </Button>
+              </div>
               {q.rationale && (
                 <p className="text-xs text-muted-foreground italic flex items-start gap-1">
                   <Shield className="h-3 w-3 mt-0.5 shrink-0" />

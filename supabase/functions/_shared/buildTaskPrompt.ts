@@ -248,6 +248,30 @@ RULES:
   return prompt;
 }
 
+/**
+ * Build a clean begin_message for Retell's static LLM field.
+ * Strips {{first_name}} (since it varies per contact and can't be resolved statically),
+ * resolves {{agent_name}}, and cleans up punctuation artifacts.
+ */
+export function resolveBeginMessage(openingLine: string, personaName?: string | null): string {
+  let msg = openingLine;
+  // Resolve agent name
+  msg = msg.replace(/\{\{agent_name\}\}/gi, personaName || "");
+  msg = msg.replace(/\[Agent Name\]/gi, personaName || "");
+  // Strip {{first_name}} and nearby artifacts (e.g. "Hey {{first_name}}, " → "Hey, ")
+  msg = msg.replace(/\{\{first_name\}\}\s*,?\s*/gi, "");
+  msg = msg.replace(/\{\{last_name\}\}\s*,?\s*/gi, "");
+  msg = msg.replace(/\{\{name\}\}\s*,?\s*/gi, "");
+  // Clean up double spaces and leading/trailing commas
+  msg = msg.replace(/\s{2,}/g, " ").trim();
+  msg = msg.replace(/^,\s*/, "").replace(/\s*,$/, "");
+  // Runtime guard: fix hardcoded name mismatches
+  if (personaName) {
+    msg = runtimeGuardResolvedLine(msg, personaName);
+  }
+  return msg;
+}
+
 export function replaceTemplateVars(text: string, contact: { name: string; phone: string }, personaName?: string | null): string {
   const parts = (contact.name || "").trim().split(/\s+/);
   const firstName = parts[0] || "";

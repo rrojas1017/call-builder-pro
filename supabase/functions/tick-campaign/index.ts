@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { buildTaskPrompt, replaceTemplateVars } from "../_shared/buildTaskPrompt.ts";
+import { buildTaskPrompt, replaceTemplateVars, resolveBeginMessage } from "../_shared/buildTaskPrompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -230,12 +230,10 @@ serve(async (req) => {
     if (agentLlmId) {
       let taskPrompt = buildTaskPrompt(spec, [], knowledgeBriefing, "") + hipaaAppendix;
       if (taskPrompt.length > 28000) taskPrompt = taskPrompt.substring(0, 28000) + "\n\n[Trimmed for length]";
-      // Resolve opening line for begin_message
+      // Resolve begin_message: strip {{first_name}} since it's a static LLM field
       const agentName = spec.persona_name || campaign.agent_projects?.name || "Agent";
       const resolvedOpening = spec.opening_line
-        ? spec.opening_line
-            .replace(/\{\{agent_name\}\}/gi, agentName)
-            .replace(/\[Agent Name\]/gi, agentName)
+        ? resolveBeginMessage(spec.opening_line, agentName)
         : null;
 
       // Build general_tools from spec

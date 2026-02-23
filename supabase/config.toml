@@ -104,3 +104,6 @@ verify_jwt = false
 
 [functions.bulk-sync-voices]
 verify_jwt = false
+
+[functions.wizard-ai-assist]
+verify_jwt = false
