@@ -254,7 +254,7 @@ serve(async (req) => {
         to_number: contact.phone,
         retell_llm_dynamic_variables: {
           first_name: firstName,
-          agent_name: spec.persona_name || "",
+          agent_name: spec.persona_name || campaign.agent_projects?.name || "Agent",
           contact_name: contact.name || "",
           ...(contact.extra_data && typeof contact.extra_data === "object" ? contact.extra_data : {}),
         },

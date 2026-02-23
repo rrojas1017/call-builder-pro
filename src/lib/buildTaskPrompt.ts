@@ -77,9 +77,11 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[] = [
   const humanNotes = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
   const styleGuide = buildCompactStyle(humanNotes);
 
-  // Substitute {{agent_name}} in opening_line
+  // Substitute {{agent_name}} and [Agent Name] in opening_line
   const resolvedOpeningLine = spec.opening_line
-    ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, personaName || "")
+    ? spec.opening_line
+        .replace(/\{\{agent_name\}\}/gi, personaName || "")
+        .replace(/\[Agent Name\]/gi, personaName || "")
     : null;
 
   // Parse fields
