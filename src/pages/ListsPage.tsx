@@ -8,11 +8,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload, FileSpreadsheet, Check, X, ChevronDown, ChevronRight, Sparkles, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import ListDetailDialog from "@/components/ListDetailDialog";
 
 interface DialList {
   id: string;
@@ -72,7 +74,8 @@ export default function ListsPage() {
   const [allRows, setAllRows] = useState<Record<string, string>[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [deletingListId, setDeletingListId] = useState<string | null>(null);
-
+  const [selectedList, setSelectedList] = useState<DialList | null>(null);
+  const [listContactCounts, setListContactCounts] = useState<Record<string, { contacted: number; total: number }>>({});
   const handleDelete = async () => {
     if (!deletingListId) return;
     try {
@@ -92,8 +95,27 @@ export default function ListsPage() {
       .from("dial_lists")
       .select("*")
       .order("created_at", { ascending: false });
-    setLists((data as any[]) || []);
+    const fetchedLists = (data as any[]) || [];
+    setLists(fetchedLists);
     setLoading(false);
+
+    // Fetch contact counts per list for progress bars
+    if (fetchedLists.length > 0) {
+      const listIds = fetchedLists.map((l) => l.id);
+      const { data: contacts } = await supabase
+        .from("contacts")
+        .select("list_id, status")
+        .in("list_id", listIds);
+
+      const counts: Record<string, { contacted: number; total: number }> = {};
+      (contacts || []).forEach((c: any) => {
+        if (!c.list_id) return;
+        if (!counts[c.list_id]) counts[c.list_id] = { contacted: 0, total: 0 };
+        counts[c.list_id].total++;
+        if (c.status !== "queued") counts[c.list_id].contacted++;
+      });
+      setListContactCounts(counts);
+    }
   };
 
   useEffect(() => {
@@ -383,35 +405,73 @@ export default function ListsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {lists.map((l) => (
-            <Card key={l.id}>
-              <CardContent className="flex items-center justify-between p-5">
-                <div className="space-y-1">
-                  <h3 className="font-semibold text-foreground">{l.name}</h3>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{l.file_name}</span>
-                    <span>•</span>
-                    <span>{l.row_count} contacts</span>
-                    <span>•</span>
-                    <span>{new Date(l.created_at).toLocaleDateString()}</span>
+          {lists.map((l) => {
+            const counts = listContactCounts[l.id];
+            const penetration = counts && counts.total > 0
+              ? (counts.contacted / counts.total) * 100
+              : 0;
+
+            return (
+              <Card
+                key={l.id}
+                className="cursor-pointer hover-lift rounded-xl transition-all"
+                onClick={() => setSelectedList(l)}
+              >
+                <CardContent className="p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1 flex-1 min-w-0">
+                      <h3 className="font-semibold text-foreground">{l.name}</h3>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span>{l.file_name}</span>
+                        <span>•</span>
+                        <span>{l.row_count} contacts</span>
+                        <span>•</span>
+                        <span>{new Date(l.created_at).toLocaleDateString()}</span>
+                      </div>
+                      {l.detected_fields && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(Array.isArray(l.detected_fields) ? l.detected_fields : Object.entries(l.detected_fields as Record<string, string>)).map((f, i) => (
+                            <Badge key={i} variant="outline" className="text-[10px]">
+                              {Array.isArray(l.detected_fields) ? f : `${(f as [string, string])[1]}: ${(f as [string, string])[0]}`}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={l.status === "ready" ? "default" : "secondary"}>{l.status}</Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingListId(l.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  {l.detected_fields && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {(Array.isArray(l.detected_fields) ? l.detected_fields : Object.entries(l.detected_fields as Record<string, string>)).map((f, i) => (
-                        <Badge key={i} variant="outline" className="text-[10px]">
-                          {Array.isArray(l.detected_fields) ? f : `${(f as [string, string])[1]}: ${(f as [string, string])[0]}`}
-                        </Badge>
-                      ))}
+
+                  {/* Progress bar */}
+                  {counts && counts.total > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">
+                          {counts.contacted}/{counts.total} contacted
+                        </span>
+                        <span className="font-medium text-primary">
+                          {penetration.toFixed(0)}% penetration
+                        </span>
+                      </div>
+                      <Progress value={penetration} className="h-1.5" />
                     </div>
                   )}
-                </div>
-                <Badge variant={l.status === "ready" ? "default" : "secondary"}>{l.status}</Badge>
-                <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeletingListId(l.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -431,6 +491,12 @@ export default function ListsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ListDetailDialog
+        list={selectedList}
+        open={!!selectedList}
+        onOpenChange={(open) => !open && setSelectedList(null)}
+      />
     </div>
   );
 }
