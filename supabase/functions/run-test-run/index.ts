@@ -197,10 +197,24 @@ serve(async (req) => {
           });
         }
 
+        // Resolve begin_message from opening_line
+        const agentName = spec?.persona_name || "Agent";
+        const resolvedOpening = spec?.opening_line
+          ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, agentName)
+          : null;
+
+        const llmPatchBody: Record<string, unknown> = {
+          general_prompt: trimmedRetellPrompt,
+          general_tools: generalTools,
+        };
+        if (resolvedOpening) {
+          llmPatchBody.begin_message = resolvedOpening;
+        }
+
         const llmPromptRes = await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
-          body: JSON.stringify({ general_prompt: trimmedRetellPrompt, general_tools: generalTools }),
+          body: JSON.stringify(llmPatchBody),
         });
         if (llmPromptRes.ok) {
           console.log(`Injected task prompt into LLM ${agentLlmId} (${trimmedRetellPrompt.length} chars)`);
