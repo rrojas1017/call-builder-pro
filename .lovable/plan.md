@@ -1,119 +1,51 @@
 
+# Fix: "0 settings updated" when applying optimizations
 
-# Retell Integration Optimization with Gemini 3 Pro
+## Problem
+The "Apply All Auto-Applicable Optimizations" button reports "0 settings updated" because this agent has no Retell Agent provisioned yet (`retell_agent_id` is null). The backend skips all patches when there's no agent to patch.
 
-## Overview
+Additionally, there are two secondary issues:
+- The toast only counts `applied_agent_patches`, ignoring `applied_llm_patches`
+- No feedback is given to the user explaining WHY nothing was applied
 
-Use `google/gemini-3-pro-preview` (the closest available model to what you're asking for) to analyze Retell's API documentation and generate optimized agent configurations. This will create a new "Retell Optimization" edge function that acts as an AI-powered integration advisor, plus apply concrete improvements across existing functions.
+## Solution
 
-## What We'll Build
+### 1. Edge Function: Apply optimizations to the local spec when no Retell agent exists
+When `retell_agent_id` is null, instead of silently skipping, update the `agent_specs` table with the recommended values (e.g., set `interruption_threshold` to the recommended value, enable voicemail detection, etc.). This way optimizations are saved locally and will be applied when the Retell agent is eventually provisioned.
 
-### 1. New Edge Function: `optimize-retell-agent`
+**File:** `supabase/functions/optimize-retell-agent/index.ts`
+- After the existing Retell API patch block, add a fallback that writes applicable recommendations to `agent_specs` via Supabase update
+- Map `retell_param` names back to spec column names (e.g., `interruption_sensitivity` -> `interruption_threshold`, `enable_backchannel` -> stored in spec metadata)
+- Return `applied_spec_patches` in the response so the UI knows what happened
 
-An AI-powered function that uses Gemini 3 Pro to:
-- Accept an agent's current spec and Retell config
-- Analyze it against Retell best practices (from the docs we just reviewed)
-- Return optimized configuration recommendations
-- Auto-apply approved optimizations
+### 2. UI: Better feedback and count logic
+**File:** `src/pages/EditAgentPage.tsx`
+- Fix the toast to count all applied patches: agent patches + LLM patches + spec patches
+- Show a warning when no Retell agent exists explaining that optimizations were saved to the spec and will take effect when the agent is provisioned
+- Disable the "Apply" button if there are no `auto_apply: true` recommendations
 
-### 2. Improvements Based on Retell API Docs Analysis
+### 3. Specific changes
 
-After reviewing the Retell docs thoroughly, here are the concrete integration gaps to fix:
+**`optimize-retell-agent/index.ts`:**
+- Add a new block after the Retell API apply section:
+  - If no `retell_agent_id`, map recommendations to spec columns and update `agent_specs`
+  - Mapping: `interruption_sensitivity` -> `interruption_threshold` (multiply by 100), `voice_speed` -> `speaking_speed`, `enable_backchannel`/`ambient_sound` -> store in a new JSONB `retell_overrides` column or update existing fields
+  - Return `{ applied_spec_patches: {...} }` in response
 
-**A. Agent Creation (`manage-retell-agent`) -- Missing features:**
-- `enable_voicemail_detection: true` (currently not set)
-- `voicemail_message` from spec (currently not passed)
-- `enable_backchannel: true` for natural conversations
-- `backchannel_words` for human-like engagement
-- `responsiveness` mapped from spec settings
-- `interruption_sensitivity` mapped from spec's `interruption_threshold`
-- `ambient_sound` option (e.g., "call-center" for realism)
-- `boosted_keywords` from agent knowledge (names, brands, key terms)
-- `normalize_for_speech: true` for consistent number/date reading
-- `enable_dynamic_voice_speed: true` for natural pacing
-- `pronunciation_dictionary` from spec's `pronunciation_guide`
-- `end_call_after_silence_ms` configurable
-- `max_call_duration_ms` configurable
-- `post_call_analysis_model` upgrade option
-- `analysis_summary_prompt` and `analysis_successful_prompt` custom prompts
+**`EditAgentPage.tsx`:**
+- Update toast description to combine all patch counts
+- Show contextual message: "No Retell agent provisioned. Optimizations saved to your agent spec and will apply when you create the agent." when `applied_spec_patches` is returned instead of `applied_agent_patches`
+- Add the total count from all patch sources
 
-**B. LLM Configuration -- Missing features:**
-- `model` selection (currently defaults to gpt-4.1, could use `gemini-3.0-flash` or `gpt-5`)
-- `model_temperature` from spec's `temperature` field
-- `model_high_priority` option for important campaigns
-- `begin_message` from spec's `opening_line`
-- `start_speaker: "agent"` for outbound calls
-- `general_tools` with `end_call` and `transfer_call` tools built-in
-- `states` for multi-step conversation flows (qualification -> transfer)
+## Technical Details
 
-**C. Webhook (`receive-retell-webhook`) -- Missing events:**
-- `call_started` event handling for real-time monitoring
-- `transfer_started`, `transfer_bridged`, `transfer_ended` events
-- `transcript_updated` for live call monitoring
+The key mapping from Retell params back to spec columns:
+| Retell Param | Spec Column |
+|---|---|
+| `interruption_sensitivity` | `interruption_threshold` (value * 100) |
+| `voice_speed` | `speaking_speed` |
+| `enable_voicemail_detection` | derived from `voicemail_message` |
+| `begin_message` | `opening_line` |
+| `model_temperature` | `temperature` |
 
-### 3. Update the Shared AI Client
-
-Add `google/gemini-3-pro-preview` as an available model option and update the default for high-reasoning tasks.
-
-## Technical Plan
-
-### Step 1: Create `optimize-retell-agent` Edge Function
-
-This function will:
-1. Accept a `project_id`
-2. Load the agent spec, current Retell config, and knowledge base
-3. Send everything to Gemini 3 Pro with Retell API documentation context
-4. Return structured optimization recommendations using tool calling
-5. Optionally auto-apply the recommendations via Retell API
-
-### Step 2: Enhance `manage-retell-agent`
-
-Update the `create` and `update` actions to pass all the missing Retell parameters from the agent spec:
-
-- Map `spec.voicemail_message` to agent's `voicemail_message` + enable detection
-- Map `spec.interruption_threshold` (0-100 scale) to Retell's `interruption_sensitivity` (0-1 scale)
-- Map `spec.speaking_speed` to `voice_speed`
-- Map `spec.temperature` to LLM's `model_temperature`
-- Map `spec.opening_line` to LLM's `begin_message`
-- Map `spec.pronunciation_guide` to agent's `pronunciation_dictionary`
-- Add `general_tools` with `end_call` and conditional `transfer_call`
-- Add `states` for structured conversation flow (opening -> qualification -> transfer/close)
-- Set `normalize_for_speech: true`
-- Set `enable_backchannel: true`
-- Set `enable_dynamic_voice_speed: true`
-- Set `start_speaker: "agent"` for outbound
-
-### Step 3: Enhance `receive-retell-webhook`
-
-- Handle `call_started` event (update call status to "in_progress" for live monitoring)
-- Handle `transfer_started`/`transfer_ended` events (track transfer success rate)
-
-### Step 4: Update Default AI Models
-
-- Update `_shared/ai-client.ts` default Gemini model to `google/gemini-3-pro-preview`
-- Use Gemini 3 Pro for the optimization function
-- Keep Claude Sonnet 4 for call evaluation (per existing architecture strategy)
-
-### Step 5: Add UI for Optimization
-
-- Add an "Optimize with AI" button on the Edit Agent page
-- Show recommendations in a modal with approve/reject per item
-- Display which Retell features are currently enabled vs. available
-
-## Files to Create/Modify
-
-| File | Action |
-|------|--------|
-| `supabase/functions/optimize-retell-agent/index.ts` | Create new |
-| `supabase/functions/manage-retell-agent/index.ts` | Enhance with all missing Retell params |
-| `supabase/functions/receive-retell-webhook/index.ts` | Add new event handlers |
-| `supabase/functions/_shared/ai-client.ts` | Update default model |
-| `src/pages/EditAgentPage.tsx` | Add optimization button + modal |
-| `src/hooks/useRetellAgent.ts` | Add optimize action |
-
-## Key Model Clarification
-
-- **"Gemini 3.1 Pro" does not exist.** The closest options are:
-  - `google/gemini-3-pro-preview` -- Available via Lovable AI for your backend processing
-  - `gemini-3.0-flash` -- Available directly within Retell's LLM engine for the agent's real-time conversation model
-
+For params that don't have a direct spec column (like `enable_backchannel`, `ambient_sound`, `boosted_keywords`), we'll store them in the existing spec's metadata or add a `retell_overrides` JSONB column to `agent_specs` so they're preserved and applied during agent creation.
