@@ -25,6 +25,34 @@ export interface KnowledgeEntry {
 
 const HEALTH_KEYWORDS = ['aca', 'health', 'insurance', 'medicaid', 'medicare', 'wellness', 'telehealth', 'benefits_enrollment'];
 
+const INTRO_PATTERNS = [
+  /\bthis is (\w+)/i,
+  /\bmy name is (\w+)/i,
+  /\bI'm (\w+)/i,
+  /\bI am (\w+)/i,
+  /\bsoy (\w+)/i,
+  /\bme llamo (\w+)/i,
+  /\bmi nombre es (\w+)/i,
+  /\bje suis (\w+)/i,
+  /\bmeu nome .+ (\w+)/i,
+  /\bich bin (\w+)/i,
+  /\bmi chiamo (\w+)/i,
+];
+
+/** Runtime safety net: replace hardcoded names that don't match persona */
+function runtimeGuardResolvedLine(resolvedLine: string, personaName: string): string {
+  if (!resolvedLine || !personaName) return resolvedLine;
+  const trimmed = personaName.trim();
+  if (!trimmed) return resolvedLine;
+  for (const pattern of INTRO_PATTERNS) {
+    const match = resolvedLine.match(pattern);
+    if (match && match[1] && match[1].toLowerCase() !== trimmed.toLowerCase()) {
+      return resolvedLine.replace(match[1], trimmed);
+    }
+  }
+  return resolvedLine;
+}
+
 export function isHealthAgent(spec: AgentSpec): boolean {
   const uc = (spec.use_case || spec.mode || "").toLowerCase();
   return HEALTH_KEYWORDS.some(kw => uc.includes(kw));
@@ -104,11 +132,16 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
   const personaName = spec.persona_name?.trim() || null;
 
   // Substitute {{agent_name}} and [Agent Name] in opening_line before building the prompt
-  const resolvedOpeningLine = spec.opening_line
+  let resolvedOpeningLine = spec.opening_line
     ? spec.opening_line
         .replace(/\{\{agent_name\}\}/gi, personaName || "")
         .replace(/\[Agent Name\]/gi, personaName || "")
     : null;
+
+  // Runtime safety net: catch hardcoded name mismatches
+  if (resolvedOpeningLine && personaName) {
+    resolvedOpeningLine = runtimeGuardResolvedLine(resolvedOpeningLine, personaName);
+  }
 
   // If opening_line already addresses the caller by name or asks for it, do NOT re-inject a name question.
   const openingAsksForName = resolvedOpeningLine

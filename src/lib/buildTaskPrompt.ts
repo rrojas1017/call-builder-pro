@@ -1,4 +1,5 @@
 import { shouldIncludeFplTable } from "./fplThresholds";
+import { runtimeGuardOpeningLine } from "./openingLineGuard";
 
 interface AgentSpec {
   disclosure_text?: string | null;
@@ -78,11 +79,16 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[] = [
   const styleGuide = buildCompactStyle(humanNotes);
 
   // Substitute {{agent_name}} and [Agent Name] in opening_line
-  const resolvedOpeningLine = spec.opening_line
+  let resolvedOpeningLine = spec.opening_line
     ? spec.opening_line
         .replace(/\{\{agent_name\}\}/gi, personaName || "")
         .replace(/\[Agent Name\]/gi, personaName || "")
     : null;
+
+  // Runtime safety net: catch any remaining hardcoded name mismatch
+  if (resolvedOpeningLine && personaName) {
+    resolvedOpeningLine = runtimeGuardOpeningLine(resolvedOpeningLine, personaName);
+  }
 
   // Parse fields
   const rawFields = spec.must_collect_fields;
