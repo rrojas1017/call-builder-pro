@@ -1453,6 +1453,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_knowledge_usage: {
+        Args: { entry_ids: string[] }
+        Returns: undefined
+      }
       log_audit_event: {
         Args: {
           _action?: string
