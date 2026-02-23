@@ -203,6 +203,20 @@ serve(async (req) => {
           console.error("Failed to set ambient_sound:", await ambientRes.text());
         }
       }
+
+      // Sync voice_id from spec
+      if (spec.voice_id) {
+        const voiceRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
+          body: JSON.stringify({ voice_id: spec.voice_id }),
+        });
+        if (voiceRes.ok) {
+          console.log(`Synced voice_id to "${spec.voice_id}" on agent ${retellAgentId}`);
+        } else {
+          console.error("Failed to sync voice_id:", await voiceRes.text());
+        }
+      }
     } catch (preflight: any) {
       console.error("Transfer agent pre-flight check failed:", preflight.message);
     }
@@ -211,14 +225,27 @@ serve(async (req) => {
     if (agentLlmId) {
       let taskPrompt = buildTaskPrompt(spec, [], knowledgeBriefing, "") + hipaaAppendix;
       if (taskPrompt.length > 28000) taskPrompt = taskPrompt.substring(0, 28000) + "\n\n[Trimmed for length]";
+      // Resolve opening line for begin_message
+      const agentName = spec.persona_name || campaign.agent_projects?.name || "Agent";
+      const resolvedOpening = spec.opening_line
+        ? spec.opening_line
+            .replace(/\{\{agent_name\}\}/gi, agentName)
+            .replace(/\[Agent Name\]/gi, agentName)
+        : null;
+
+      const llmPatchBody: any = { general_prompt: taskPrompt };
+      if (resolvedOpening) {
+        llmPatchBody.begin_message = resolvedOpening;
+      }
+
       try {
         const llmPromptRes = await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
-          body: JSON.stringify({ general_prompt: taskPrompt }),
+          body: JSON.stringify(llmPatchBody),
         });
         if (llmPromptRes.ok) {
-          console.log(`Injected campaign prompt into LLM ${agentLlmId} (${taskPrompt.length} chars)`);
+          console.log(`Injected campaign prompt into LLM ${agentLlmId} (${taskPrompt.length} chars, begin_message=${resolvedOpening ? 'set' : 'unchanged'})`);
         } else {
           console.error("Failed to update LLM prompt:", await llmPromptRes.text());
         }
