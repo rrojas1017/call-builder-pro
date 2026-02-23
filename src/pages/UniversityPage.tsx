@@ -470,6 +470,7 @@ export default function UniversityPage() {
         <LiveCallMonitor
           retellCallId={contact.retell_call_id}
           contactId={contact.id}
+          contactStatus={contact.status}
           isActive={running}
         />
       )}
