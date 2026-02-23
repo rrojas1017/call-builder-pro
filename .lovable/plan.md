@@ -1,38 +1,54 @@
 
 
-# Add Missing Inbound Number and Re-process Call
+# Redesign Inbound Numbers Page
 
-## What Happened
-The phone number `+19482650259` was provisioned in Retell but never registered in the `inbound_numbers` table, so when the webhook received the call it couldn't resolve the org/project and dropped it.
+## Overview
+Revamp the `/inbound` page to match the style of other sections (Calls, Campaigns) with stats cards at the top, a cleaner title ("Phone Numbers" instead of "Inbound Numbers" inside the page), and clickable number rows that open a detail panel/dialog.
 
-## Steps
+## Changes
 
-### 1. Insert the missing number into `inbound_numbers`
-Add `+19482650259` linked to:
-- **org_id**: `3b652df6-a5a3-4bf1-b2de-e66c12a63974`
-- **project_id**: `5d72204a-caa3-4a41-a980-bfb6d413060b` (ACA Inbound Qualifier)
-- **area_code**: `948`
-- **label**: `ACA Inbound`
-- **monthly_cost_usd**: `2`
-- **status**: `active`
+### 1. Stats Cards at the Top
+Add a row of 4 stat cards (same `StatCard` pattern used on the Calls page):
+- **Total Numbers** -- count of active numbers
+- **Assigned** -- how many have a project_id linked
+- **Unassigned** -- numbers without an agent
+- **Total Inbound Calls** -- sum of call counts across all numbers
 
-### 2. Re-process the missed call
-Fetch the call details from the Retell API using call ID `call_eba6b5ce9aa207dce8a3be4912a`, then manually create the call record in the `calls` table with:
-- `direction: "inbound"`
-- `inbound_number_id` set to the newly inserted number
-- Transcript, recording, duration, and cost from Retell
-- Trigger evaluation if transcript is available
+### 2. Rename Section Title
+- Page heading stays "Inbound Numbers" (matches sidebar nav)
+- Subtitle changes to: "Purchase and manage your phone numbers"
+- The empty state and internal references say "phone numbers" instead of "inbound numbers"
 
-This will be done by invoking the `receive-retell-webhook` edge function with a simulated `call_analyzed` event containing the Retell call data, or by directly inserting the call record and invoking `evaluate-call`.
+### 3. Clickable Number Rows with Detail Dialog
+When a user clicks on a number row, a dialog opens showing:
+- Phone number and label (editable)
+- Assigned agent name (with link to agent page)
+- Status and area code
+- Monthly cost
+- Purchase date
+- Total inbound calls for that number
+- Recent calls list (last 5 calls to that number from the `calls` table filtered by `inbound_number_id`)
 
-### 3. Update Retell phone number metadata
-Ensure the number has the correct `nickname` (`org_id::project_id`) set on the Retell side so future inbound calls are automatically detected.
+### 4. Assignment Visibility
+Each number row already shows the agent dropdown. The detail dialog will make the assignment more prominent, showing the agent name with a badge for assigned/unassigned status.
 
-## Files Changed
+## Technical Details
 
-| File | Change |
-|------|--------|
-| Database | INSERT into `inbound_numbers` for +19482650259 |
-| `manage-inbound-numbers` | Invoke "assign" action to set metadata on Retell side |
-| Edge function call | Fetch call from Retell API and create call record + evaluation |
+### File Modified: `src/pages/InboundNumbersPage.tsx`
 
+**Stats section** (new, inserted before the numbers list):
+- Compute stats from the existing `numbers` and `callCounts` state
+- Render 4 `StatCard`-style divs matching the Calls page pattern
+
+**Detail dialog** (new):
+- New state: `selectedNumber` for the currently clicked number
+- On click, open a `Dialog` showing number details
+- Fetch recent calls: query `calls` table where `inbound_number_id = selectedNumber.id`, limit 5, ordered by `created_at desc`
+- Show each recent call with outcome badge, duration, and timestamp
+- Allow inline label editing via the existing `update_label` action on `manage-inbound-numbers`
+
+**Row click handler**:
+- Make the number row clickable (add `cursor-pointer` and `onClick`)
+- Keep the assign dropdown and delete button functional without triggering the detail dialog (stop propagation)
+
+No database changes or new edge functions needed -- all data is already available.
