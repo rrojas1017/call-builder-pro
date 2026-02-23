@@ -41,13 +41,6 @@ function buildPostCallAnalysisFields(mustCollectFields?: unknown): Array<{ name:
   return fields;
 }
 
-/** Check if a voice_id looks like a valid Retell voice */
-function isValidRetellVoiceId(id?: string): boolean {
-  if (!id) return false;
-  const validPrefixes = ["11labs-", "cartesia-", "openai-", "minimax-", "eleven_", "deepgram-", "playht-"];
-  return validPrefixes.some(prefix => id.startsWith(prefix));
-}
-
 function buildAgentBody(config: Record<string, any>, webhookUrl: string): Record<string, unknown> {
   const voiceId = config.voice_id || "11labs-Adrian";
   const body: Record<string, unknown> = {
@@ -189,6 +182,47 @@ serve(async (req) => {
     const { action, agent_id, config } = await req.json();
 
     if (action === "create") {
+      // Check if an existing agent_id was provided and still exists in Retell
+      if (config?.existing_agent_id) {
+        try {
+          const checkRes = await fetch(`${RETELL_BASE}/get-agent/${config.existing_agent_id}`, {
+            method: "GET",
+            headers: { Authorization: `Bearer ${apiKey}` },
+          });
+          if (checkRes.ok) {
+            // Agent exists — update it instead of creating a new one
+            console.log(`Agent ${config.existing_agent_id} already exists, updating instead of creating`);
+            const body = buildAgentBody(config || {}, webhookUrl);
+            const llmBody = buildLlmBody(config || {});
+            
+            const updateRes = await fetch(`${RETELL_BASE}/update-agent/${config.existing_agent_id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+              body: JSON.stringify(body),
+            });
+            const updateData = await updateRes.json();
+            if (!updateRes.ok) throw new Error(updateData.error_message || JSON.stringify(updateData));
+
+            // Also update the LLM
+            const llmId = updateData.response_engine?.llm_id;
+            if (llmId && Object.keys(llmBody).length > 0) {
+              const llmRes = await fetch(`${RETELL_BASE}/update-retell-llm/${llmId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+                body: JSON.stringify(llmBody),
+              });
+              if (!llmRes.ok) console.error("Failed to update existing LLM:", await llmRes.json());
+            }
+
+            return new Response(JSON.stringify(updateData), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        } catch (e) {
+          console.log(`Existing agent ${config.existing_agent_id} not found, creating new one`);
+        }
+      }
+
       // Step 1: Create LLM first
       let llmId = config?.llm_id;
       if (!llmId) {
@@ -208,12 +242,6 @@ serve(async (req) => {
       const body = buildAgentBody(config || {}, webhookUrl);
       body.response_engine = { type: "retell-llm", llm_id: llmId };
       body.is_transfer_agent = false;
-
-      const res = await fetch(`${RETELL_BASE}/create-agent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(body),
-      });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error_message || data.message || JSON.stringify(data));
