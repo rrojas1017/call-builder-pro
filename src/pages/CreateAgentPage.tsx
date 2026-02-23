@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, PhoneIncoming, PhoneForwarded, Shield, Target, Users, Mic, Save, Volume2, Globe, CheckCircle2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { guardOpeningLine } from "@/lib/openingLineGuard";
 import { useRetellVoices } from "@/hooks/useRetellVoices";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { useOutboundNumbers } from "@/hooks/useOutboundNumbers";
@@ -445,6 +446,16 @@ export default function CreateAgentPage() {
         }
       }
 
+      // Guard: auto-fix hardcoded name mismatch in opening line
+      let finalOpeningLine = spec?.opening_line || null;
+      if (finalOpeningLine && personaName.trim()) {
+        const guard = guardOpeningLine(finalOpeningLine, personaName.trim());
+        if (guard.wasFixed) {
+          finalOpeningLine = guard.corrected;
+          toast({ title: "Opening line updated", description: `Replaced "${guard.oldName}" with your persona name placeholder.` });
+        }
+      }
+
       await supabase.from("agent_specs").update({
         voice_id: voiceId || undefined,
         transfer_required: transferEnabled,
@@ -455,6 +466,7 @@ export default function CreateAgentPage() {
         mode: agentMode,
         language: agentLanguage,
         persona_name: personaName.trim() || null,
+        opening_line: finalOpeningLine,
       } as any).eq("project_id", projectId);
       toast({ title: "Agent saved!", description: "Run test calls to fine-tune voice and delivery." });
       navigate("/agents");

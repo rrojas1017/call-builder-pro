@@ -14,6 +14,7 @@ import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radi
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { guardOpeningLine } from "@/lib/openingLineGuard";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { RetellAgentManager } from "@/components/RetellAgentManager";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -125,11 +126,22 @@ export default function EditAgentPage() {
         ? (phoneDigits.startsWith("1") ? `+${phoneDigits}` : `+1${phoneDigits}`)
         : null;
 
+      // Guard: auto-fix hardcoded name mismatch in opening line
+      let finalOpeningLine = openingLine;
+      if (openingLine && personaName.trim()) {
+        const guard = guardOpeningLine(openingLine, personaName.trim());
+        if (guard.wasFixed) {
+          finalOpeningLine = guard.corrected;
+          setOpeningLine(guard.corrected);
+          toast({ title: "Opening line updated", description: `Replaced "${guard.oldName}" with your persona name placeholder.` });
+        }
+      }
+
       await Promise.all([
         supabase.from("agent_projects").update({ name, description }).eq("id", id),
         supabase.from("agent_specs").update({
           voice_id: selectedVoice || null,
-          opening_line: openingLine || null,
+          opening_line: finalOpeningLine || null,
           tone_style: toneStyle || null,
           persona_name: personaName.trim() || null,
           transfer_required: transferEnabled,
