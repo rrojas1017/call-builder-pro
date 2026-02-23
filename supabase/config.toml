@@ -92,3 +92,6 @@ verify_jwt = false
 
 [functions.manage-retell-agent]
 verify_jwt = false
+
+[functions.optimize-retell-agent]
+verify_jwt = false

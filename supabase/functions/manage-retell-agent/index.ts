@@ -8,6 +8,122 @@ const corsHeaders = {
 
 const RETELL_BASE = "https://api.retellai.com";
 
+/** Build enhanced agent body from config + spec fields */
+function buildAgentBody(config: Record<string, any>, webhookUrl: string): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    agent_name: config.agent_name || "Appendify Agent",
+    voice_id: config.voice_id || "11labs-Adrian",
+    language: config.language || "en-US",
+    webhook_url: webhookUrl,
+    // Enhanced Retell features
+    normalize_for_speech: true,
+    enable_backchannel: config.enable_backchannel !== false,
+    enable_dynamic_voice_speed: true,
+    post_call_analysis_data: [
+      { description: "Whether the lead was qualified", name: "qualified", type: "boolean" },
+      { description: "Brief summary of the call", name: "call_summary", type: "string" },
+    ],
+  };
+
+  // Voice speed from spec's speaking_speed
+  if (config.speaking_speed != null) {
+    body.voice_speed = Number(config.speaking_speed);
+  }
+
+  // Interruption sensitivity: spec uses 0-100, Retell uses 0-1
+  if (config.interruption_threshold != null) {
+    body.interruption_sensitivity = Math.min(1, Math.max(0, Number(config.interruption_threshold) / 100));
+  }
+
+  // Voicemail detection + message
+  if (config.voicemail_message) {
+    body.enable_voicemail_detection = true;
+    body.voicemail_message = config.voicemail_message;
+  }
+
+  // Pronunciation dictionary from spec
+  if (config.pronunciation_guide && Array.isArray(config.pronunciation_guide) && config.pronunciation_guide.length > 0) {
+    body.pronunciation_dictionary = config.pronunciation_guide;
+  }
+
+  // Ambient sound
+  if (config.ambient_sound) {
+    body.ambient_sound = config.ambient_sound;
+  }
+
+  // Boosted keywords from knowledge
+  if (config.boosted_keywords && Array.isArray(config.boosted_keywords) && config.boosted_keywords.length > 0) {
+    body.boosted_keywords = config.boosted_keywords.slice(0, 100);
+  }
+
+  // Responsiveness
+  if (config.responsiveness != null) {
+    body.responsiveness = Number(config.responsiveness);
+  }
+
+  // Max call duration
+  if (config.max_call_duration_ms) {
+    body.max_call_duration_ms = config.max_call_duration_ms;
+  }
+
+  // End call after silence
+  if (config.end_call_after_silence_ms) {
+    body.end_call_after_silence_ms = config.end_call_after_silence_ms;
+  }
+
+  return body;
+}
+
+/** Build enhanced LLM body */
+function buildLlmBody(config: Record<string, any>): Record<string, unknown> {
+  const llmBody: Record<string, unknown> = {};
+
+  if (config.general_prompt) {
+    const trimmedPrompt = config.general_prompt.length > 28000
+      ? config.general_prompt.substring(0, 28000) + "\n\n[Trimmed for length]"
+      : config.general_prompt;
+    llmBody.general_prompt = trimmedPrompt;
+  }
+
+  // Opening line → begin_message
+  if (config.opening_line) {
+    llmBody.begin_message = config.opening_line;
+  }
+
+  // Temperature mapping
+  if (config.temperature != null) {
+    llmBody.model_temperature = Number(config.temperature);
+  }
+
+  // Model selection
+  if (config.llm_model) {
+    llmBody.model = config.llm_model;
+  }
+
+  // Build general_tools
+  const tools: any[] = [];
+  tools.push({
+    type: "end_call",
+    name: "end_call",
+    description: "End the call when the conversation is complete, the user requests to end the call, or you've completed your objective.",
+  });
+
+  if (config.transfer_required && config.transfer_phone_number) {
+    tools.push({
+      type: "transfer_call",
+      name: "transfer_to_agent",
+      description: "Transfer the call to a live agent when the lead is qualified and ready.",
+      number: config.transfer_phone_number,
+    });
+  }
+
+  if (tools.length > 0) {
+    llmBody.general_tools = tools;
+  }
+
+  return llmBody;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -21,16 +137,10 @@ serve(async (req) => {
     const { action, agent_id, config } = await req.json();
 
     if (action === "create") {
-      // Step 1: Ensure we have an llm_id. If not provided, create a Retell LLM first.
+      // Step 1: Create LLM first
       let llmId = config?.llm_id;
       if (!llmId) {
-        const llmBody: Record<string, unknown> = {};
-        if (config?.general_prompt) {
-          const trimmedPrompt = config.general_prompt.length > 28000
-            ? config.general_prompt.substring(0, 28000) + "\n\n[Trimmed for length]"
-            : config.general_prompt;
-          llmBody.general_prompt = trimmedPrompt;
-        }
+        const llmBody = buildLlmBody(config || {});
         const llmRes = await fetch(`${RETELL_BASE}/create-retell-llm`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -42,25 +152,13 @@ serve(async (req) => {
         console.log(`Created Retell LLM: ${llmId}`);
       }
 
-      // Step 2: Create the agent with the llm_id
-      const body: Record<string, unknown> = {
-        agent_name: config?.agent_name || "Appendify Agent",
-        voice_id: config?.voice_id || "11labs-Adrian",
-        language: config?.language || "en-US",
-        webhook_url: webhookUrl,
-        response_engine: { type: "retell-llm", llm_id: llmId },
-        post_call_analysis_data: [
-          { description: "Whether the lead was qualified", name: "qualified", type: "boolean" },
-          { description: "Brief summary of the call", name: "call_summary", type: "string" },
-        ],
-      };
+      // Step 2: Create agent with enhanced settings
+      const body = buildAgentBody(config || {}, webhookUrl);
+      body.response_engine = { type: "retell-llm", llm_id: llmId };
 
       const res = await fetch(`${RETELL_BASE}/create-agent`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(body),
       });
 
@@ -70,20 +168,18 @@ serve(async (req) => {
       // If llm_id was provided (not auto-created), inject prompt into existing LLM
       if (config?.llm_id && config?.general_prompt) {
         const finalLlmId = data.response_engine?.llm_id || config.llm_id;
-        const trimmedPrompt = config.general_prompt.length > 28000
-          ? config.general_prompt.substring(0, 28000) + "\n\n[Trimmed for length]"
-          : config.general_prompt;
+        const llmBody = buildLlmBody(config);
         try {
           const llmRes = await fetch(`${RETELL_BASE}/update-retell-llm/${finalLlmId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-            body: JSON.stringify({ general_prompt: trimmedPrompt }),
+            body: JSON.stringify(llmBody),
           });
           const llmData = await llmRes.json();
-          if (!llmRes.ok) console.error("Failed to set LLM prompt:", llmData);
-          else console.log(`Injected prompt into LLM ${finalLlmId} (${trimmedPrompt.length} chars)`);
+          if (!llmRes.ok) console.error("Failed to set LLM config:", llmData);
+          else console.log(`Configured LLM ${finalLlmId}`);
         } catch (promptErr) {
-          console.error("LLM prompt injection failed:", promptErr);
+          console.error("LLM config injection failed:", promptErr);
         }
       }
 
@@ -95,27 +191,66 @@ serve(async (req) => {
     if (action === "update") {
       if (!agent_id) throw new Error("agent_id required for update");
 
-      const body: Record<string, unknown> = {};
+      const body: Record<string, unknown> = { webhook_url: webhookUrl };
       if (config?.agent_name) body.agent_name = config.agent_name;
-      // Only send voice_id if it looks like a Retell voice ID (contains a dash or starts with known prefixes)
       if (config?.voice_id && (config.voice_id.includes("-") || config.voice_id.startsWith("eleven_"))) {
         body.voice_id = config.voice_id;
       }
       if (config?.language) body.language = config.language;
-      // Always ensure webhook is set correctly
-      body.webhook_url = webhookUrl;
+
+      // Enhanced settings on update
+      if (config?.speaking_speed != null) body.voice_speed = Number(config.speaking_speed);
+      if (config?.interruption_threshold != null) {
+        body.interruption_sensitivity = Math.min(1, Math.max(0, Number(config.interruption_threshold) / 100));
+      }
+      if (config?.voicemail_message) {
+        body.enable_voicemail_detection = true;
+        body.voicemail_message = config.voicemail_message;
+      }
+      if (config?.pronunciation_guide && Array.isArray(config.pronunciation_guide) && config.pronunciation_guide.length > 0) {
+        body.pronunciation_dictionary = config.pronunciation_guide;
+      }
+      if (config?.boosted_keywords && Array.isArray(config.boosted_keywords)) {
+        body.boosted_keywords = config.boosted_keywords.slice(0, 100);
+      }
+      if (config?.ambient_sound) body.ambient_sound = config.ambient_sound;
+
+      // Always ensure good defaults
+      body.normalize_for_speech = true;
+      body.enable_backchannel = config?.enable_backchannel !== false;
+      body.enable_dynamic_voice_speed = true;
 
       const res = await fetch(`${RETELL_BASE}/update-agent/${agent_id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(body),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error_message || data.message || JSON.stringify(data));
+
+      // Also update LLM if we have LLM-level config changes
+      if (config?.opening_line || config?.temperature != null || config?.transfer_required != null) {
+        const llmId = data.response_engine?.llm_id;
+        if (llmId) {
+          const llmBody = buildLlmBody(config);
+          if (Object.keys(llmBody).length > 0) {
+            try {
+              const llmRes = await fetch(`${RETELL_BASE}/update-retell-llm/${llmId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+                body: JSON.stringify(llmBody),
+              });
+              if (!llmRes.ok) {
+                const llmErr = await llmRes.json();
+                console.error("Failed to update LLM:", llmErr);
+              }
+            } catch (e) {
+              console.error("LLM update failed:", e);
+            }
+          }
+        }
+      }
 
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -124,15 +259,12 @@ serve(async (req) => {
 
     if (action === "get") {
       if (!agent_id) throw new Error("agent_id required for get");
-
       const res = await fetch(`${RETELL_BASE}/get-agent/${agent_id}`, {
         method: "GET",
         headers: { Authorization: `Bearer ${apiKey}` },
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.error_message || data.message || JSON.stringify(data));
-
       return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -141,7 +273,6 @@ serve(async (req) => {
     if (action === "switch_to_outbound") {
       if (!agent_id) throw new Error("agent_id required for switch_to_outbound");
 
-      // 1. Get agent to find LLM ID
       const agentRes = await fetch(`${RETELL_BASE}/get-agent/${agent_id}`, {
         method: "GET",
         headers: { Authorization: `Bearer ${apiKey}` },
@@ -152,31 +283,22 @@ serve(async (req) => {
       const llmId = agentData.response_engine?.llm_id;
       if (!llmId) throw new Error("No LLM ID found on this agent. Cannot switch to outbound.");
 
-      // 2. Patch LLM to disable transfer mode
       const llmRes = await fetch(`${RETELL_BASE}/update-retell-llm/${llmId}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({ is_transfer_llm: false }),
       });
       const llmData = await llmRes.json();
       if (!llmRes.ok) throw new Error(llmData.error_message || llmData.message || JSON.stringify(llmData));
 
-      // 2b. Patch agent-level transfer flag
       const agentPatchRes = await fetch(`${RETELL_BASE}/update-agent/${agent_id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({ is_transfer_agent: false }),
       });
       const agentPatchData = await agentPatchRes.json();
       if (!agentPatchRes.ok) throw new Error(agentPatchData.error_message || agentPatchData.message || JSON.stringify(agentPatchData));
 
-      // 3. Re-fetch agent to return updated config
       const refreshRes = await fetch(`${RETELL_BASE}/get-agent/${agent_id}`, {
         method: "GET",
         headers: { Authorization: `Bearer ${apiKey}` },

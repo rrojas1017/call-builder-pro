@@ -104,5 +104,23 @@ export function useRetellAgent(agentId: string | null | undefined) {
     }
   };
 
-  return { config, loading, error, createAgent, updateAgent, switchToOutbound, refetch: fetchAgent };
+  const optimizeAgent = async (projectId: string, apply = false): Promise<any> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: err } = await supabase.functions.invoke("optimize-retell-agent", {
+        body: { project_id: projectId, apply },
+      });
+      if (err) throw err;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    } catch (e: any) {
+      setError(e.message);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { config, loading, error, createAgent, updateAgent, switchToOutbound, optimizeAgent, refetch: fetchAgent };
 }

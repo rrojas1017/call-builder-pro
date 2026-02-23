@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useRetellAgent } from "@/hooks/useRetellAgent";
 
 import { useRetellVoices } from "@/hooks/useRetellVoices";
 import { useOutboundNumbers } from "@/hooks/useOutboundNumbers";
@@ -9,12 +10,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2 } from "lucide-react";
+import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { RetellAgentManager } from "@/components/RetellAgentManager";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 
 export default function EditAgentPage() {
   const { id } = useParams<{ id: string }>();
@@ -38,6 +41,11 @@ export default function EditAgentPage() {
   const [fromNumber, setFromNumber] = useState("auto");
   const [voicemailMessage, setVoicemailMessage] = useState("");
 
+  // AI Optimization
+  const { optimizeAgent } = useRetellAgent(retellAgentId || null);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizeResults, setOptimizeResults] = useState<any>(null);
+  const [showOptimizeModal, setShowOptimizeModal] = useState(false);
   const voices = retellVoices;
   const voicesLoading = retellVoicesLoading;
 
@@ -109,9 +117,30 @@ export default function EditAgentPage() {
     }
   };
 
+  const handleOptimize = async (apply = false) => {
+    if (!id) return;
+    setOptimizing(true);
+    try {
+      const result = await optimizeAgent(id, apply);
+      if (result) {
+        setOptimizeResults(result);
+        setShowOptimizeModal(true);
+        if (apply) {
+          toast({ title: "Optimizations applied!", description: `${result.applied_agent_patches ? Object.keys(result.applied_agent_patches).length : 0} settings updated.` });
+        }
+      }
+    } catch (err: any) {
+      toast({ title: "Optimization failed", description: err.message, variant: "destructive" });
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
+
+  const priorityColor = (p: string) => p === "high" ? "destructive" : p === "medium" ? "secondary" : "outline";
 
   return (
     <div className="p-8 max-w-3xl mx-auto space-y-6">
@@ -120,7 +149,65 @@ export default function EditAgentPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <h1 className="text-2xl font-bold text-foreground">Edit Agent</h1>
+        <div className="ml-auto">
+          <Button variant="outline" onClick={() => handleOptimize(false)} disabled={optimizing}>
+            {optimizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+            Optimize with AI
+          </Button>
+        </div>
       </div>
+
+      {/* Optimization Results Modal */}
+      <Dialog open={showOptimizeModal} onOpenChange={setShowOptimizeModal}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              AI Optimization Report
+            </DialogTitle>
+          </DialogHeader>
+          {optimizeResults && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="text-3xl font-bold text-primary">{optimizeResults.overall_score}/100</div>
+                <p className="text-sm text-muted-foreground">{optimizeResults.summary}</p>
+              </div>
+              <div className="space-y-3">
+                {optimizeResults.recommendations?.map((rec: any, i: number) => (
+                  <div key={i} className="rounded-lg border border-border p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={priorityColor(rec.priority) as any}>{rec.priority}</Badge>
+                      <Badge variant="outline">{rec.category}</Badge>
+                      <span className="font-medium text-sm text-foreground">{rec.title}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{rec.description}</p>
+                    <div className="flex gap-4 text-xs">
+                      {rec.current_value && (
+                        <span className="text-muted-foreground">Current: <code className="bg-muted px-1 rounded">{rec.current_value}</code></span>
+                      )}
+                      <span className="text-primary">Recommended: <code className="bg-primary/10 px-1 rounded">{rec.recommended_value}</code></span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Retell param: <code className="bg-muted px-1 rounded">{rec.retell_param}</code></p>
+                  </div>
+                ))}
+              </div>
+              {optimizeResults.applied_agent_patches && (
+                <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-3">
+                  <p className="text-sm font-medium text-green-600 dark:text-green-400 flex items-center gap-1">
+                    <Check className="h-4 w-4" /> Applied {Object.keys(optimizeResults.applied_agent_patches).length} agent settings
+                  </p>
+                </div>
+              )}
+              {!optimizeResults.applied_agent_patches && (
+                <Button onClick={() => handleOptimize(true)} disabled={optimizing} className="w-full">
+                  {optimizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                  Apply All Auto-Applicable Optimizations
+                </Button>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Identity */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">

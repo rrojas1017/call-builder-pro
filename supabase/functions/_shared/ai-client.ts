@@ -36,7 +36,7 @@ type AIResponse = {
 };
 
 const DEFAULT_MODELS = {
-  gemini: "google/gemini-3-flash-preview",
+  gemini: "google/gemini-3-pro-preview",
   claude: "claude-sonnet-4-20250514",
 } as const;
 
