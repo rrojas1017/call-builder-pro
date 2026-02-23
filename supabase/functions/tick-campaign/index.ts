@@ -233,7 +233,20 @@ serve(async (req) => {
             .replace(/\[Agent Name\]/gi, agentName)
         : null;
 
-      const llmPatchBody: any = { general_prompt: taskPrompt };
+      // Build general_tools from spec
+      const generalTools: any[] = [
+        { type: "end_call", name: "end_call", description: "End the call when conversation is complete." }
+      ];
+      if (spec.transfer_required && spec.transfer_phone_number) {
+        generalTools.push({
+          type: "transfer_call",
+          name: "transfer_to_agent",
+          description: "Transfer the call to a live agent when the lead is qualified and ready.",
+          number: spec.transfer_phone_number,
+        });
+      }
+
+      const llmPatchBody: any = { general_prompt: taskPrompt, general_tools: generalTools };
       if (resolvedOpening) {
         llmPatchBody.begin_message = resolvedOpening;
       }
