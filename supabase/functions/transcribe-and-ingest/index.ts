@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { project_id, file_path, source_label } = await req.json();
+    const { project_id, file_path, source_label, preview } = await req.json();
     if (!project_id || !file_path) {
       return new Response(JSON.stringify({ error: "project_id and file_path are required" }), {
         status: 400,
@@ -162,7 +162,7 @@ Be specific and actionable. Each entry should be a concrete, usable insight for 
 
     console.log(`Extracted ${insights.length} insights`);
 
-    // ── Step 4: Insert into agent_knowledge ───────────────────────────────
+    // ── Step 4: Preview or Insert ────────────────────────────────────────
     const validCategories = ["objection_handling", "winning_pattern", "conversation_technique", "product_knowledge", "industry_insight", "competitor_info"];
 
     const rows = insights
@@ -173,7 +173,29 @@ Be specific and actionable. Each entry should be a concrete, usable insight for 
         content: i.content.trim(),
         source_type: "transfer_recording",
         source_url: source_label || null,
+        file_name: file_path.split("/").pop() || null,
       }));
+
+    // If preview mode, return insights without saving
+    if (preview === true) {
+      const transcriptSummary = transcript.slice(0, 500) + (transcript.length > 500 ? "..." : "");
+      const topicBreakdown: Record<string, number> = {};
+      for (const r of rows) {
+        topicBreakdown[r.category] = (topicBreakdown[r.category] || 0) + 1;
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        preview: true,
+        transcript_summary: transcriptSummary,
+        transcript_length: transcript.length,
+        insights_preview: rows.map(r => ({ category: r.category, content: r.content })),
+        topic_breakdown: topicBreakdown,
+        count: rows.length,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (rows.length === 0) {
       return new Response(JSON.stringify({ success: true, count: 0, message: "No actionable insights found in this recording." }), {

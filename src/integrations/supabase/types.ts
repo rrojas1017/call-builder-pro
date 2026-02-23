@@ -19,28 +19,37 @@ export type Database = {
           category: string
           content: string
           created_at: string
+          file_name: string | null
           id: string
+          insights_preview: Json | null
           project_id: string
           source_type: string
           source_url: string | null
+          usage_count: number
         }
         Insert: {
           category?: string
           content: string
           created_at?: string
+          file_name?: string | null
           id?: string
+          insights_preview?: Json | null
           project_id: string
           source_type?: string
           source_url?: string | null
+          usage_count?: number
         }
         Update: {
           category?: string
           content?: string
           created_at?: string
+          file_name?: string | null
           id?: string
+          insights_preview?: Json | null
           project_id?: string
           source_type?: string
           source_url?: string | null
+          usage_count?: number
         }
         Relationships: [
           {
