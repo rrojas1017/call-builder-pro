@@ -352,6 +352,12 @@ serve(async (req) => {
         }).catch((e) => console.error("Error triggering run-test-run:", e));
       }
 
+      // Track cost for test lab calls
+      if (metadata.org_id && retellCallId) {
+        const phoneLabel = metadata.phone || "test";
+        await trackCallCost(supabase, metadata.org_id, retellCallId, duration, phoneLabel);
+      }
+
       return new Response(JSON.stringify({ success: true, flow: "test_lab" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
