@@ -1,71 +1,80 @@
 
 
-# Redesign Phone Numbers Page -- List-Detail Layout
+# Overhaul Agent Creation Pipeline -- Fix Name/Placeholder Bugs and Add AI Assistant
 
-## Overview
-Redesign the Phone Numbers page to use a split-panel layout similar to Retell's dashboard: a compact phone number list on the left, and a detailed configuration panel on the right when a number is selected.
+## Problems Found
 
-## Layout
+### 1. Critical Bug: `begin_message` sent to Retell with raw `{{first_name}}` placeholder
+In `run-test-run/index.ts` (line 242), the `begin_message` sent to Retell only resolves `{{agent_name}}` but **never** resolves `{{first_name}}`. Retell then literally speaks "Hey curly-brace-curly-brace first underscore name" or "client name" on the call.
 
-```text
-+-------------------+--------------------------------------+
-| Phone Numbers [+] |  +1(948)265-0259                     |
-|                   |                                      |
-| [Search...]       |  Inbound Call Agent                  |
-|                   |  [ACA Inbound Qualifier v]           |
-| +1(948)265-0259   |                                      |
-| +1(415)964-3349   |  Label                               |
-| +1(786)686-3423   |  [ACA Inbound            ] [Save]   |
-| +1(786)699-7885   |                                      |
-|                   |  Details                             |
-|                   |  Area Code: 948                      |
-|                   |  Cost: $2/mo                         |
-|                   |  Purchased: Jan 15, 2025             |
-|                   |  Calls: 8                            |
-|                   |                                      |
-|                   |  Recent Calls                        |
-|                   |  [call entries...]                   |
-|                   |                                      |
-|                   |  [Release Number]                    |
-+-------------------+--------------------------------------+
-```
+The `begin_message` is a **static field on the LLM** -- it's spoken before any dynamic variables are evaluated. So `{{first_name}}` can't work here unless Retell's `retell_llm_dynamic_variables` are used, but the `begin_message` field doesn't support them in template form the way we're sending them.
 
-## Changes
+### 2. Critical Bug: Missing `res` variable in `manage-retell-agent`
+In `manage-retell-agent/index.ts` line 246, the code references `res.json()` but `res` was never declared -- the `fetch` call to create the agent is missing. The agent creation action is broken at the code level (the `const res = await fetch(...)` line is absent between building the body and reading the response).
 
-### Remove the current layout
-- Remove the stats cards row at the top (the detail panel provides this info per-number)
-- Remove the inline Select dropdowns and Badge from each row
-- Remove the `PhoneNumberDetailDialog` -- replaced by the inline detail panel
+### 3. Wizard answers pre-populated but hidden
+When `generate-spec` returns wizard questions, the answers are set to `suggested_default` on the backend, but on the frontend (line 371-374), the code clears them: `answer: ""` and stores `suggested_default` separately. The user sees empty textareas and has to either type or click "Review Defaults." If they click "Confirm" without answering, empty strings go to `save-wizard-answers`, which skips them entirely.
 
-### Left Panel -- Number List
-- Header: "Phone Numbers" title with a "+" button to open the Buy Number dialog
-- Search input to filter numbers by phone number or label
-- Compact list of numbers showing just the phone number and a subtle indicator if assigned (green dot) or unassigned (gray dot)
-- Clicking a number selects it and highlights the row
-- Sync button moved to bottom or as a subtle icon in the header
+### 4. No AI assistance during the wizard
+Users can't ask for AI help to fill in wizard answers. There's a `knowledge-wizard` function but it's only for post-ingestion knowledge refinement, not for the creation wizard.
 
-### Right Panel -- Number Detail (shown when a number is selected)
-- Phone number as the heading (formatted like Retell: +1(948)265-0259)
-- **Inbound Call Agent** section: Select dropdown to assign/unassign an agent
-- **Label** section: Editable text field with save button
-- **Details** grid: Area code, monthly cost, purchase date, total calls
-- **Recent Calls** section: Last 5 calls with outcome, duration, timestamp
-- **Release Number** button at the bottom (destructive action with confirmation)
-- Empty state when no number is selected: "Select a phone number to view details"
+### 5. Opening line sent to both `general_prompt` AND `begin_message`
+The opening line appears twice: once in the task prompt as "OPENING GUIDE" (with placeholders partially resolved) and again as `begin_message` on the LLM (with only `{{agent_name}}` resolved). This causes the agent to potentially speak the opening twice or get confused.
 
-### Files Modified
+## Solution
+
+### Fix 1: Resolve `begin_message` properly (run-test-run + tick-campaign)
+- When building `begin_message` for Retell, resolve BOTH `{{agent_name}}` AND `{{first_name}}` placeholders.
+- Since `begin_message` is set once per LLM (not per call), and `{{first_name}}` varies per contact, the `begin_message` should use a **generic greeting** that doesn't include the caller's name. The caller-name-specific greeting goes into `general_prompt` only.
+- Change: Set `begin_message` to the opening line with `{{agent_name}}` resolved and `{{first_name}}` stripped (replaced with a natural fallback like "there" or removed entirely). The task prompt's OPENING GUIDE already handles per-contact name injection.
+
+### Fix 2: Fix missing `fetch` in `manage-retell-agent` create action
+Add the missing `const res = await fetch(...)` call between `body.is_transfer_agent = false;` (line 244) and `const data = await res.json();` (line 246).
+
+### Fix 3: Pre-fill wizard answers with suggested defaults
+Change the frontend (CreateAgentPage line 371) to pre-populate `answer` with `suggested_default` instead of clearing it. Users see sensible defaults they can tweak rather than empty forms.
+
+### Fix 4: Add "AI Assist" button to each wizard question
+Add a small "Suggest with AI" button next to each wizard question that invokes a lightweight AI call to generate a better answer based on:
+- The agent description/source text
+- The question being asked
+- Any website knowledge already ingested
+
+This reuses the existing Lovable AI gateway via a new edge function `wizard-ai-assist`.
+
+### Fix 5: Clean up opening line duplication
+- `begin_message` on the Retell LLM: resolved opening with agent name, generic caller reference (no `{{first_name}}`)
+- `general_prompt` OPENING GUIDE: full template with caller name hint, clearly marked as a natural adaptation guide
+
+## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/pages/InboundNumbersPage.tsx` | Complete rewrite to list-detail split layout with search, selection state, and inline detail panel |
-| `src/components/PhoneNumberDetailDialog.tsx` | Delete -- functionality moved inline into the detail panel |
+| `supabase/functions/manage-retell-agent/index.ts` | Fix missing `fetch` call in create action |
+| `supabase/functions/run-test-run/index.ts` | Fix `begin_message` to strip `{{first_name}}` placeholder; resolve `{{agent_name}}` properly |
+| `supabase/functions/tick-campaign/index.ts` | Same `begin_message` fix as run-test-run (if same pattern exists) |
+| `supabase/functions/_shared/buildTaskPrompt.ts` | Add `resolveBeginMessage()` helper that produces a clean begin_message without `{{first_name}}` |
+| `supabase/functions/wizard-ai-assist/index.ts` | **New** -- lightweight edge function that takes a question + agent context and returns a suggested answer |
+| `src/pages/CreateAgentPage.tsx` | Pre-fill wizard answers with defaults; add "AI Assist" button per question; streamline Step 2 UX |
 
-### Technical Notes
-- Use CSS grid or flexbox for the two-panel layout (`grid-cols-[320px_1fr]`)
-- Keep all existing data fetching logic (numbers, agents, callCounts, orgId)
-- Move the recent calls fetch from the dialog into the page, triggered when `selectedNumber` changes
-- Reuse existing handlers: `handleAssign`, `handleRelease`, `handlePurchase`, `handleSync`
-- Format phone numbers for display: `+19482650259` becomes `+1(948)265-0259`
-- The left panel should have a fixed height with scroll for the number list
-- On mobile, show only the list; tapping a number navigates to the detail view (or stacks vertically)
+## Technical Details
+
+### `resolveBeginMessage()` helper
+```text
+Input:  "Hey {{first_name}}, this is {{agent_name}} calling..."
+Output: "Hey, this is Sofia calling..."
+```
+Strips `{{first_name}}` (and trailing comma/space), resolves `{{agent_name}}`, cleans up punctuation.
+
+### `wizard-ai-assist` edge function
+- Accepts: `{ project_id, question, current_answer, agent_description }`
+- Uses Gemini 3 Flash to generate a 1-3 sentence answer
+- Returns: `{ suggested_answer: string }`
+- Non-streaming, fast turnaround
+
+### CreateAgentPage wizard UX changes
+- Each question card gets a small sparkle button ("AI Assist")
+- Clicking it shows a loading spinner, then fills in the answer field
+- Answers start pre-populated with the AI-generated defaults from `generate-spec`
+- "Review Defaults" button removed (no longer needed since defaults are pre-filled)
 
