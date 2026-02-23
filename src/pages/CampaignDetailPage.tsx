@@ -3,8 +3,11 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save, FileText, Phone, ExternalLink, AlertTriangle, Lightbulb, BookOpen, ShieldCheck } from "lucide-react";
+import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save, FileText, Phone, ExternalLink, AlertTriangle, Lightbulb, BookOpen, ShieldCheck, RotateCcw, Pencil } from "lucide-react";
 import LiveCallMonitor from "@/components/LiveCallMonitor";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -119,6 +122,10 @@ export default function CampaignDetailPage() {
   const [savingConcurrency, setSavingConcurrency] = useState(false);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const recentlyCancelledRef = useRef<Map<string, number>>(new Map());
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState<any>({});
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user || !id) return;
@@ -237,7 +244,7 @@ export default function CampaignDetailPage() {
     try {
       const { error } = await supabase.from("campaigns").delete().eq("id", id);
       if (error) throw error;
-      toast({ title: "Campaign deleted" });
+      toast({ title: "Campaign deleted", description: "Call records and CRM data have been preserved." });
       navigate("/campaigns");
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -245,7 +252,80 @@ export default function CampaignDetailPage() {
     }
   };
 
-  const liveCalls = contacts.filter((c) => c.status === "calling");
+  const handleReset = async () => {
+    setResetting(true);
+    try {
+      // Reset all contacts
+      const { error: contactErr } = await supabase
+        .from("contacts")
+        .update({
+          status: "queued",
+          attempts: 0,
+          called_at: null,
+          retell_call_id: null,
+          bland_call_id: null,
+          last_error: null,
+        } as any)
+        .eq("campaign_id", id);
+      if (contactErr) throw contactErr;
+
+      // Reset campaign status
+      const { error: campErr } = await supabase
+        .from("campaigns")
+        .update({ status: "draft" })
+        .eq("id", id);
+      if (campErr) throw campErr;
+
+      setCampaign((prev: any) => ({ ...prev, status: "draft" }));
+      toast({ title: "Campaign reset", description: "All contacts re-queued. Historical call data preserved." });
+      fetchData();
+    } catch (err: any) {
+      toast({ title: "Error resetting", description: err.message, variant: "destructive" });
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const startEditing = () => {
+    setEditForm({
+      name: campaign.name,
+      max_concurrent_calls: campaign.max_concurrent_calls,
+      max_attempts: campaign.max_attempts,
+      redial_delay_minutes: campaign.redial_delay_minutes,
+      redial_statuses: campaign.redial_statuses || [],
+      hipaa_enabled: campaign.hipaa_enabled,
+      is_test: campaign.is_test,
+      voicemail_message: campaign.voicemail_message || "",
+    });
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    setSavingEdit(true);
+    try {
+      const { error } = await supabase
+        .from("campaigns")
+        .update({
+          name: editForm.name,
+          max_concurrent_calls: editForm.max_concurrent_calls,
+          max_attempts: editForm.max_attempts,
+          redial_delay_minutes: editForm.redial_delay_minutes,
+          redial_statuses: editForm.redial_statuses,
+          hipaa_enabled: editForm.hipaa_enabled,
+          is_test: editForm.is_test,
+          voicemail_message: editForm.voicemail_message || null,
+        })
+        .eq("id", id);
+      if (error) throw error;
+      setCampaign((prev: any) => ({ ...prev, ...editForm, voicemail_message: editForm.voicemail_message || null }));
+      setIsEditing(false);
+      toast({ title: "Campaign updated" });
+    } catch (err: any) {
+      toast({ title: "Error saving", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const handleStopCall = async (callId: string, contactId: string, provider: string = "retell") => {
     setStoppingCalls((prev) => new Set(prev).add(contactId));
@@ -297,6 +377,8 @@ export default function CampaignDetailPage() {
       });
     }
   };
+
+  const liveCalls = contacts.filter((c) => c.status === "calling");
 
   const handleStopAll = async () => {
     for (const c of liveCalls) {
@@ -461,6 +543,33 @@ export default function CampaignDetailPage() {
           <Button size="sm" variant="outline" onClick={fetchData}>
             <RefreshCw className="h-4 w-4 mr-1" /> Refresh
           </Button>
+          {(campaign.status === "draft" || campaign.status === "paused") && !isEditing && (
+            <Button size="sm" variant="outline" onClick={startEditing}>
+              <Pencil className="h-4 w-4 mr-1" /> Edit
+            </Button>
+          )}
+          {(campaign.status === "paused" || campaign.status === "completed") && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="outline" disabled={resetting}>
+                  {resetting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RotateCcw className="h-4 w-4 mr-1" />}
+                  Reset
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Reset Campaign</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will re-queue all contacts (attempts reset to 0) and set the campaign back to draft. Historical call records and CRM data will NOT be affected.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleReset}>Reset Campaign</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           {(campaign.status === "draft" || campaign.status === "paused") && (
             <Button size="sm" onClick={handleStart} disabled={actionLoading}>
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Play className="h-4 w-4 mr-1" />}
@@ -484,7 +593,7 @@ export default function CampaignDetailPage() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Delete Campaign</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This will permanently delete this campaign and all its contact data. Call records will be preserved. This action cannot be undone.
+                    This will permanently delete this campaign and all its contact data. Call records and CRM data will be preserved as historical data. This action cannot be undone.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -498,6 +607,90 @@ export default function CampaignDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Edit form */}
+      {isEditing && (
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-foreground">Edit Campaign</h3>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+                <Button size="sm" onClick={handleSaveEdit} disabled={savingEdit}>
+                  {savingEdit ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+                  Save
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Campaign Name</Label>
+                <Input value={editForm.name} onChange={(e) => setEditForm((f: any) => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Max Concurrent Calls</Label>
+                <Input type="number" min={1} max={100} value={editForm.max_concurrent_calls} onChange={(e) => setEditForm((f: any) => ({ ...f, max_concurrent_calls: Math.max(1, Math.min(100, Number(e.target.value))) }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Max Attempts</Label>
+                <Input type="number" min={1} max={10} value={editForm.max_attempts} onChange={(e) => setEditForm((f: any) => ({ ...f, max_attempts: Math.max(1, Math.min(10, Number(e.target.value))) }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Redial Delay (minutes)</Label>
+                <Input type="number" min={1} max={1440} value={editForm.redial_delay_minutes} onChange={(e) => setEditForm((f: any) => ({ ...f, redial_delay_minutes: Math.max(1, Math.min(1440, Number(e.target.value))) }))} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Retryable Statuses</Label>
+              <div className="flex flex-wrap gap-3">
+                {[
+                  { value: "voicemail", label: "Voicemail" },
+                  { value: "no_answer", label: "No Answer" },
+                  { value: "busy", label: "Busy" },
+                  { value: "call_me_later", label: "Call Me Later" },
+                  { value: "not_available", label: "Not Available" },
+                ].map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={(editForm.redial_statuses || []).includes(opt.value)}
+                      onChange={(e) => {
+                        setEditForm((f: any) => ({
+                          ...f,
+                          redial_statuses: e.target.checked
+                            ? [...(f.redial_statuses || []), opt.value]
+                            : (f.redial_statuses || []).filter((s: string) => s !== opt.value),
+                        }));
+                      }}
+                      className="rounded border-input"
+                    />
+                    <span className="text-sm">{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <Switch checked={editForm.hipaa_enabled} onCheckedChange={(v) => setEditForm((f: any) => ({ ...f, hipaa_enabled: v }))} />
+                <Label>HIPAA Mode</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={editForm.is_test} onCheckedChange={(v) => setEditForm((f: any) => ({ ...f, is_test: v }))} />
+                <Label>Test Mode</Label>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Voicemail Message</Label>
+              <Textarea
+                value={editForm.voicemail_message}
+                onChange={(e) => setEditForm((f: any) => ({ ...f, voicemail_message: e.target.value }))}
+                placeholder="Leave empty to disable voicemail"
+                rows={3}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Progress bar */}
       <div className="space-y-1">

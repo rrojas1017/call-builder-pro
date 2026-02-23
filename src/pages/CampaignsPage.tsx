@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Play, Pause, Megaphone, Plus, Eye, ShieldCheck, Voicemail, Sparkles, FlaskConical } from "lucide-react";
+import { Loader2, Play, Pause, Megaphone, Plus, Eye, ShieldCheck, Voicemail, Sparkles, FlaskConical, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,6 +16,11 @@ import { Link } from "react-router-dom";
 import AgentProfileCard from "@/components/AgentProfileCard";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface Campaign {
   id: string;
@@ -241,6 +246,20 @@ export default function CampaignsPage() {
     try {
       await supabase.from("campaigns").update({ status: "paused" }).eq("id", campaignId);
       toast({ title: "Campaign paused" });
+      load();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDelete = async (campaignId: string) => {
+    setActionLoading(campaignId);
+    try {
+      const { error } = await supabase.from("campaigns").delete().eq("id", campaignId);
+      if (error) throw error;
+      toast({ title: "Campaign deleted", description: "Call records and CRM data have been preserved." });
       load();
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -532,6 +551,29 @@ export default function CampaignsPage() {
                     <Button size="sm" variant="outline" onClick={() => handlePause(c.id)} disabled={actionLoading === c.id}>
                       {actionLoading === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}
                     </Button>
+                  )}
+                  {c.status !== "running" && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={actionLoading === c.id}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Campaign</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete "{c.name}" and all its contact data. Call records and CRM data will be preserved. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDelete(c.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   )}
                 </div>
               </CardContent>
