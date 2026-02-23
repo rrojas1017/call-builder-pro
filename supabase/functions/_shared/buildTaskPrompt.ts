@@ -103,9 +103,11 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
 
   const personaName = spec.persona_name?.trim() || null;
 
-  // Substitute {{agent_name}} in opening_line before building the prompt
+  // Substitute {{agent_name}} and [Agent Name] in opening_line before building the prompt
   const resolvedOpeningLine = spec.opening_line
-    ? spec.opening_line.replace(/\{\{agent_name\}\}/gi, personaName || "")
+    ? spec.opening_line
+        .replace(/\{\{agent_name\}\}/gi, personaName || "")
+        .replace(/\[Agent Name\]/gi, personaName || "")
     : null;
 
   // If opening_line already addresses the caller by name or asks for it, do NOT re-inject a name question.
