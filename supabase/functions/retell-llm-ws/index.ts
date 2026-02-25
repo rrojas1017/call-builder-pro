@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildTaskPrompt } from "../_shared/buildTaskPrompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -120,7 +121,7 @@ Deno.serve(async (req) => {
               }
             }
 
-            // If no custom instructions, try to load the spec's general purpose
+            // If no custom instructions, build the full prompt from spec + knowledge
             if (systemPrompt === "You are a helpful phone agent. Be natural and conversational.") {
               const { data: spec } = await supabase
                 .from("agent_specs")
@@ -128,9 +129,19 @@ Deno.serve(async (req) => {
                 .eq("project_id", projectId)
                 .single();
               if (spec) {
-                // Use the buildTaskPrompt logic inline (simplified - the full prompt was already
-                // injected into the LLM by run-test-run, so this is a fallback)
-                systemPrompt = `You are ${spec.persona_name || "Agent"}. ${spec.tone_style || "Be friendly and professional."} Purpose: ${spec.use_case || "Conduct a professional call."}`;
+                // Load knowledge entries for this project
+                const { data: knowledgeRows } = await supabase
+                  .from("agent_knowledge")
+                  .select("category, content")
+                  .eq("project_id", projectId)
+                  .limit(50);
+                const knowledge = (knowledgeRows || []).map((r: any) => ({
+                  category: r.category,
+                  content: r.content,
+                }));
+
+                // Build the full prompt — same as outbound calls
+                systemPrompt = buildTaskPrompt(spec as any, knowledge, undefined, undefined);
               }
             }
           } catch (e) {
