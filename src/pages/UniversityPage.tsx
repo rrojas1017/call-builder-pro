@@ -89,6 +89,7 @@ export default function UniversityPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [appliedRefreshKey, setAppliedRefreshKey] = useState(0);
+  const resultRef = useRef<HTMLDivElement>(null);
 
   // Fetch applied improvements from DB
   const selectedProjectId = agentId;
@@ -390,6 +391,9 @@ export default function UniversityPage() {
     if (item.test_run_id) {
       updateUrlParams({ testRunId: item.test_run_id });
     }
+    setTimeout(() => {
+      resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   };
 
   const isDone = contact && !["queued", "calling"].includes(contact.status);
@@ -512,6 +516,7 @@ export default function UniversityPage() {
 
       {/* Results */}
       {contact && (
+        <div ref={resultRef}>
         <ResultCard
           contact={contact}
           isDone={isDone}
@@ -520,6 +525,7 @@ export default function UniversityPage() {
           appliedFixes={appliedFixes}
           onApplyFix={handleApplyFix}
         />
+        </div>
       )}
 
       {/* History */}
