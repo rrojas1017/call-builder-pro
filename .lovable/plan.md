@@ -1,60 +1,45 @@
 
 
-# Fix ACA Agent: Email Capture and Rushed Pacing
+# Fix Inbound ACA Agent: Reading Off Instructions
 
-## Problems Identified
+## Problem
 
-1. **Email capture feels forced**: The auto-injected email question ("What's the best email address to reach you at?") is inserted at `fields.length - 1` -- right before the last field. For ACA agents, this puts it awkwardly between consent/qualification questions and the transfer step, making it feel abrupt and out of place.
+The inbound ACA agent sounds like it's reading off instructions because **the Custom LLM WebSocket receives almost no useful prompt for inbound calls**.
 
-2. **Agent sounds rushed / in a hurry**: The RULES section tells the agent to "acknowledge each answer before the next question" but lacks explicit pacing instructions. There is no guidance to pause between topics, take a breath, or slow down when transitioning between screening questions. The long list of COLLECT fields (10+ for ACA agents) combined with the health qualification rules creates pressure to rapid-fire through questions.
+Here's what happens today:
+1. An inbound call arrives and Retell connects to the `retell-llm-ws` WebSocket
+2. The WebSocket tries to load a prompt from `test_runs.agent_instructions_text` — but inbound calls have no test run, so this fails
+3. It falls back to building a trivial one-liner: `"You are Sofia. Be friendly and professional. Purpose: ACA qualification."`
+4. The agent has no knowledge of collection fields, pacing rules, disclosure text, qualification logic, or conversational style — so the LLM improvises poorly, likely echoing whatever fragments it can find from the Retell LLM's `general_prompt` field (which the Custom LLM WebSocket architecture ignores)
+
+Meanwhile, outbound calls work fine because `run-test-run` and `tick-campaign` both call `buildTaskPrompt()` and inject the full prompt before each call.
 
 ## Solution
 
-### 1. Improve email placement and framing for ACA/health agents
-**File:** `supabase/functions/_shared/buildTaskPrompt.ts`
-
-Move email collection to the very end of the COLLECT list (after all qualification fields, right before transfer) instead of `fields.length - 1`. Also soften the framing to feel like a natural wind-down rather than another screening question.
-
-Change the email injection from:
-```
-const insertAt = Math.max(fields.length - 1, 0);
-fields.splice(insertAt, 0, "What's the best email...");
-```
-To:
-```
-fields.push("Before I connect you, what's the best email to send your plan details to?");
-```
-
-### 2. Add explicit pacing rules to the prompt
-**File:** `supabase/functions/_shared/buildTaskPrompt.ts`
-
-Add pacing instructions to the RULES section:
-- Do NOT rapid-fire questions. After the caller answers, respond with a brief acknowledgment or comment before asking the next question.
-- Take a conversational breath between topic changes (e.g., moving from personal info to income questions).
-- If the caller gives a short answer, add a human reaction ("Got it", "Perfect, thanks") before continuing.
-
-### 3. Mirror changes in frontend copy
-**File:** `src/lib/buildTaskPrompt.ts`
-
-Apply the same two changes (email placement + pacing rules) to keep the client-side preview in sync.
+Update the WebSocket handler (`retell-llm-ws`) to build the **full task prompt** for inbound calls using the same `buildTaskPrompt()` function that outbound calls use.
 
 ## Technical Details
 
-**Email injection fix** (both files):
-```typescript
-// Before (inserts awkwardly near-end)
-const insertAt = Math.max(fields.length - 1, 0);
-fields.splice(insertAt, 0, "What's the best email...");
+### File: `supabase/functions/retell-llm-ws/index.ts`
 
-// After (appends at end with softer framing)
-fields.push("Before I connect you, what's the best email address to send your plan details and next steps to?");
-```
+**Changes:**
 
-**Pacing rules addition** (both files, in the RULES block around line 192-199):
-```
-- PACING: Do NOT rapid-fire through questions. After each answer, pause and acknowledge naturally ("Got it", "That helps", "Okay, great") before moving to the next question. When shifting topics (e.g., from personal info to income), use a brief transition like "Alright, just a couple more things..." to signal the change.
-- If the caller gives a detailed answer or shares something personal, react to it briefly before continuing — do not immediately jump to the next field.
-```
+1. **Import `buildTaskPrompt`** from the shared module (`../_shared/buildTaskPrompt.ts`)
 
-No database changes. No new files. Just prompt tuning in two existing files.
+2. **Replace the trivial fallback** (line ~133):
+   ```
+   // Current: bare one-liner
+   systemPrompt = `You are ${spec.persona_name}...`
+   
+   // New: full prompt with knowledge + briefing
+   ```
+
+3. **Load knowledge entries and briefing** when building the prompt for non-test-run calls:
+   - Query `agent_knowledge` for the project's knowledge entries
+   - Query `agent_specs.knowledge_briefing` (if it exists) for the pre-summarized briefing
+   - Call `buildTaskPrompt(spec, knowledgeEntries, briefing, callerName)` to generate the complete prompt
+
+4. **Also check `calls.agent_instructions_text`** as a secondary source — if a pre-built prompt was stored on the call record during `call_started`, use that instead of rebuilding.
+
+This ensures inbound calls get the exact same rich, conversational prompt that outbound calls receive — including pacing rules, disclosure handling, field collection order, FPL qualification logic, and humanization notes.
 
