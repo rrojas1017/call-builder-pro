@@ -121,8 +121,7 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[] = [
 
   // Inject email collection near end if not already present
   if (fields.length > 0 && !fields.some(f => f.toLowerCase().includes('email'))) {
-    const insertAt = Math.max(fields.length - 1, 0);
-    fields.splice(insertAt, 0, "What's the best email address to reach you at? We'll send you a quick summary of what we covered and any next steps.");
+    fields.push("Before I connect you, what's the best email address to send your plan details and next steps to?");
   }
 
   const qualRules = spec.qualification_rules
@@ -157,7 +156,9 @@ RULES:
 - Never guess or assume answers.
 - NEVER re-introduce yourself or re-state company name after the opening — it was already said.
 - NEVER re-ask for information the caller already provided earlier in the call.
-- If you already mentioned the recording disclosure in your opening, do NOT repeat it.`;
+- If you already mentioned the recording disclosure in your opening, do NOT repeat it.
+- PACING: Do NOT rapid-fire through questions. After each answer, pause and acknowledge naturally ("Got it", "That helps", "Okay, great") before moving to the next question. When shifting topics (e.g., from personal info to income), use a brief transition like "Alright, just a couple more things..." to signal the change.
+- If the caller gives a detailed answer or shares something personal, react to it briefly before continuing — do not immediately jump to the next field.`;
 
   if (resolvedOpeningLine) {
     const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "(caller's name — ask if unknown)";
