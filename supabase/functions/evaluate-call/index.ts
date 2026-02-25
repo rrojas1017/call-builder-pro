@@ -472,6 +472,85 @@ VOICE TUNING RECOMMENDATIONS:
       }
     }
 
+    // ── Persist knowledge gaps to agent_knowledge ──
+    if (evaluation.knowledge_gaps?.length > 0) {
+      try {
+        // Fetch existing knowledge_gap entries for deduplication
+        const { data: existingGaps } = await supabase
+          .from("agent_knowledge")
+          .select("content")
+          .eq("project_id", call.project_id)
+          .eq("category", "knowledge_gap");
+
+        const existingSet = new Set(
+          (existingGaps || []).map((g: any) => g.content.toLowerCase().trim())
+        );
+
+        const newGaps = evaluation.knowledge_gaps.filter(
+          (gap: string) => !existingSet.has(gap.toLowerCase().trim())
+        );
+
+        if (newGaps.length > 0) {
+          await supabase.from("agent_knowledge").insert(
+            newGaps.map((gap: string) => ({
+              project_id: call.project_id,
+              content: gap,
+              category: "knowledge_gap",
+              source_type: "auto_evaluation",
+            }))
+          );
+          console.log(`Persisted ${newGaps.length} knowledge gaps to agent_knowledge`);
+        }
+      } catch (e) {
+        console.error("Failed to persist knowledge gaps:", e);
+      }
+    }
+
+    // ── Auto-apply critical-severity improvements ──
+    if (evaluation.recommended_improvements?.length > 0) {
+      try {
+        const criticalFixes = evaluation.recommended_improvements.filter(
+          (imp: any) => imp.severity === "critical"
+        );
+
+        for (const fix of criticalFixes) {
+          try {
+            console.log(`Auto-applying critical fix: ${fix.field} — ${fix.reason}`);
+            const applyResp = await fetch(`${supabaseUrl}/functions/v1/apply-improvement`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${supabaseKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                project_id: call.project_id,
+                improvement: {
+                  field: fix.field,
+                  suggested_value: fix.suggested_value,
+                  reason: `[AUTO-CRITICAL] ${fix.reason}`,
+                  original_key: `${fix.field}::${fix.suggested_value}`.slice(0, 200),
+                },
+              }),
+            });
+            if (applyResp.ok) {
+              const result = await applyResp.json();
+              console.log(`Critical fix applied: ${fix.field} v${result.from_version}→v${result.to_version}`);
+            } else {
+              console.error(`Critical fix failed for ${fix.field}:`, applyResp.status, await applyResp.text());
+            }
+          } catch (e) {
+            console.error(`Failed to auto-apply critical fix ${fix.field}:`, e);
+          }
+        }
+
+        if (criticalFixes.length > 0) {
+          console.log(`Auto-applied ${criticalFixes.length} critical improvements`);
+        }
+      } catch (e) {
+        console.error("Failed to auto-apply critical improvements:", e);
+      }
+    }
+
     // Trigger auto-research when gaps are significant
     const shouldResearch =
       (evaluation.humanness_score != null && evaluation.humanness_score < 80) ||
