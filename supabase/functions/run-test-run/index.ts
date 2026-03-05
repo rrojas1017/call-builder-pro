@@ -110,7 +110,38 @@ serve(async (req) => {
       spec.humanization_notes = [...currentNotes, ...newGlobal];
     }
 
-    const retellAgentId = spec?.retell_agent_id;
+    let retellAgentId = spec?.retell_agent_id;
+
+    // Auto-provision if retell_agent_id is missing
+    if (!retellAgentId && spec) {
+      console.log(`retell_agent_id missing for spec ${spec.id} — auto-provisioning…`);
+      try {
+        const provisionRes = await supabase.functions.invoke("manage-retell-agent", {
+          body: {
+            action: "create",
+            spec_id: spec.id,
+            project_id: testRun.project_id,
+            voice_id: spec.voice_id || undefined,
+            language: spec.language || "en",
+            agent_name: spec.persona_name || "Appendify Agent",
+          },
+        });
+        if (provisionRes.error) throw new Error(`Provisioning invoke error: ${provisionRes.error.message}`);
+        const provisionData = provisionRes.data as any;
+        if (provisionData?.agent_id) {
+          retellAgentId = provisionData.agent_id;
+          console.log(`✅ Auto-provisioned retell agent: ${retellAgentId}`);
+          // Update spec in-memory for the rest of this run
+          spec.retell_agent_id = retellAgentId;
+        } else {
+          throw new Error(provisionData?.error || "No agent_id returned from provisioning");
+        }
+      } catch (provErr: any) {
+        console.error("Auto-provisioning failed:", provErr.message);
+        throw new Error(`Agent not provisioned and auto-provisioning failed: ${provErr.message}`);
+      }
+    }
+
     if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
 
     const callIds: string[] = [];
