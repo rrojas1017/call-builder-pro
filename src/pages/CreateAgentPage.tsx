@@ -7,14 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, PhoneIncoming, PhoneForwarded, Shield, Target, Users, Mic, Save, Volume2, Globe, CheckCircle2 } from "lucide-react";
+import { Loader2, Upload, Sparkles, ArrowRight, ArrowLeft, CheckCircle, Eye, Pencil, FileText, Phone, PhoneIncoming, PhoneForwarded, Shield, Target, Users, Mic, Save, Volume2, Globe, CheckCircle2, ChevronDown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { guardOpeningLine } from "@/lib/openingLineGuard";
 import { useRetellVoices } from "@/hooks/useRetellVoices";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { useOutboundNumbers } from "@/hooks/useOutboundNumbers";
-import { RetellAgentManager } from "@/components/RetellAgentManager";
+import { Progress } from "@/components/ui/progress";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 // ─── Translation map ────────────────────────────────────────────────────────
 const LANGUAGES = [
@@ -307,6 +308,7 @@ export default function CreateAgentPage() {
   const [selectedVoice, setSelectedVoice] = useState("");
   const [customVoiceId, setCustomVoiceId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savePhase, setSavePhase] = useState("");
   const [transferEnabled, setTransferEnabled] = useState(false);
   const [transferPhone, setTransferPhone] = useState("");
   const [aiAssistLoading, setAiAssistLoading] = useState<number | null>(null);
@@ -315,6 +317,7 @@ export default function CreateAgentPage() {
   const [agentMode, setAgentMode] = useState<"outbound" | "inbound" | "hybrid">("outbound");
   const [agentLanguage, setAgentLanguage] = useState<LangCode>("en");
   const [personaName, setPersonaName] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const t = TRANSLATIONS[agentLanguage];
   const STEPS = STEPS_BY_LANG[agentLanguage];
@@ -408,44 +411,43 @@ export default function CreateAgentPage() {
   const handleSaveAgent = async () => {
     if (!projectId) return;
     setSaving(true);
+    setSavePhase("Setting up voice...");
     try {
       const voiceId = selectedVoice === "custom" ? customVoiceId.trim() : selectedVoice;
       const phoneDigits = transferPhone.replace(/\D/g, "");
       if (transferEnabled && phoneDigits.length < 10) {
         toast({ title: "Invalid phone number", description: "Please enter at least 10 digits for the transfer number.", variant: "destructive" });
         setSaving(false);
+        setSavePhase("");
         return;
       }
       const formattedPhone = transferEnabled && phoneDigits.length >= 10
         ? (phoneDigits.startsWith("1") ? `+${phoneDigits}` : `+1${phoneDigits}`)
         : null;
 
-      // Auto-create Retell agent if no agent exists yet
+      // Auto-create Retell agent — BLOCK save if this fails
       let finalRetellAgentId = retellAgentId;
       if (!retellAgentId) {
-        try {
-          const { data: retellData, error: retellErr } = await supabase.functions.invoke("manage-retell-agent", {
-            body: {
-              action: "create",
-              config: {
-                agent_name: agentName || personaName || "Appendify Agent",
-                voice_id: voiceId,
-                language: agentLanguage || "en-US",
-                general_prompt: description || sourceText || undefined,
-              },
+        const { data: retellData, error: retellErr } = await supabase.functions.invoke("manage-retell-agent", {
+          body: {
+            action: "create",
+            config: {
+              agent_name: agentName || personaName || "Appendify Agent",
+              voice_id: voiceId,
+              language: agentLanguage || "en-US",
+              general_prompt: description || sourceText || undefined,
             },
-          });
-          if (retellErr) throw retellErr;
-          if (retellData?.agent_id) {
-            finalRetellAgentId = retellData.agent_id;
-            setRetellAgentId(retellData.agent_id);
-            toast({ title: "Append agent created", description: "Your AI agent was configured automatically." });
-          }
-        } catch (retellCreateErr: any) {
-          console.error("Auto-create Retell agent failed:", retellCreateErr);
-          toast({ title: "Append agent creation failed", description: retellCreateErr.message, variant: "destructive" });
+          },
+        });
+        if (retellErr || !retellData?.agent_id) {
+          const msg = retellErr?.message || retellData?.error || "Voice setup failed. Please try again.";
+          throw new Error(msg);
         }
+        finalRetellAgentId = retellData.agent_id;
+        setRetellAgentId(retellData.agent_id);
       }
+
+      setSavePhase("Saving configuration...");
 
       // Guard: auto-fix hardcoded name mismatch in opening line
       let finalOpeningLine = spec?.opening_line || null;
@@ -453,7 +455,6 @@ export default function CreateAgentPage() {
         const guard = guardOpeningLine(finalOpeningLine, personaName.trim());
         if (guard.wasFixed) {
           finalOpeningLine = guard.corrected;
-          toast({ title: "Opening line updated", description: `Replaced "${guard.oldName}" with your persona name placeholder.` });
         }
       }
 
@@ -461,7 +462,7 @@ export default function CreateAgentPage() {
         voice_id: voiceId || undefined,
         transfer_required: transferEnabled,
         transfer_phone_number: formattedPhone,
-        background_track: null, // configurable in Edit Agent
+        background_track: null,
         voice_provider: "retell",
         retell_agent_id: finalRetellAgentId || null,
         mode: agentMode,
@@ -469,11 +470,13 @@ export default function CreateAgentPage() {
         persona_name: personaName.trim() || null,
         opening_line: finalOpeningLine,
       } as any).eq("project_id", projectId);
+
+      setSavePhase("Done!");
       toast({ title: "Agent saved!", description: "Run test calls to fine-tune voice and delivery." });
-      navigate("/agents");
+      setTimeout(() => navigate("/agents"), 600);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
+      setSavePhase("");
       setSaving(false);
     }
   };
@@ -695,6 +698,7 @@ export default function CreateAgentPage() {
             <p className="text-muted-foreground mt-1">{t.step2Sub}</p>
           </div>
 
+          {/* Summary cards */}
           {!showRawSpec && spec && (
             <div className="grid gap-4">
               <SummaryCard icon={<Users className="h-5 w-5" />} title="Who it calls" value={spec.mode === "inbound" ? "Handles incoming calls" : "Makes outbound calls to your contacts"} />
@@ -703,64 +707,34 @@ export default function CreateAgentPage() {
               <SummaryCard icon={<Shield className="h-5 w-5" />} title="Qualification logic" value={spec.qualification_rules ? JSON.stringify(spec.qualification_rules) : "No specific rules"} />
               <SummaryCard icon={<ArrowRight className="h-5 w-5" />} title="Transfer logic" value={transferEnabled ? `Transfers to ${transferPhone || "number below"}` : "Ends call normally"} />
               <SummaryCard icon={<Target className="h-5 w-5" />} title="Success definition" value={spec.success_definition || "Complete the call objectives"} />
-              <SummaryCard icon={<Mic className="h-5 w-5" />} title="Voice" value={
-                selectedVoice === "custom"
-                  ? customVoiceId || "No custom ID set"
-                  : `${retellVoices.find(v => v.voice_id === selectedVoice)?.name || selectedVoice}`
-              } />
             </div>
           )}
 
-          {/* Agent Mode */}
+          {/* Voice Selection — first so users pick a voice before anything else */}
           <div className="surface-elevated rounded-xl p-6 space-y-4">
-            <h3 className="font-semibold text-foreground">Agent Mode</h3>
-            <p className="text-xs text-muted-foreground">
-              The AI detected this as <span className="font-medium text-foreground">{spec?.mode || "outbound"}</span>. Change if needed.
-            </p>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {([
-                { value: "outbound" as const, label: "Outbound", icon: Phone, desc: "Makes calls to your contacts" },
-                { value: "inbound" as const, label: "Inbound", icon: PhoneIncoming, desc: "Receives incoming calls" },
-                { value: "hybrid" as const, label: "Hybrid", icon: PhoneForwarded, desc: "Both directions" },
-              ]).map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setAgentMode(opt.value)}
-                  className={cn(
-                    "rounded-lg border p-3 text-left transition-colors",
-                    agentMode === opt.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
-                  )}
-                >
-                  <opt.icon className={cn("h-4 w-4 mb-1", agentMode === opt.value ? "text-primary" : "text-muted-foreground")} />
-                  <p className="text-sm font-medium text-foreground">{opt.label}</p>
-                  <p className="text-xs text-muted-foreground">{opt.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Voice Provider (Retell/Append) */}
-          <div className="surface-elevated rounded-xl p-6 space-y-4">
-            <h3 className="font-semibold text-foreground">Voice Provider</h3>
-            <p className="text-xs text-muted-foreground">Your agent is powered by Append.</p>
-            <div className="space-y-3">
-              <RetellAgentManager
-                retellAgentId={retellAgentId}
-                onAgentIdChange={setRetellAgentId}
-                personaName={personaName}
-                voiceId={selectedVoice || undefined}
-                language={agentLanguage}
-              />
-              {trustedNumbers.length === 0 && (
-                <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
-                  <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">⚠ Outbound number required</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Append (Retell) requires a verified outbound phone number. Add one in{" "}
-                    <span className="font-medium text-foreground">Settings → Phone Numbers</span> before testing.
-                  </p>
-                </div>
-              )}
-            </div>
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <Mic className="h-4 w-4 text-primary" /> Voice Selection
+            </h3>
+            <p className="text-xs text-muted-foreground">Choose a voice for your agent.</p>
+            <VoiceSelector
+              voices={retellVoices}
+              loading={voicesLoading}
+              selectedVoice={selectedVoice}
+              onSelect={setSelectedVoice}
+              sampleText={spec?.opening_line || t.voicePreviewText}
+              defaultLanguageFilter={agentLanguage !== "en" ? agentLanguage : undefined}
+              onRefreshVoices={refetchVoices}
+            />
+            {selectedVoice === "custom" && (
+              <div className="space-y-2">
+                <Label>Custom Voice Clone ID</Label>
+                <Input
+                  value={customVoiceId}
+                  onChange={(e) => setCustomVoiceId(e.target.value)}
+                  placeholder="e.g. abc123-voice-clone-id"
+                />
+              </div>
+            )}
           </div>
 
           {/* Call Ending / Transfer */}
@@ -804,46 +778,91 @@ export default function CreateAgentPage() {
             )}
           </div>
 
-          {/* Voice Selection */}
-          <div className="surface-elevated rounded-xl p-6 space-y-4">
-            <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <Mic className="h-4 w-4 text-primary" /> Voice Selection
-            </h3>
-            <p className="text-xs text-muted-foreground">Choose a voice for your agent.</p>
-            <VoiceSelector
-              voices={retellVoices}
-              loading={voicesLoading}
-              selectedVoice={selectedVoice}
-              onSelect={setSelectedVoice}
-              sampleText={spec?.opening_line || t.voicePreviewText}
-              defaultLanguageFilter={agentLanguage !== "en" ? agentLanguage : undefined}
-              onRefreshVoices={refetchVoices}
-            />
-            {selectedVoice === "custom" && (
-              <div className="space-y-2">
-                <Label>Custom Voice Clone ID</Label>
-                <Input
-                  value={customVoiceId}
-                  onChange={(e) => setCustomVoiceId(e.target.value)}
-                  placeholder="e.g. abc123-voice-clone-id"
-                />
+          {/* Advanced section (Agent Mode + Raw Spec) */}
+          <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+            <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <ChevronDown className={cn("h-4 w-4 transition-transform", showAdvanced && "rotate-180")} />
+              Advanced Settings
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-4 space-y-4">
+              {/* Agent Mode */}
+              <div className="surface-elevated rounded-xl p-6 space-y-4">
+                <h3 className="font-semibold text-foreground">Agent Mode</h3>
+                <p className="text-xs text-muted-foreground">
+                  Detected as <span className="font-medium text-foreground">{spec?.mode || "outbound"}</span>. Change if needed.
+                </p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {([
+                    { value: "outbound" as const, label: "Outbound", icon: Phone, desc: "Makes calls to your contacts" },
+                    { value: "inbound" as const, label: "Inbound", icon: PhoneIncoming, desc: "Receives incoming calls" },
+                    { value: "hybrid" as const, label: "Hybrid", icon: PhoneForwarded, desc: "Both directions" },
+                  ]).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setAgentMode(opt.value)}
+                      className={cn(
+                        "rounded-lg border p-3 text-left transition-colors",
+                        agentMode === opt.value ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                      )}
+                    >
+                      <opt.icon className={cn("h-4 w-4 mb-1", agentMode === opt.value ? "text-primary" : "text-muted-foreground")} />
+                      <p className="text-sm font-medium text-foreground">{opt.label}</p>
+                      <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
-          </div>
 
-          {showRawSpec && (
-            <div className="surface-elevated rounded-xl p-4">
-              <Textarea value={rawSpecText} onChange={(e) => setRawSpecText(e.target.value)} rows={14} className="font-mono text-xs" />
+              {/* Raw Spec Editor */}
+              <div className="space-y-2">
+                <Button variant="ghost" size="sm" onClick={() => setShowRawSpec(!showRawSpec)}>
+                  {showRawSpec ? <Eye className="mr-2 h-4 w-4" /> : <Pencil className="mr-2 h-4 w-4" />}
+                  {showRawSpec ? "View Summary" : "Edit Raw Spec"}
+                </Button>
+                {showRawSpec && (
+                  <div className="surface-elevated rounded-xl p-4">
+                    <Textarea value={rawSpecText} onChange={(e) => setRawSpecText(e.target.value)} rows={14} className="font-mono text-xs" />
+                  </div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* Outbound number warning */}
+          {trustedNumbers.length === 0 && (
+            <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
+              <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">⚠ Outbound number required</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                You'll need a verified outbound phone number before testing. Add one in{" "}
+                <span className="font-medium text-foreground">Settings → Phone Numbers</span>.
+              </p>
             </div>
           )}
 
-          <Button variant="ghost" size="sm" onClick={() => setShowRawSpec(!showRawSpec)}>
-            {showRawSpec ? <Eye className="mr-2 h-4 w-4" /> : <Pencil className="mr-2 h-4 w-4" />}
-            {showRawSpec ? "View Summary" : "Edit Details"}
-          </Button>
+          {/* Save progress indicator */}
+          {saving && savePhase && (
+            <div className="surface-elevated rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                {savePhase === "Done!" ? (
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                ) : (
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                )}
+                <span className="text-sm font-medium text-foreground">{savePhase}</span>
+              </div>
+              <Progress
+                value={
+                  savePhase === "Setting up voice..." ? 33 :
+                  savePhase === "Saving configuration..." ? 66 :
+                  savePhase === "Done!" ? 100 : 0
+                }
+                className="h-2"
+              />
+            </div>
+          )}
 
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setStep(1)}>
+            <Button variant="outline" onClick={() => setStep(1)} disabled={saving}>
               <ArrowLeft className="mr-2 h-4 w-4" /> {t.backBtn}
             </Button>
             <Button onClick={handleSaveAgent} disabled={saving} className="flex-1" size="lg">
