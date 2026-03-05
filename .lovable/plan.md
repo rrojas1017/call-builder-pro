@@ -1,25 +1,25 @@
 
 
-# Fix: "retell_agent_id not set on agent spec" for Appendify AI Educator
+# Fix: Hang-up Not Actually Ending the Call
 
 ## Problem
-Jason Fine's **"Appendify AI Educator"** agent (persona: Dex) was created but never provisioned with a telephony backend. It has `retell_agent_id = null` and `voice_id = null`. When he tries to run a test in University, `run-test-run` throws the error shown in the screenshot.
+The logs confirm: when you clicked "Stop" for call `call_347af24b8f0e42408cc4893536b`, the `stop-call` function hit Retell's `POST /v2/end-call/{call_id}` and got a **404**. The function treated 404 as "already ended" and returned `{ success: true }` to the UI — but the call was still active and ran for another ~40 seconds until it ended naturally.
 
 ## Root Cause
-The agent was likely created before the wizard auto-provisioning was added, or the provisioning step failed silently. All other agents in the org have valid retell_agent_ids.
+Two issues in `supabase/functions/stop-call/index.ts`:
 
-## Fix (Two Parts)
+1. **404 is treated as success** — the function logs "Call already ended" and returns `{ success: true }`, but 404 from Retell can mean the call ID wasn't found in their system (not that it ended). The call continues on the telephony side.
+2. **No retry or fallback** — if the primary endpoint fails, nothing else is tried.
 
-### Part 1: Immediate — Provision the missing agent now
-Invoke `bulk-sync-retell-agents` which already handles exactly this case: it finds `agent_specs` where `retell_agent_id IS NULL`, creates the LLM + agent on Retell, and updates the DB. This will provision "Appendify AI Educator" with a default voice since `voice_id` is null.
+## Fix
 
-### Part 2: Preventive — Auto-provision in `run-test-run` when missing
-Update `supabase/functions/run-test-run/index.ts` to detect when `retell_agent_id` is null and auto-provision via `manage-retell-agent` before proceeding, instead of throwing an error. This prevents future agents from hitting this wall.
+### File: `supabase/functions/stop-call/index.ts`
 
-**File: `supabase/functions/run-test-run/index.ts`** (~line 113-114)
-- Replace the hard throw with a call to `manage-retell-agent` (action: "create") using the spec's voice/language/name
-- Save the returned `agent_id` back to `agent_specs`
-- Continue with the test run using the newly created agent
+1. **Add retry with delay** — If the first `end-call` returns 404, wait 1 second and retry once (Retell can have propagation delays).
+2. **Add `DELETE /v2/delete-call/{call_id}` as fallback** — If `end-call` still returns 404, try the delete endpoint which forcefully removes the call.
+3. **Return actual status to client** — Instead of always returning `{ success: true }`, include whether the call was actually terminated vs. not found, so the UI can warn the user.
+4. **Log the response body on 404** for better debugging.
 
-This is a ~15-line addition replacing the 1-line throw, using the same provisioning pattern as the creation wizard.
+### Client-side (no changes needed)
+The UI already handles the response — once we return accurate status, the existing toast will properly reflect what happened.
 
