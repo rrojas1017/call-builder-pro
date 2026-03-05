@@ -41,12 +41,27 @@ function buildPostCallAnalysisFields(mustCollectFields?: unknown): Array<{ name:
   return fields;
 }
 
+/** Map short language codes to Retell-accepted locale codes */
+function toRetellLanguage(lang?: string): string {
+  if (!lang) return "en-US";
+  const map: Record<string, string> = {
+    en: "en-US", es: "es-419", fr: "fr-FR", pt: "pt-BR",
+    de: "de-DE", it: "it-IT", ja: "ja-JP", ko: "ko-KR",
+    zh: "zh-CN", hi: "hi-IN", ar: "ar-SA", ru: "ru-RU",
+    nl: "nl-NL", pl: "pl-PL", tr: "tr-TR", vi: "vi-VN",
+  };
+  if (map[lang]) return map[lang];
+  // Already a valid locale like "en-US"
+  if (lang.includes("-")) return lang;
+  return "en-US";
+}
+
 function buildAgentBody(config: Record<string, any>, webhookUrl: string): Record<string, unknown> {
   const voiceId = config.voice_id || "11labs-Adrian";
   const body: Record<string, unknown> = {
     agent_name: config.agent_name || "Appendify Agent",
     voice_id: voiceId,
-    language: config.language || "en-US",
+    language: toRetellLanguage(config.language),
     webhook_url: webhookUrl,
     // Enhanced Retell features
     normalize_for_speech: true,
