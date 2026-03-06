@@ -158,7 +158,8 @@ RULES:
 - NEVER re-ask for information the caller already provided earlier in the call.
 - If you already mentioned the recording disclosure in your opening, do NOT repeat it.
 - PACING: Do NOT rapid-fire through questions. After each answer, pause and acknowledge naturally ("Got it", "That helps", "Okay, great") before moving to the next question. When shifting topics (e.g., from personal info to income), use a brief transition like "Alright, just a couple more things..." to signal the change.
-- If the caller gives a detailed answer or shares something personal, react to it briefly before continuing — do not immediately jump to the next field.`;
+- If the caller gives a detailed answer or shares something personal, react to it briefly before continuing — do not immediately jump to the next field.
+- ONE QUESTION PER TURN: Never ask more than one question in a single response. Ask one thing, then STOP and wait for the caller to answer before continuing.`;
 
   if (resolvedOpeningLine) {
     const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "(caller's name — ask if unknown)";
