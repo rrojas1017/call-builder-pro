@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen, ArrowUp, ArrowDown, Minus, History, StopCircle, GraduationCap } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen, ArrowUp, ArrowDown, Minus, History, StopCircle, GraduationCap, RotateCcw, Clock, Trophy, TrendingUp, Zap } from "lucide-react";
 import LiveCallMonitor from "@/components/LiveCallMonitor";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
@@ -35,7 +36,7 @@ interface TestContact {
 }
 
 interface TrendPoint {
-  date: string;
+  label: string;
   humanness: number | null;
   naturalness: number | null;
 }
@@ -64,6 +65,48 @@ function normalizePhone(raw: string): string {
   return `+${digits}`;
 }
 
+const PHONE_STORAGE_KEY = "university_last_phone";
+
+interface GraduationLevel {
+  label: string;
+  min: number;
+  max: number;
+  color: string;
+  bgColor: string;
+  icon: React.ReactNode;
+}
+
+const GRADUATION_LEVELS: GraduationLevel[] = [
+  { label: "Training", min: 0, max: 59, color: "text-muted-foreground", bgColor: "bg-muted", icon: <GraduationCap className="h-4 w-4" /> },
+  { label: "Practicing", min: 60, max: 69, color: "text-yellow-400", bgColor: "bg-yellow-500/10", icon: <TrendingUp className="h-4 w-4" /> },
+  { label: "Proficient", min: 70, max: 79, color: "text-blue-400", bgColor: "bg-blue-500/10", icon: <Zap className="h-4 w-4" /> },
+  { label: "Advanced", min: 80, max: 89, color: "text-green-400", bgColor: "bg-green-500/10", icon: <Trophy className="h-4 w-4" /> },
+  { label: "Graduated", min: 90, max: 100, color: "text-primary", bgColor: "bg-primary/10", icon: <GraduationCap className="h-4 w-4" /> },
+];
+
+function getGraduationLevel(avgScore: number | null): GraduationLevel {
+  if (avgScore == null) return GRADUATION_LEVELS[0];
+  return GRADUATION_LEVELS.find(l => avgScore >= l.min && avgScore <= l.max) || GRADUATION_LEVELS[0];
+}
+
+function getProgressToNext(avgScore: number | null): { percent: number; nextLevel: string | null } {
+  if (avgScore == null) return { percent: 0, nextLevel: GRADUATION_LEVELS[1].label };
+  const currentIdx = GRADUATION_LEVELS.findIndex(l => avgScore >= l.min && avgScore <= l.max);
+  if (currentIdx === GRADUATION_LEVELS.length - 1) return { percent: 100, nextLevel: null };
+  const current = GRADUATION_LEVELS[currentIdx];
+  const next = GRADUATION_LEVELS[currentIdx + 1];
+  const range = current.max - current.min + 1;
+  const progress = ((avgScore - current.min) / range) * 100;
+  return { percent: Math.min(100, Math.max(0, progress)), nextLevel: next.label };
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds == null) return "—";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 export default function UniversityPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -71,7 +114,7 @@ export default function UniversityPage() {
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentId, setAgentId] = useState<string>(searchParams.get("agent") || "");
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(() => localStorage.getItem(PHONE_STORAGE_KEY) || "");
   const [running, setRunning] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [contact, setContact] = useState<TestContact | null>(null);
@@ -90,6 +133,30 @@ export default function UniversityPage() {
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [appliedRefreshKey, setAppliedRefreshKey] = useState(0);
   const resultRef = useRef<HTMLDivElement>(null);
+
+  // Computed stats from history
+  const stats = useMemo(() => {
+    const evaluated = history.filter(h => h.evaluation?.humanness_score != null);
+    const last10 = evaluated.slice(0, 10);
+    const avgHumanness = last10.length > 0
+      ? Math.round(last10.reduce((sum, h) => sum + (h.evaluation?.humanness_score || 0), 0) / last10.length)
+      : null;
+    const bestScore = evaluated.length > 0
+      ? Math.max(...evaluated.map(h => h.evaluation?.humanness_score || 0))
+      : null;
+    return {
+      totalCalls: history.length,
+      avgHumanness,
+      bestScore,
+      level: getGraduationLevel(avgHumanness),
+      progress: getProgressToNext(avgHumanness),
+    };
+  }, [history]);
+
+  // Save phone to localStorage
+  useEffect(() => {
+    if (phone.trim()) localStorage.setItem(PHONE_STORAGE_KEY, phone.trim());
+  }, [phone]);
 
   // Fetch applied improvements from DB
   const selectedProjectId = agentId;
@@ -194,9 +261,7 @@ export default function UniversityPage() {
 
     const init = async () => {
       const rows = await loadHistory();
-      // Auto-load last result if no active test running and no contact loaded
       if (!running && !contact && rows?.length) {
-        // If testRunId is in URL, try to find that contact
         const urlTestRunId = searchParams.get("testRunId");
         if (urlTestRunId) {
           const match = rows.find((r) => r.test_run_id === urlTestRunId);
@@ -226,8 +291,8 @@ export default function UniversityPage() {
         .order("created_at", { ascending: true })
         .limit(20);
 
-      const points: TrendPoint[] = (data || []).map((row: any) => ({
-        date: new Date(row.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      const points: TrendPoint[] = (data || []).map((row: any, idx: number) => ({
+        label: `Call ${idx + 1}`,
         humanness: row.evaluation?.humanness_score ?? null,
         naturalness: row.evaluation?.naturalness_score ?? null,
       }));
@@ -235,7 +300,7 @@ export default function UniversityPage() {
       setTrendLoading(false);
     };
     loadTrend();
-  }, [agentId, contact]); // re-fetch after a new test completes
+  }, [agentId, contact]);
 
   // Realtime subscription for test contact updates
   useEffect(() => {
@@ -259,7 +324,6 @@ export default function UniversityPage() {
         if (callFinished) {
           setRunning(false);
 
-          // If evaluation is present, stop polling immediately
           if (data.evaluation != null) {
             if (intervalId) { clearInterval(intervalId); intervalId = null; }
             if (graceTimeoutId) { clearTimeout(graceTimeoutId); graceTimeoutId = null; }
@@ -267,17 +331,14 @@ export default function UniversityPage() {
             return;
           }
 
-          // Start grace period: keep polling up to 60s for evaluation
           if (!callDoneAt) {
             callDoneAt = Date.now();
             graceTimeoutId = setTimeout(() => {
-              // Force stop after 60s even without evaluation
               if (intervalId) { clearInterval(intervalId); intervalId = null; }
               loadHistory();
             }, 60000);
           }
 
-          // If we've been waiting > 60s, stop
           if (Date.now() - callDoneAt > 60000) {
             if (intervalId) { clearInterval(intervalId); intervalId = null; }
             if (graceTimeoutId) { clearTimeout(graceTimeoutId); graceTimeoutId = null; }
@@ -356,6 +417,11 @@ export default function UniversityPage() {
     }
   };
 
+  const handleQuickRetest = () => {
+    if (!phone.trim() || !agentId || running) return;
+    handleRunTest();
+  };
+
   const handleApplyFix = async (improvement: any) => {
     try {
       setApplyingFixId(improvement.field);
@@ -401,11 +467,52 @@ export default function UniversityPage() {
   const hasTrendData = trendData.some((p) => p.humanness != null);
 
   return (
-    <div className="p-8 max-w-2xl mx-auto space-y-8">
+    <div className="p-8 max-w-4xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">University</h1>
         <p className="text-muted-foreground mt-1">Train, test, and graduate your agents — measure humanness and refine performance until they're production-ready.</p>
       </div>
+
+      {/* Graduation Badge */}
+      {agentId && history.length > 0 && (
+        <div className={`rounded-xl border p-5 ${stats.level.bgColor} border-border`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-lg ${stats.level.bgColor} ${stats.level.color}`}>
+                {stats.level.icon}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-lg font-bold ${stats.level.color}`}>{stats.level.label}</span>
+                  {stats.avgHumanness != null && (
+                    <span className="text-sm text-muted-foreground">({stats.avgHumanness} avg)</span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {stats.progress.nextLevel
+                    ? `${stats.progress.nextLevel} requires ${GRADUATION_LEVELS[GRADUATION_LEVELS.findIndex(l => l.label === stats.progress.nextLevel)]?.min || "—"}+ avg humanness`
+                    : "Maximum level achieved!"}
+                </p>
+              </div>
+            </div>
+          </div>
+          {stats.progress.nextLevel && (
+            <div className="mt-3">
+              <Progress value={stats.progress.percent} className="h-2" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Summary Stats */}
+      {agentId && history.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard icon={<Phone className="h-4 w-4" />} label="Total Calls" value={String(stats.totalCalls)} />
+          <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Avg Humanness (10)" value={stats.avgHumanness != null ? String(stats.avgHumanness) : "—"} />
+          <StatCard icon={<Trophy className="h-4 w-4" />} label="Best Score" value={stats.bestScore != null ? String(stats.bestScore) : "—"} />
+          <StatCard icon={<GraduationCap className="h-4 w-4" />} label="Current Level" value={stats.level.label} />
+        </div>
+      )}
 
       {/* Form */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
@@ -488,7 +595,7 @@ export default function UniversityPage() {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
                 <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
                 <Tooltip
                   contentStyle={{
@@ -524,6 +631,8 @@ export default function UniversityPage() {
           applyingFixId={applyingFixId}
           appliedFixes={appliedFixes}
           onApplyFix={handleApplyFix}
+          onQuickRetest={handleQuickRetest}
+          canRetest={!running && !!phone.trim() && !!agentId}
         />
         </div>
       )}
@@ -542,6 +651,7 @@ export default function UniversityPage() {
                 <TableRow>
                   <TableHead className="text-xs">Date</TableHead>
                   <TableHead className="text-xs">Outcome</TableHead>
+                  <TableHead className="text-xs text-center">Duration</TableHead>
                   <TableHead className="text-xs text-center">Overall</TableHead>
                   <TableHead className="text-xs text-center">Humanness</TableHead>
                   <TableHead className="text-xs text-center">Naturalness</TableHead>
@@ -549,7 +659,7 @@ export default function UniversityPage() {
               </TableHeader>
               <TableBody>
                 {history.map((item, idx) => {
-                  const prev = history[idx + 1]; // next in array = previous chronologically
+                  const prev = history[idx + 1];
                   const isSelected = selectedHistoryId === item.id;
                   return (
                     <TableRow
@@ -566,6 +676,9 @@ export default function UniversityPage() {
                         <Badge variant="outline" className="text-xs">
                           {item.outcome || item.status}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-center text-xs text-muted-foreground font-mono">
+                        {formatDuration(item.duration_seconds)}
                       </TableCell>
                       <TableCell className="text-center">
                         <ScoreWithDelta score={item.evaluation?.overall_score} prevScore={prev?.evaluation?.overall_score} />
@@ -589,6 +702,18 @@ export default function UniversityPage() {
 }
 
 // --- Sub-components ---
+
+function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="surface-elevated rounded-xl p-4 flex items-center gap-3">
+      <div className="text-primary">{icon}</div>
+      <div>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-lg font-bold text-foreground">{value}</p>
+      </div>
+    </div>
+  );
+}
 
 function ScoreWithDelta({ score, prevScore }: { score?: number; prevScore?: number }) {
   if (score == null) return <span className="text-xs text-muted-foreground">—</span>;
@@ -614,6 +739,8 @@ function ResultCard({
   applyingFixId,
   appliedFixes,
   onApplyFix,
+  onQuickRetest,
+  canRetest,
 }: {
   contact: TestContact;
   isDone: boolean | null;
@@ -621,6 +748,8 @@ function ResultCard({
   applyingFixId: string | null;
   appliedFixes: string[];
   onApplyFix: (imp: any) => void;
+  onQuickRetest: () => void;
+  canRetest: boolean;
 }) {
   return (
     <div className="surface-elevated rounded-xl p-6 space-y-4">
@@ -629,7 +758,14 @@ function ResultCard({
           <Phone className="h-4 w-4 text-primary" />
           Result
         </h2>
-        <StatusBadge status={contact.status} />
+        <div className="flex items-center gap-2">
+          {isDone && canRetest && (
+            <Button variant="outline" size="sm" onClick={onQuickRetest}>
+              <RotateCcw className="mr-1 h-3 w-3" /> Re-test
+            </Button>
+          )}
+          <StatusBadge status={contact.status} />
+        </div>
       </div>
 
       {contact.error && (
@@ -673,7 +809,6 @@ function ResultCard({
             <ScoreCard label="Naturalness" score={contact.evaluation.naturalness_score} />
           </div>
 
-          {/* Voice Recommendation */}
           {contact.evaluation.voice_recommendation && (
             <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
               <p className="text-xs font-medium text-primary flex items-center gap-1">🎙️ Voice Recommendation</p>
