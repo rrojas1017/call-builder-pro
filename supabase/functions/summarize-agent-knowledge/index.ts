@@ -10,7 +10,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { project_id } = await req.json();
+    const { project_id, caller_context } = await req.json();
     if (!project_id) throw new Error("project_id required");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -40,19 +40,47 @@ serve(async (req) => {
 
     if (error) throw error;
 
-    if (!entries || entries.length === 0) {
+    // Format knowledge entries
+    const rawText = (entries || [])
+      .map((e: any) => `[${e.category}] ${e.content}`)
+      .join("\n");
+
+    // Fetch live API data
+    let apiData = "";
+    try {
+      const apiResp = await fetch(`${supabaseUrl}/functions/v1/fetch-api-knowledge`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${supabaseKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ project_id, caller_context }),
+      });
+      if (apiResp.ok) {
+        const apiResult = await apiResp.json();
+        apiData = apiResult.api_data || "";
+        if (apiData) {
+          console.log(`API knowledge fetched: ${apiResult.endpoints_queried} endpoints`);
+        }
+      } else {
+        const errText = await apiResp.text();
+        console.warn("fetch-api-knowledge failed:", errText);
+      }
+    } catch (apiErr: any) {
+      console.warn("fetch-api-knowledge error:", apiErr.message);
+    }
+
+    // Combine knowledge + API data
+    const combinedText = [rawText, apiData].filter(Boolean).join("\n");
+    const rawLength = combinedText.length;
+
+    if (!combinedText.trim()) {
       return new Response(JSON.stringify({
         briefing: "No additional knowledge configured.",
         entries_count: 0,
         characters_reduced: 0,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-
-    // Format entries for summarization
-    const rawText = entries
-      .map((e: any) => `[${e.category}] ${e.content}`)
-      .join("\n");
-    const rawLength = rawText.length;
 
     // Call Lovable AI (Gemini Flash) for compression
     try {
@@ -69,7 +97,7 @@ serve(async (req) => {
               role: "system",
               content: "You are a knowledge compressor for a phone sales agent. Compress the following knowledge entries into a single briefing paragraph of MAXIMUM 500 characters. Include only the most critical business rules, product details, and objection handling tips. Return ONLY the briefing text, nothing else."
             },
-            { role: "user", content: rawText },
+            { role: "user", content: combinedText },
           ],
         }),
       });
@@ -77,11 +105,10 @@ serve(async (req) => {
       if (!aiResp.ok) {
         const errText = await aiResp.text();
         console.error("AI gateway error:", aiResp.status, errText);
-        // Fallback: return truncated raw knowledge
-        const fallback = rawText.substring(0, 500);
+        const fallback = combinedText.substring(0, 500);
         return new Response(JSON.stringify({
           briefing: fallback,
-          entries_count: entries.length,
+          entries_count: (entries || []).length,
           characters_reduced: rawLength - fallback.length,
           fallback: true,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -90,26 +117,24 @@ serve(async (req) => {
       const aiData = await aiResp.json();
       let briefing = aiData.choices?.[0]?.message?.content?.trim() || "";
 
-      // Guard: truncate if AI exceeds 500 chars
       if (briefing.length > 500) {
         briefing = briefing.substring(0, 500);
       }
 
-      console.log(`Knowledge compressed: ${entries.length} entries, ${rawLength} chars → ${briefing.length} chars`);
+      console.log(`Knowledge compressed: ${(entries || []).length} entries, ${rawLength} chars → ${briefing.length} chars`);
 
       return new Response(JSON.stringify({
         briefing,
-        entries_count: entries.length,
+        entries_count: (entries || []).length,
         characters_reduced: rawLength - briefing.length,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     } catch (aiErr: any) {
       console.error("AI summarization failed:", aiErr.message);
-      // Fallback: truncated raw knowledge
-      const fallback = rawText.substring(0, 500);
+      const fallback = combinedText.substring(0, 500);
       return new Response(JSON.stringify({
         briefing: fallback,
-        entries_count: entries.length,
+        entries_count: (entries || []).length,
         characters_reduced: rawLength - fallback.length,
         fallback: true,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
