@@ -254,6 +254,169 @@ VOICE TUNING RECOMMENDATIONS:
       await supabase.from("test_run_contacts").update({ evaluation }).eq("id", test_run_contact_id);
     }
 
+    // ── Verbal Training Feedback Extraction (test calls only) ──
+    if (test_run_contact_id && call.transcript) {
+      try {
+        console.log("Extracting verbal training feedback from test call transcript");
+        const verbalPrompt = `You are a Training Feedback Extractor. Analyze this phone call transcript between a human tester and an AI agent.
+
+The human tester may have given explicit verbal coaching/training instructions to the AI agent during the call. Look for phrases like:
+- "You should..." / "You need to..."
+- "Don't say..." / "Don't ask..."
+- "Try saying..." / "Instead of...say..."
+- "Next time..." / "In the future..."
+- "Be more/less..." (e.g., "be more casual", "be less pushy")
+- "Slow down" / "Speed up" / "Talk faster/slower"
+- "When someone asks about X, say Y"
+- "Remember to..." / "Make sure you..."
+- "That was wrong" / "That's not right" / "Actually..."
+- Direct corrections of facts or product knowledge
+
+Map each instruction to the most appropriate agent_spec field:
+- Tone/personality/style feedback → "tone_style"
+- Greeting or intro changes → "opening_line"  
+- "Say X instead of Y" for general conversation → "business_rules"
+- "Don't ask about X" / "Ask about Y first" → "must_collect_fields"
+- "Be more/less..." personality traits → "humanization_notes"
+- Speed/pacing feedback → "speaking_speed"
+- Product knowledge corrections → "agent_knowledge"
+- Pronunciation corrections → "pronunciation_guide"
+
+Only extract EXPLICIT training instructions from the human caller. Do NOT extract the AI agent's own statements or general conversation. If there are no training instructions, return an empty array.
+
+TRANSCRIPT:
+${call.transcript}`;
+
+        const verbalResponse = await callAI({
+          provider: "gemini",
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "user", content: verbalPrompt },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "extract_training_feedback",
+              description: "Return verbal training feedback found in the transcript.",
+              parameters: {
+                type: "object",
+                properties: {
+                  training_feedback: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        instruction: { type: "string", description: "The exact or paraphrased training instruction from the caller" },
+                        target_field: { type: "string", description: "The agent_spec field this maps to" },
+                        suggested_change: { type: "string", description: "The specific change to make to the agent spec" },
+                        confidence: { type: "string", enum: ["high", "medium", "low"] },
+                      },
+                      required: ["instruction", "target_field", "suggested_change", "confidence"],
+                    },
+                  },
+                },
+                required: ["training_feedback"],
+                additionalProperties: false,
+              },
+            },
+          }],
+          tool_choice: { type: "function", function: { name: "extract_training_feedback" } },
+          max_tokens: 4000,
+        });
+
+        const verbalResult = verbalResponse.tool_calls?.[0]?.arguments;
+        const feedbackItems = verbalResult?.training_feedback || [];
+
+        if (feedbackItems.length > 0) {
+          console.log(`Found ${feedbackItems.length} verbal training feedback items`);
+
+          // Auto-apply high-confidence feedback
+          const highConfidence = feedbackItems.filter((f: any) => f.confidence === "high");
+          const applied: any[] = [];
+
+          for (const fb of highConfidence) {
+            try {
+              // For agent_knowledge, insert directly
+              if (fb.target_field === "agent_knowledge") {
+                await supabase.from("agent_knowledge").insert({
+                  project_id: call.project_id,
+                  content: fb.suggested_change,
+                  category: "verbal_training",
+                  source_type: "verbal_training",
+                });
+                applied.push({ ...fb, auto_applied: true });
+                console.log(`Verbal training: added knowledge entry`);
+                continue;
+              }
+
+              // For pronunciation_guide, merge into existing array
+              if (fb.target_field === "pronunciation_guide") {
+                const currentGuide: any[] = Array.isArray(spec.pronunciation_guide) ? spec.pronunciation_guide : [];
+                // Try to parse suggested_change as JSON, otherwise create entry
+                let newEntry: any;
+                try {
+                  newEntry = JSON.parse(fb.suggested_change);
+                } catch {
+                  newEntry = { word: fb.suggested_change, pronunciation: fb.suggested_change };
+                }
+                const merged = [...currentGuide, newEntry];
+                await supabase.from("agent_specs").update({ pronunciation_guide: merged }).eq("id", spec.id);
+                applied.push({ ...fb, auto_applied: true });
+                console.log(`Verbal training: updated pronunciation_guide`);
+                continue;
+              }
+
+              // For other fields, use apply-improvement
+              const applyResp = await fetch(`${supabaseUrl}/functions/v1/apply-improvement`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${supabaseKey}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  project_id: call.project_id,
+                  improvement: {
+                    field: fb.target_field,
+                    suggested_value: fb.suggested_change,
+                    reason: `[VERBAL-TRAINING] ${fb.instruction}`,
+                    original_key: `verbal::${fb.target_field}::${fb.suggested_change}`.slice(0, 200),
+                  },
+                }),
+              });
+              if (applyResp.ok) {
+                applied.push({ ...fb, auto_applied: true });
+                console.log(`Verbal training: applied ${fb.target_field}`);
+              } else {
+                applied.push({ ...fb, auto_applied: false });
+                console.error(`Verbal training: failed to apply ${fb.target_field}:`, await applyResp.text());
+              }
+            } catch (e) {
+              applied.push({ ...fb, auto_applied: false });
+              console.error(`Verbal training error for ${fb.target_field}:`, e);
+            }
+          }
+
+          // Medium/low confidence items are stored but not auto-applied
+          const notApplied = feedbackItems
+            .filter((f: any) => f.confidence !== "high")
+            .map((f: any) => ({ ...f, auto_applied: false }));
+
+          // Merge into evaluation and update
+          evaluation.verbal_training_feedback = [...applied, ...notApplied];
+          await supabase.from("calls").update({ evaluation }).eq("id", call_id);
+          if (test_run_contact_id) {
+            await supabase.from("test_run_contacts").update({ evaluation }).eq("id", test_run_contact_id);
+          }
+
+          console.log(`Verbal training: ${applied.filter(a => a.auto_applied).length} auto-applied, ${notApplied.length} stored for review`);
+        } else {
+          console.log("No verbal training feedback found in transcript");
+        }
+      } catch (e) {
+        console.error("Failed to extract verbal training feedback:", e);
+      }
+    }
+
     // ── Update score_snapshots ──
     try {
       const voiceId = spec.voice_id || null;

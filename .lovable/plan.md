@@ -1,57 +1,48 @@
 
 
-# Verbal Training Feedback Extraction from Test Calls
+# Simplify the Agent Creation Wizard
 
-## What We're Building
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-Two things:
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-1. **A "verbal feedback detector"** added to the `evaluate-call` edge function that specifically scans test call transcripts for explicit training instructions from the caller (e.g., "you should say X instead", "try being more casual", "don't mention pricing so early") and auto-applies them as agent improvements.
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-2. **A "How to Train Your Agent" instruction panel** in the Test Lab UI that teaches users how to verbally coach the agent during test calls.
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-## Changes
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-### 1. Update `evaluate-call` Edge Function (~lines 440-550)
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-Add a new section after the existing evaluation that runs **only for test calls** (`test_run_contact_id` is present). This section:
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-- Sends the transcript to AI with a focused prompt: "Extract any explicit verbal training feedback the caller gave the AI agent. Look for phrases like 'you should...', 'don't say...', 'try saying...', 'next time...', 'instead of...', 'be more/less...'"
-- Uses tool calling to return structured output: `{ training_feedback: [{ instruction: string, target_field: string, suggested_change: string, confidence: "high"|"medium"|"low" }] }`
-- For high-confidence feedback, auto-applies via `apply-improvement` (same as critical fixes)
-- For medium/low confidence, stores them in the evaluation result so users can review and apply manually
-- Tags applied improvements with `source: "verbal_training"` for tracking
+## Plan
 
-The AI prompt maps verbal instructions to spec fields:
-- Tone/personality feedback → `tone_style`
-- "Say X instead of Y" → `opening_line` or `business_rules`
-- "Don't ask about X" / "Ask about Y" → `must_collect_fields`
-- "Be more/less..." → `humanization_notes`
-- Product knowledge corrections → `agent_knowledge` entries
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
 
-### 2. Add Training Instructions Panel to `TestLabSection.tsx`
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
 
-Add a collapsible "How to Train Your Agent" card above the test call form. Contains:
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
 
-- A brief intro: "During test calls, you can verbally coach your agent. The system will extract your feedback and apply it automatically."
-- Bullet-pointed examples of what to say:
-  - "You should be more casual when greeting people"
-  - "Don't ask about their income so early in the conversation"
-  - "When someone asks about pricing, mention the free trial first"
-  - "Try saying 'I'd love to help' instead of 'I can assist you'"
-  - "You need to slow down between questions"
-- A tip: "Speak naturally — the AI understands context. Just tell the agent what to do differently as if you were coaching a new employee."
-- An icon badge: "Verbal Training Enabled" indicator
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
 
-### 3. Show Extracted Feedback in `TestResultsModal.tsx`
-
-Add a "Verbal Training Feedback" section in the test results that shows:
-- Each extracted instruction with its target field
-- Whether it was auto-applied or needs manual approval
-- An "Apply" button for non-auto-applied feedback
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
 ### Files Changed
-- `supabase/functions/evaluate-call/index.ts` — add verbal feedback extraction for test calls
-- `src/components/TestLabSection.tsx` — add training instructions panel
-- `src/components/TestResultsModal.tsx` — show extracted verbal feedback section
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 
