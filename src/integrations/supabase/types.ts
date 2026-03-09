@@ -131,6 +131,8 @@ export type Database = {
           retell_agent_id: string | null
           retry_policy: Json | null
           sms_enabled: boolean
+          sms_mode: string
+          sms_script: string | null
           speaking_speed: number | null
           success_definition: string | null
           temperature: number | null
@@ -169,6 +171,8 @@ export type Database = {
           retell_agent_id?: string | null
           retry_policy?: Json | null
           sms_enabled?: boolean
+          sms_mode?: string
+          sms_script?: string | null
           speaking_speed?: number | null
           success_definition?: string | null
           temperature?: number | null
@@ -207,6 +211,8 @@ export type Database = {
           retell_agent_id?: string | null
           retry_policy?: Json | null
           sms_enabled?: boolean
+          sms_mode?: string
+          sms_script?: string | null
           speaking_speed?: number | null
           success_definition?: string | null
           temperature?: number | null

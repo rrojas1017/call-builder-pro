@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScriptBuilder } from "@/components/ScriptBuilder";
 import { SectionHelp } from "@/components/SectionHelp";
 
@@ -103,6 +104,8 @@ export default function EditAgentPage() {
   const [interruptionThreshold, setInterruptionThreshold] = useState(100);
   const [businessHours, setBusinessHours] = useState({ days: ["mon", "tue", "wed", "thu", "fri"], start: "09:00", end: "17:00", timezone: "America/New_York" });
   const [smsEnabled, setSmsEnabled] = useState(false);
+  const [smsMode, setSmsMode] = useState<"ai_generated" | "custom_script">("ai_generated");
+  const [smsScript, setSmsScript] = useState("");
 
   // AI Optimization
   const { optimizeAgent } = useRetellAgent(retellAgentId || null);
@@ -155,6 +158,8 @@ export default function EditAgentPage() {
         setTemperature(Number(spec.temperature) || 0.7);
         setInterruptionThreshold(spec.interruption_threshold ?? 100);
         setSmsEnabled(spec.sms_enabled ?? false);
+        setSmsMode((spec as any).sms_mode || "ai_generated");
+        setSmsScript((spec as any).sms_script || "");
 
         // Parse JSON fields
         const mcf = spec.must_collect_fields;
@@ -268,6 +273,8 @@ export default function EditAgentPage() {
           interruption_threshold: interruptionThreshold,
           business_hours: businessHours,
           sms_enabled: smsEnabled,
+          sms_mode: smsMode,
+          sms_script: smsScript || null,
         } as any).eq("project_id", id),
       ]);
 
@@ -885,6 +892,36 @@ export default function EditAgentPage() {
           </div>
           <Switch checked={smsEnabled} onCheckedChange={setSmsEnabled} />
         </div>
+
+        {smsEnabled && (
+          <div className="space-y-4 pt-2 border-t border-border">
+            <RadioGroup value={smsMode} onValueChange={(v) => setSmsMode(v as "ai_generated" | "custom_script")} className="space-y-3">
+              <div className="flex items-start gap-3">
+                <RadioGroupItem value="ai_generated" id="sms-ai" className="mt-0.5" />
+                <div>
+                  <Label htmlFor="sms-ai" className="font-medium cursor-pointer">AI-Generated Follow-up</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">The AI will craft a personalized SMS based on the call transcript and outcome — no template needed.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <RadioGroupItem value="custom_script" id="sms-custom" className="mt-0.5" />
+                <div className="flex-1">
+                  <Label htmlFor="sms-custom" className="font-medium cursor-pointer">Custom Script</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">Write your own SMS template with variables like {"{{name}}"}, {"{{outcome}}"}, {"{{state}}"}.</p>
+                </div>
+              </div>
+            </RadioGroup>
+
+            {smsMode === "custom_script" && (
+              <Textarea
+                value={smsScript}
+                onChange={(e) => setSmsScript(e.target.value)}
+                rows={4}
+                placeholder={`Hi {{name}}, thanks for chatting with us today! Based on our conversation, we'd love to help you with your {{coverage_type}} needs. Reply YES to continue or call us back at 555-123-4567.`}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Voicemail Message */}

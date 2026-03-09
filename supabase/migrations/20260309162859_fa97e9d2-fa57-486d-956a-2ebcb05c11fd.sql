@@ -1,0 +1,1 @@
+ALTER TABLE agent_specs ADD COLUMN sms_mode text NOT NULL DEFAULT 'ai_generated', ADD COLUMN sms_script text;

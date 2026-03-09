@@ -1,36 +1,48 @@
 
 
-# SMS Follow-up: Add Script Configuration When Toggle is Enabled
+# Simplify the Agent Creation Wizard
 
-## What Changes
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-When the SMS Follow-up toggle is enabled, expand the section to show two options:
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-1. **Custom SMS Script** — A textarea where users write their own follow-up message template with placeholder variables (e.g., `{{name}}`, `{{outcome}}`)
-2. **AI-Generated Follow-up** — A toggle/radio that tells the system to auto-generate the SMS based on the call transcript and outcome (no manual script needed)
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-A helper note explains each mode clearly.
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-## Database Change
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-Add two new columns to `agent_specs`:
-- `sms_script` (text, nullable) — stores the custom SMS template
-- `sms_mode` (text, default `'ai_generated'`) — either `'ai_generated'` or `'custom_script'`
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-## File Changes
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-### `src/pages/EditAgentPage.tsx`
-- Add state for `smsMode` (`'ai_generated' | 'custom_script'`) and `smsScript` (string)
-- Load from `agent_specs` on fetch, save on `handleSave`
-- When `smsEnabled` is true, expand the SMS section to show:
-  - Two radio buttons: "AI-Generated" (default) and "Custom Script"
-  - If "AI-Generated": show a read-only note explaining the AI will craft a personalized follow-up from the call transcript
-  - If "Custom Script": show a textarea with placeholder guidance (e.g., `Hi {{name}}, thanks for chatting with us today...`)
+## Plan
 
-### Database Migration
-```sql
-ALTER TABLE agent_specs
-  ADD COLUMN sms_mode text NOT NULL DEFAULT 'ai_generated',
-  ADD COLUMN sms_script text;
-```
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
+
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+
+### Files Changed
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 
