@@ -1,37 +1,48 @@
 
 
-# Why Your Verbal Feedback Isn't Taking Effect
+# Simplify the Agent Creation Wizard
 
-## The Problem (Two Issues)
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-**Issue 1: Field order is wrong.** Your feedback "ask about their field/vertical first" was captured correctly — it's stored in `business_rules` and was added to `must_collect_fields`. But the merge logic **appended** it to the END of the list instead of moving it to position 1. The current order is:
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-1. "What is their biggest frustration with outreach?" ← still first
-2. "Which Appendify feature resonated most?"
-3. "Are they interested in a hands-on trial?"
-4. "What kind of work do you do..." ← your feedback, stuck at #4
-5. "Ask about business/industry before diving into features" ← duplicate, also at end
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-Since the prompt builder says "COLLECT (in order)", the agent asks about frustrations before even knowing what the person does.
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-**Issue 2: Opening line was overwritten.** You set the witty "full disclosure — I'm an AI" opener, but the auto-critical system overwrote it with a generic compliance-focused line: "Hey there! This is Dex, an AI assistant from Appendify. Just so you know, this call is being recorded..."
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-## Fix Plan
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-### 1. Fix the data immediately (database update)
-- Reorder `must_collect_fields` so "What field/vertical are you in?" is FIRST
-- Remove the duplicate "Ask about business/industry" instruction (it's redundant with the reordered field)
-- Restore the opening line to the witty version you approved
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-### 2. Fix the `apply-improvement` edge function
-- When an improvement specifies a **reorder** for an array field (like `must_collect_fields`), **replace** the array instead of merging/appending. The current `mergeArrays` function always appends new items to the end, which defeats the purpose of reordering.
-- Add a `replace_mode` flag that the evaluate-call function can set when the improvement is about field ordering rather than adding new items.
+## Plan
 
-### 3. Protect manually-set opening lines from auto-critical overwrites
-- In `evaluate-call`, before auto-applying critical fixes to `opening_line`, check if the opening line was recently set manually (via direct database update or verbal training). If so, skip the auto-critical override or flag it for review instead of auto-applying.
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
+
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
 ### Files Changed
-- **Database migration** — fix `must_collect_fields` order and restore opening line for this agent
-- **`supabase/functions/apply-improvement/index.ts`** — support replace mode for array fields
-- **`supabase/functions/evaluate-call/index.ts`** — pass replace mode for reorder improvements; protect manually-set opening lines
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 

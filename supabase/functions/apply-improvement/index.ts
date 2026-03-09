@@ -182,14 +182,22 @@ serve(async (req) => {
       // ── Array field validation & merge ──
       if (ARRAY_FIELDS.includes(field)) {
         const incomingArray = coerceToArray(parsedValue, field);
-        const existingValue = spec[field];
-        const existingArray = Array.isArray(existingValue)
-          ? existingValue
-          : (typeof existingValue === "string" ? coerceToArray(existingValue, field) : []);
+        const replaceMode = improvement.replace_mode === true;
 
-        // Merge instead of replace
-        patch[field] = mergeArrays(existingArray, incomingArray);
-        console.log(`[apply-improvement] Merged ${field}: ${existingArray.length} existing + ${incomingArray.length} incoming → ${patch[field].length} total`);
+        if (replaceMode) {
+          // Replace mode: use incoming array as-is (for reordering, etc.)
+          patch[field] = incomingArray;
+          console.log(`[apply-improvement] Replaced ${field} with ${incomingArray.length} items (replace_mode)`);
+        } else {
+          const existingValue = spec[field];
+          const existingArray = Array.isArray(existingValue)
+            ? existingValue
+            : (typeof existingValue === "string" ? coerceToArray(existingValue, field) : []);
+
+          // Merge instead of replace
+          patch[field] = mergeArrays(existingArray, incomingArray);
+          console.log(`[apply-improvement] Merged ${field}: ${existingArray.length} existing + ${incomingArray.length} incoming → ${patch[field].length} total`);
+        }
       } else {
         patch[field] = parsedValue;
       }

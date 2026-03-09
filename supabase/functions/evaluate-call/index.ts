@@ -384,6 +384,12 @@ ${call.transcript}`;
               }
 
               // For other fields, use apply-improvement
+              // Detect reorder intent from the instruction
+              const isReorder = fb.instruction?.toLowerCase().includes("first") ||
+                fb.instruction?.toLowerCase().includes("before") ||
+                fb.instruction?.toLowerCase().includes("order") ||
+                fb.instruction?.toLowerCase().includes("reorder");
+
               const applyResp = await fetch(`${supabaseUrl}/functions/v1/apply-improvement`, {
                 method: "POST",
                 headers: {
@@ -397,6 +403,7 @@ ${call.transcript}`;
                     suggested_value: fb.suggested_change,
                     reason: `[VERBAL-TRAINING] ${fb.instruction}`,
                     original_key: `verbal::${fb.target_field}::${fb.suggested_change}`.slice(0, 200),
+                    ...(isReorder ? { replace_mode: true } : {}),
                   },
                 }),
               });
@@ -687,15 +694,52 @@ ${call.transcript}`;
     }
 
     // ── Auto-apply critical-severity improvements ──
+    // Protected fields: skip auto-critical overwrites for fields that were
+    // recently set manually (verbal training or direct DB update)
+    const PROTECTED_FIELDS = ["opening_line"];
+
     if (evaluation.recommended_improvements?.length > 0) {
       try {
         const criticalFixes = evaluation.recommended_improvements.filter(
           (imp: any) => imp.severity === "critical"
         );
 
+        // Check recent improvements for protected fields to detect manual edits
+        let recentManualFields = new Set<string>();
+        try {
+          const { data: recentImps } = await supabase
+            .from("improvements")
+            .select("patch, change_summary")
+            .eq("project_id", call.project_id)
+            .order("created_at", { ascending: false })
+            .limit(10);
+
+          for (const imp of (recentImps || [])) {
+            const summary = imp.change_summary || "";
+            if (summary.includes("[VERBAL-TRAINING]") || summary.includes("[MANUAL]")) {
+              const patchKeys = imp.patch ? Object.keys(imp.patch).filter(k => k !== "version") : [];
+              patchKeys.forEach(k => recentManualFields.add(k));
+            }
+          }
+        } catch (e) {
+          console.error("Failed to check recent manual edits:", e);
+        }
+
         for (const fix of criticalFixes) {
+          // Skip auto-critical overwrites for protected fields that were manually set
+          if (PROTECTED_FIELDS.includes(fix.field) && recentManualFields.has(fix.field)) {
+            console.log(`Skipping auto-critical for "${fix.field}" — recently set manually`);
+            continue;
+          }
+
           try {
             console.log(`Auto-applying critical fix: ${fix.field} — ${fix.reason}`);
+
+            // Detect if this is a reorder request for array fields
+            const isReorder = fix.reason?.toLowerCase().includes("reorder") ||
+              fix.reason?.toLowerCase().includes("order") ||
+              fix.reason?.toLowerCase().includes("first");
+
             const applyResp = await fetch(`${supabaseUrl}/functions/v1/apply-improvement`, {
               method: "POST",
               headers: {
@@ -709,6 +753,7 @@ ${call.transcript}`;
                   suggested_value: fix.suggested_value,
                   reason: `[AUTO-CRITICAL] ${fix.reason}`,
                   original_key: `${fix.field}::${fix.suggested_value}`.slice(0, 200),
+                  ...(isReorder ? { replace_mode: true } : {}),
                 },
               }),
             });
