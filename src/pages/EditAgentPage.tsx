@@ -788,7 +788,7 @@ export default function EditAgentPage() {
       {/* Transfer */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Phone className="h-4 w-4 text-primary" /> Call Ending
+          <Phone className="h-4 w-4 text-primary" /> Call Ending <SectionHelp section="call_ending" />
         </h3>
         <div className="grid gap-2 sm:grid-cols-2">
           <button
