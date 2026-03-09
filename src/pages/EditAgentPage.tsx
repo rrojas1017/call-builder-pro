@@ -898,7 +898,7 @@ export default function EditAgentPage() {
 
       {/* Voicemail Message */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
-        <h3 className="font-semibold text-foreground">Voicemail Message</h3>
+        <h3 className="font-semibold text-foreground flex items-center gap-1.5">Voicemail Message <SectionHelp section="voicemail" /></h3>
         <p className="text-xs text-muted-foreground">If a voicemail is detected, the agent will leave this message instead of hanging up. Leave blank to just disconnect.</p>
         <Textarea
           value={voicemailMessage}
