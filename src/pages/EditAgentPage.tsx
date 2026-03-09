@@ -600,7 +600,7 @@ export default function EditAgentPage() {
       {/* Qualification Rules */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Shield className="h-4 w-4 text-primary" /> Qualification Rules
+          <Shield className="h-4 w-4 text-primary" /> Qualification Rules <SectionHelp section="qualification_rules" />
         </h3>
         <div className="space-y-2">
           <Label>Qualification Rules (JSON)</Label>
