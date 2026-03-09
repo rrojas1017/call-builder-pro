@@ -610,21 +610,31 @@ export default function CallsPage() {
                   className="w-full h-10"
                   onRateChange={(e) => setPlaybackRate((e.target as HTMLAudioElement).playbackRate)}
                 />
-                <div className="flex gap-1">
-                  {[1, 1.25, 1.5, 2].map(rate => (
-                    <Button
-                      key={rate}
-                      variant={playbackRate === rate ? "default" : "outline"}
-                      size="sm"
-                      className="text-xs px-2 h-7"
-                      onClick={() => {
-                        const audio = document.querySelector("audio");
-                        if (audio) { audio.playbackRate = rate; setPlaybackRate(rate); }
-                      }}
-                    >
-                      {rate}x
-                    </Button>
-                  ))}
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    {[1, 1.25, 1.5, 2].map(rate => (
+                      <Button
+                        key={rate}
+                        variant={playbackRate === rate ? "default" : "outline"}
+                        size="sm"
+                        className="text-xs px-2 h-7"
+                        onClick={() => {
+                          const audio = document.querySelector("audio");
+                          if (audio) { audio.playbackRate = rate; setPlaybackRate(rate); }
+                        }}
+                      >
+                        {rate}x
+                      </Button>
+                    ))}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7 ml-auto"
+                    onClick={() => downloadRecordingMp3(selected.recording_url!, `call-${selected.id}.mp3`)}
+                  >
+                    <Download className="mr-1 h-3 w-3" /> MP3
+                  </Button>
                 </div>
               </div>
             )}

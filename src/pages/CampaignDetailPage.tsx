@@ -1092,14 +1092,22 @@ export default function CampaignDetailPage() {
 
                   {/* Recording */}
                   {call?.recording_url && (
-                    <a
-                      href={call.recording_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-sm bg-primary/10 text-primary hover:bg-primary/20 rounded-full px-4 py-2 transition-colors font-medium"
-                    >
-                      <ExternalLink className="h-4 w-4" /> Listen to Recording
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={call.recording_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm bg-primary/10 text-primary hover:bg-primary/20 rounded-full px-4 py-2 transition-colors font-medium"
+                      >
+                        <ExternalLink className="h-4 w-4" /> Listen to Recording
+                      </a>
+                      <button
+                        onClick={() => downloadRecordingMp3(call.recording_url!, `campaign-call-${call.id}.mp3`)}
+                        className="inline-flex items-center gap-1.5 text-sm bg-muted hover:bg-muted/80 text-foreground rounded-full px-4 py-2 transition-colors font-medium"
+                      >
+                        <Download className="h-4 w-4" /> MP3
+                      </button>
+                    </div>
                   )}
 
                   {/* Evaluation scores - Circular progress rings */}
