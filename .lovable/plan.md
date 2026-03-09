@@ -1,48 +1,57 @@
 
 
-# Simplify the Agent Creation Wizard
+# Expand Edit Agent Page + Prioritize MiniMax Voices + AI Script Builder
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+## Problem Summary
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+1. **Edit page is incomplete** — Missing ~15 configurable fields that exist at creation time: language, agent mode, must_collect_fields, qualification/disqualification rules, disclosure settings, consent, success_definition, speaking speed, temperature, interruption threshold, business hours, retry policy, SMS toggle, and no way to re-ingest knowledge or edit the raw spec.
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+2. **Voice sorting** — MiniMax voices (English-only, high quality) aren't prioritized in the voice list despite sounding better than most alternatives.
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
-
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
-
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
-
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
+3. **No script builder** — Users have no tool to generate or refine agent scripts/opening lines using AI best practices.
 
 ## Plan
 
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+### 1. Expand EditAgentPage with all missing fields
 
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+Add the following sections to `src/pages/EditAgentPage.tsx`, loading and saving these fields from `agent_specs`:
 
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
+- **Language & Mode** section — language picker (same 6-language chips from create), mode selector (outbound/inbound/hybrid)
+- **Conversation Flow** section — `must_collect_fields` as a tag-style editable list, `success_definition` textarea
+- **Qualification Rules** section — JSON editor or simplified key-value UI for `qualification_rules` and `disqualification_rules`
+- **Compliance** section — `consent_required` toggle, `disclosure_required` toggle, `disclosure_text` textarea
+- **Voice Tuning** section — `speaking_speed` slider (0.5-2.0), `temperature` slider (0-1), `interruption_threshold` slider (0-500)
+- **Business Hours** section — day checkboxes, start/end time pickers, timezone select
+- **SMS** toggle — `sms_enabled` switch
+- **Advanced** collapsible — raw spec JSON editor (same as create page)
 
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+Update the `handleSave` function to persist all new fields. Update the initial `load` query to fetch all these columns.
 
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+### 2. Prioritize MiniMax voices in VoiceSelector
+
+In `src/components/VoiceSelector.tsx`, add sorting logic to the `filtered` memo so voices with names starting with "minimax-" or description containing "minimax" appear first in the preset list (after the pinned selected voice). This keeps MiniMax's high-quality English voices at the top without removing any existing voices.
+
+### 3. AI Script Builder
+
+Create a new component `src/components/ScriptBuilder.tsx` and a new edge function `supabase/functions/generate-script/index.ts`:
+
+**Edge function** — Takes `project_id`, current spec fields (persona_name, use_case, language, tone_style, must_collect_fields, opening_line), and a user prompt. Uses Lovable AI (Gemini Flash) to generate an optimized opening line and full conversation script following best practices (natural pacing, disclosure timing, objection handling, field collection order). Returns structured output via tool calling.
+
+**Component** — A dialog/panel accessible from both Create and Edit pages with:
+- "Generate Opening Line" button that produces a best-practice opening line based on agent config
+- "Build Full Script" button that generates a complete conversation flow guide
+- Preview pane showing the generated script
+- "Apply" button to push the opening line and tone back into the form
+
+Embed the ScriptBuilder in EditAgentPage's Script section and optionally in CreateAgentPage step 2.
 
 ### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
 
-No database or edge function changes needed.
+- **`src/pages/EditAgentPage.tsx`** — Add all missing field sections, expand load/save queries
+- **`src/components/VoiceSelector.tsx`** — Add MiniMax-first sorting
+- **`src/components/ScriptBuilder.tsx`** — New AI script builder component
+- **`supabase/functions/generate-script/index.ts`** — New edge function for AI script generation
+- **`supabase/config.toml`** — Add `generate-script` function config
+
+No database changes needed — all fields already exist in `agent_specs`.
 
