@@ -177,8 +177,6 @@ export default function EditAgentPage() {
           });
         }
 
-        // Raw spec for advanced editor
-        setRawSpec(JSON.stringify(spec, null, 2));
       }
 
       // Compute avg score
