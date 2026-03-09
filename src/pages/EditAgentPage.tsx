@@ -10,10 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radio, User, MessageSquare, Shield, Hash, Clock, Sliders, Globe, FileText, ChevronDown, Plus } from "lucide-react";
+import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radio, User, MessageSquare, Shield, Hash, Clock, Sliders, Globe, Plus } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { guardOpeningLine } from "@/lib/openingLineGuard";
 import { VoiceSelector } from "@/components/VoiceSelector";
@@ -104,8 +103,6 @@ export default function EditAgentPage() {
   const [interruptionThreshold, setInterruptionThreshold] = useState(100);
   const [businessHours, setBusinessHours] = useState({ days: ["mon", "tue", "wed", "thu", "fri"], start: "09:00", end: "17:00", timezone: "America/New_York" });
   const [smsEnabled, setSmsEnabled] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [rawSpec, setRawSpec] = useState("");
 
   // AI Optimization
   const { optimizeAgent } = useRetellAgent(retellAgentId || null);
@@ -163,11 +160,11 @@ export default function EditAgentPage() {
         const mcf = spec.must_collect_fields;
         if (Array.isArray(mcf)) setMustCollectFields(mcf as string[]);
         
-        const qr = spec.qualification_rules;
-        setQualificationRules(qr && typeof qr === "object" ? JSON.stringify(qr, null, 2) : "");
+        const qr = spec.qualification_rules as any;
+        setQualificationRules(qr?.description || (qr && typeof qr === "object" ? JSON.stringify(qr, null, 2) : ""));
         
-        const dr = spec.disqualification_rules;
-        setDisqualificationRules(dr && typeof dr === "object" ? JSON.stringify(dr, null, 2) : "");
+        const dr = spec.disqualification_rules as any;
+        setDisqualificationRules(dr?.description || (dr && typeof dr === "object" ? JSON.stringify(dr, null, 2) : ""));
 
         const bh = spec.business_hours as any;
         if (bh && typeof bh === "object") {
@@ -179,8 +176,6 @@ export default function EditAgentPage() {
           });
         }
 
-        // Raw spec for advanced editor
-        setRawSpec(JSON.stringify(spec, null, 2));
       }
 
       // Compute avg score
@@ -235,11 +230,13 @@ export default function EditAgentPage() {
         }
       }
 
-      // Parse qualification/disqualification rules
-      let parsedQR: any = {};
-      let parsedDR: any = {};
-      try { if (qualificationRules.trim()) parsedQR = JSON.parse(qualificationRules); } catch { /* keep empty */ }
-      try { if (disqualificationRules.trim()) parsedDR = JSON.parse(disqualificationRules); } catch { /* keep empty */ }
+      // Parse qualification/disqualification rules from plain language
+      const parsedQR = qualificationRules.trim()
+        ? { description: qualificationRules.trim() }
+        : {};
+      const parsedDR = disqualificationRules.trim()
+        ? { description: disqualificationRules.trim() }
+        : {};
 
       await Promise.all([
         supabase.from("agent_projects").update({ name, description }).eq("id", id),
@@ -624,24 +621,23 @@ export default function EditAgentPage() {
         <h3 className="font-semibold text-foreground flex items-center gap-2">
           <Shield className="h-4 w-4 text-primary" /> Qualification Rules <SectionHelp section="qualification_rules" />
         </h3>
+        <p className="text-xs text-muted-foreground">Describe who qualifies or doesn't in plain language — AI will structure this for your agent.</p>
         <div className="space-y-2">
-          <Label className="flex items-center gap-1.5">Qualification Rules (JSON) <SectionHelp section="qualification_rules" /></Label>
+          <Label>Who qualifies?</Label>
           <Textarea
             value={qualificationRules}
             onChange={(e) => setQualificationRules(e.target.value)}
-            rows={4}
-            placeholder='{"age_range": "18-64", "income_range": "FPL-based"}'
-            className="font-mono text-xs"
+            rows={3}
+            placeholder="e.g. Age 18-64, household income below 400% FPL, no employer-sponsored coverage, US resident"
           />
         </div>
         <div className="space-y-2">
-          <Label className="flex items-center gap-1.5">Disqualification Rules (JSON) <SectionHelp section="disqualification_rules" /></Label>
+          <Label>Who does NOT qualify?</Label>
           <Textarea
             value={disqualificationRules}
             onChange={(e) => setDisqualificationRules(e.target.value)}
-            rows={4}
-            placeholder='{"has_employer_coverage": true}'
-            className="font-mono text-xs"
+            rows={3}
+            placeholder="e.g. Already has employer coverage, over 65 (Medicare eligible), currently on Medicaid"
           />
         </div>
       </div>
@@ -756,53 +752,24 @@ export default function EditAgentPage() {
         </div>
       </div>
 
-      {/* Voice Tuning */}
+      {/* Voice Tuning (Read-Only — managed by AI training) */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Sliders className="h-4 w-4 text-primary" /> Voice Tuning <SectionHelp section="voice_tuning" />
+          <Sliders className="h-4 w-4 text-primary" /> Voice Tuning
         </h3>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Speaking Speed</Label>
-              <span className="text-xs font-mono text-muted-foreground">{speakingSpeed.toFixed(1)}x</span>
-            </div>
-            <Slider
-              value={[speakingSpeed]}
-              onValueChange={([v]) => setSpeakingSpeed(v)}
-              min={0.5}
-              max={2.0}
-              step={0.1}
-            />
-            <p className="text-xs text-muted-foreground">0.5 = slow, 1.0 = normal, 2.0 = fast</p>
+        <p className="text-xs text-muted-foreground">These settings are automatically tuned by AI training based on call performance. No manual changes needed.</p>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+            <span className="text-sm text-foreground">Speaking Speed</span>
+            <Badge variant="secondary" className="font-mono">{speakingSpeed.toFixed(1)}x</Badge>
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Temperature</Label>
-              <span className="text-xs font-mono text-muted-foreground">{temperature.toFixed(1)}</span>
-            </div>
-            <Slider
-              value={[temperature]}
-              onValueChange={([v]) => setTemperature(v)}
-              min={0}
-              max={1}
-              step={0.1}
-            />
-            <p className="text-xs text-muted-foreground">Lower = more predictable, higher = more creative</p>
+          <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+            <span className="text-sm text-foreground">Temperature</span>
+            <Badge variant="secondary" className="font-mono">{temperature.toFixed(1)}</Badge>
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Interruption Sensitivity</Label>
-              <span className="text-xs font-mono text-muted-foreground">{interruptionThreshold}ms</span>
-            </div>
-            <Slider
-              value={[interruptionThreshold]}
-              onValueChange={([v]) => setInterruptionThreshold(v)}
-              min={0}
-              max={500}
-              step={10}
-            />
-            <p className="text-xs text-muted-foreground">Lower = more responsive to interruptions, higher = finishes sentences</p>
+          <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+            <span className="text-sm text-foreground">Interruption Sensitivity</span>
+            <Badge variant="secondary" className="font-mono">{interruptionThreshold}ms</Badge>
           </div>
         </div>
       </div>
@@ -930,28 +897,6 @@ export default function EditAgentPage() {
         />
       </div>
 
-      {/* Advanced */}
-      <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" className="w-full justify-between">
-            <span className="flex items-center gap-2">
-              <FileText className="h-4 w-4" /> Advanced: Raw Spec Editor
-            </span>
-            <ChevronDown className={cn("h-4 w-4 transition-transform", showAdvanced && "rotate-180")} />
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="surface-elevated rounded-xl p-6 mt-2 space-y-3">
-            <p className="text-xs text-muted-foreground">Edit the raw JSON spec directly. Changes here override all fields above.</p>
-            <Textarea
-              value={rawSpec}
-              onChange={(e) => setRawSpec(e.target.value)}
-              rows={20}
-              className="font-mono text-xs"
-            />
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
 
       {/* Save */}
       <Button onClick={handleSave} disabled={saving || !name.trim()} className="w-full" size="lg">
