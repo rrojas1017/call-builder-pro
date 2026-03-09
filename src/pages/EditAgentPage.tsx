@@ -622,24 +622,23 @@ export default function EditAgentPage() {
         <h3 className="font-semibold text-foreground flex items-center gap-2">
           <Shield className="h-4 w-4 text-primary" /> Qualification Rules <SectionHelp section="qualification_rules" />
         </h3>
+        <p className="text-xs text-muted-foreground">Describe who qualifies or doesn't in plain language — AI will structure this for your agent.</p>
         <div className="space-y-2">
-          <Label className="flex items-center gap-1.5">Qualification Rules (JSON) <SectionHelp section="qualification_rules" /></Label>
+          <Label>Who qualifies?</Label>
           <Textarea
             value={qualificationRules}
             onChange={(e) => setQualificationRules(e.target.value)}
-            rows={4}
-            placeholder='{"age_range": "18-64", "income_range": "FPL-based"}'
-            className="font-mono text-xs"
+            rows={3}
+            placeholder="e.g. Age 18-64, household income below 400% FPL, no employer-sponsored coverage, US resident"
           />
         </div>
         <div className="space-y-2">
-          <Label className="flex items-center gap-1.5">Disqualification Rules (JSON) <SectionHelp section="disqualification_rules" /></Label>
+          <Label>Who does NOT qualify?</Label>
           <Textarea
             value={disqualificationRules}
             onChange={(e) => setDisqualificationRules(e.target.value)}
-            rows={4}
-            placeholder='{"has_employer_coverage": true}'
-            className="font-mono text-xs"
+            rows={3}
+            placeholder="e.g. Already has employer coverage, over 65 (Medicare eligible), currently on Medicaid"
           />
         </div>
       </div>
