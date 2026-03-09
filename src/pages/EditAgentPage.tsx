@@ -658,7 +658,7 @@ export default function EditAgentPage() {
 
       {/* Voice Provider (Retell/Append) */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
-        <h3 className="font-semibold text-foreground">Voice Provider</h3>
+        <h3 className="font-semibold text-foreground flex items-center gap-1.5">Voice Provider <SectionHelp section="voice_provider" /></h3>
         <p className="text-xs text-muted-foreground">Your agent is powered by Append.</p>
         <div className="space-y-3">
           <RetellAgentManager
