@@ -481,6 +481,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                 />
               )}
 
+              {selected.extracted_data && (
                 <div className="space-y-1">
                   <h5 className="text-xs font-medium text-muted-foreground">Extracted Data</h5>
                   <pre className="rounded-lg bg-muted/30 border border-border p-3 text-xs font-mono overflow-auto">
