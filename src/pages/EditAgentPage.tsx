@@ -753,53 +753,24 @@ export default function EditAgentPage() {
         </div>
       </div>
 
-      {/* Voice Tuning */}
+      {/* Voice Tuning (Read-Only — managed by AI training) */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Sliders className="h-4 w-4 text-primary" /> Voice Tuning <SectionHelp section="voice_tuning" />
+          <Sliders className="h-4 w-4 text-primary" /> Voice Tuning
         </h3>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Speaking Speed</Label>
-              <span className="text-xs font-mono text-muted-foreground">{speakingSpeed.toFixed(1)}x</span>
-            </div>
-            <Slider
-              value={[speakingSpeed]}
-              onValueChange={([v]) => setSpeakingSpeed(v)}
-              min={0.5}
-              max={2.0}
-              step={0.1}
-            />
-            <p className="text-xs text-muted-foreground">0.5 = slow, 1.0 = normal, 2.0 = fast</p>
+        <p className="text-xs text-muted-foreground">These settings are automatically tuned by AI training based on call performance. No manual changes needed.</p>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+            <span className="text-sm text-foreground">Speaking Speed</span>
+            <Badge variant="secondary" className="font-mono">{speakingSpeed.toFixed(1)}x</Badge>
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Temperature</Label>
-              <span className="text-xs font-mono text-muted-foreground">{temperature.toFixed(1)}</span>
-            </div>
-            <Slider
-              value={[temperature]}
-              onValueChange={([v]) => setTemperature(v)}
-              min={0}
-              max={1}
-              step={0.1}
-            />
-            <p className="text-xs text-muted-foreground">Lower = more predictable, higher = more creative</p>
+          <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+            <span className="text-sm text-foreground">Temperature</span>
+            <Badge variant="secondary" className="font-mono">{temperature.toFixed(1)}</Badge>
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Interruption Sensitivity</Label>
-              <span className="text-xs font-mono text-muted-foreground">{interruptionThreshold}ms</span>
-            </div>
-            <Slider
-              value={[interruptionThreshold]}
-              onValueChange={([v]) => setInterruptionThreshold(v)}
-              min={0}
-              max={500}
-              step={10}
-            />
-            <p className="text-xs text-muted-foreground">Lower = more responsive to interruptions, higher = finishes sentences</p>
+          <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+            <span className="text-sm text-foreground">Interruption Sensitivity</span>
+            <Badge variant="secondary" className="font-mono">{interruptionThreshold}ms</Badge>
           </div>
         </div>
       </div>
