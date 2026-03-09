@@ -1,0 +1,1 @@
+ALTER TABLE public.test_run_contacts ADD COLUMN user_feedback text;

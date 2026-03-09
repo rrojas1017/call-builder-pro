@@ -167,7 +167,24 @@ VOICE TUNING RECOMMENDATIONS:
 - If AI interrupts too quickly → suggest raising "interruption_threshold"
 - If words mispronounced → suggest "pronunciation_guide" entries${changeHistoryBlock}${langInstruction}`;
 
-    const userPrompt = `AGENT SPECIFICATION:\n${JSON.stringify(spec, null, 2)}\n\nCALL TRANSCRIPT:\n${call.transcript}`;
+    // Fetch user feedback if this is a test call
+    let userFeedbackBlock = "";
+    if (test_run_contact_id) {
+      try {
+        const { data: trc } = await supabase
+          .from("test_run_contacts")
+          .select("user_feedback")
+          .eq("id", test_run_contact_id)
+          .single();
+        if (trc?.user_feedback) {
+          userFeedbackBlock = `\n\nUSER'S OWN FEEDBACK AFTER THIS CALL:\n${trc.user_feedback}\n\nIMPORTANT: The user provided the above feedback after listening to/participating in this call. Treat it as high-priority input — factor it into your scoring rationale and recommended improvements. If the user identifies specific issues or suggestions, reflect those in your evaluation.`;
+        }
+      } catch (e) {
+        console.error("Failed to fetch user feedback:", e);
+      }
+    }
+
+    const userPrompt = `AGENT SPECIFICATION:\n${JSON.stringify(spec, null, 2)}\n\nCALL TRANSCRIPT:\n${call.transcript}${userFeedbackBlock}`;
 
     const aiResponse = await callAI({
       provider: "gemini",

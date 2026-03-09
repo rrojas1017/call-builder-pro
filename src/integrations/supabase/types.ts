@@ -1241,6 +1241,7 @@ export type Database = {
           status: string
           test_run_id: string
           transcript: string | null
+          user_feedback: string | null
         }
         Insert: {
           bland_call_id?: string | null
@@ -1259,6 +1260,7 @@ export type Database = {
           status?: string
           test_run_id: string
           transcript?: string | null
+          user_feedback?: string | null
         }
         Update: {
           bland_call_id?: string | null
@@ -1277,6 +1279,7 @@ export type Database = {
           status?: string
           test_run_id?: string
           transcript?: string | null
+          user_feedback?: string | null
         }
         Relationships: [
           {
