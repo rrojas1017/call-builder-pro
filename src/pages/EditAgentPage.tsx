@@ -703,7 +703,7 @@ export default function EditAgentPage() {
 
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Mic className="h-4 w-4 text-primary" /> Voice
+          <Mic className="h-4 w-4 text-primary" /> Voice <SectionHelp section="voice" />
         </h3>
         <VoiceSelector
           voices={voices}
