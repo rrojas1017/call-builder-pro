@@ -888,7 +888,7 @@ export default function EditAgentPage() {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-primary" /> SMS Follow-up
+              <MessageSquare className="h-4 w-4 text-primary" /> SMS Follow-up <SectionHelp section="sms" />
             </h3>
             <p className="text-xs text-muted-foreground mt-1">Send SMS messages after calls</p>
           </div>
