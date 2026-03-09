@@ -682,7 +682,7 @@ function UserFeedbackSection({ contactId, existingFeedback, onFeedbackSaved }: {
   );
 }
 
-
+function ScoreCard({ label, score }: { label: string; score?: number }) {
   if (score == null) return null;
   const color = score >= 70 ? "text-green-400" : score >= 40 ? "text-yellow-400" : "text-destructive";
   return (
