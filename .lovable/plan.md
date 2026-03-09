@@ -1,48 +1,32 @@
 
 
-# Simplify the Agent Creation Wizard
+# Add User Feedback Input Per Test Call
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+## What We're Building
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+A feedback prompt on each completed test call in the TestResultsModal that lets users type or voice-record their observations. This feedback gets saved to `test_run_contacts.evaluation` (merged into the existing JSON) and is included when the evaluate-call function processes the call, so it becomes part of the general feedback/improvement pipeline.
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+## Changes
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+### 1. Database: Add `user_feedback` column to `test_run_contacts`
+Add a text column `user_feedback` to store typed or transcribed voice feedback from the user.
 
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+### 2. UI: Add Feedback Section in `TestResultsModal.tsx`
+After the evaluation results for each completed contact, add:
+- A textarea for typed feedback
+- A "Record Feedback" button that uses the browser's MediaRecorder API to capture audio, then sends it to the Lovable AI gateway (Gemini Flash) for transcription
+- A "Submit Feedback" button that saves to `test_run_contacts.user_feedback`
+- Once submitted, show the feedback as read-only text with an edit option
+- Visual indicator showing feedback was submitted
 
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
-
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
-
-## Plan
-
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
-
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
-
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
-
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
-
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+### 3. Edge Function: Include user feedback in `evaluate-call`
+In the evaluate-call function, when processing test calls:
+- Fetch the `user_feedback` field from `test_run_contacts`
+- If present, append it to the evaluation prompt as "User's own feedback after this call: ..."
+- This ensures the verbal training detector and improvement recommender consider the user's manual observations alongside the transcript analysis
 
 ### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
-
-No database or edge function changes needed.
+- **Database migration** -- add `user_feedback text` column to `test_run_contacts`
+- **`src/components/TestResultsModal.tsx`** -- add feedback input UI (textarea + voice record button)
+- **`supabase/functions/evaluate-call/index.ts`** -- include `user_feedback` in evaluation context
 
