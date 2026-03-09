@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, Play, Loader2, Users, FileText, SlidersHorizontal, ChevronDown, Plus, Trash2, StopCircle } from "lucide-react";
+import { Upload, Play, Loader2, Users, FileText, SlidersHorizontal, ChevronDown, Plus, Trash2, StopCircle, GraduationCap, MessageSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import LiveCallMonitor from "@/components/LiveCallMonitor";
 import { Slider } from "@/components/ui/slider";
