@@ -823,7 +823,7 @@ export default function EditAgentPage() {
       {/* Business Hours */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Clock className="h-4 w-4 text-primary" /> Business Hours
+          <Clock className="h-4 w-4 text-primary" /> Business Hours <SectionHelp section="business_hours" />
         </h3>
         <div className="space-y-3">
           <div className="flex gap-1.5 flex-wrap">
