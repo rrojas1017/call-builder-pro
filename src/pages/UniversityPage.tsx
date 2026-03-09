@@ -251,6 +251,7 @@ export default function UniversityPage() {
       recording_url: r.recording_url,
       created_at: r.created_at,
       test_run_id: r.test_run_id,
+      user_feedback: r.user_feedback,
     }));
     setHistory(rows);
     setHistoryLoading(false);
