@@ -33,12 +33,15 @@ export function guardOpeningLine(openingLine: string, personaName: string): Guar
     return { corrected: openingLine, wasFixed: false };
   }
 
+  const personaFirstWord = trimmedPersona.split(/\s+/)[0].toLowerCase();
+
   for (const pattern of INTRO_PATTERNS) {
     const match = openingLine.match(pattern);
     if (match && match[1]) {
       const foundName = match[1];
-      // Skip if it already matches the persona name
+      // Skip if it already matches the persona name (full or first word for multi-word names)
       if (foundName.toLowerCase() === trimmedPersona.toLowerCase()) continue;
+      if (foundName.toLowerCase() === personaFirstWord) continue;
       // Skip if it's the placeholder already
       if (foundName === "{{agent_name}}") continue;
 
@@ -60,11 +63,15 @@ export function runtimeGuardOpeningLine(resolvedLine: string, personaName: strin
   const trimmedPersona = personaName.trim();
   if (!trimmedPersona) return resolvedLine;
 
+  const personaFirstWord = trimmedPersona.split(/\s+/)[0].toLowerCase();
+
   for (const pattern of INTRO_PATTERNS) {
     const match = resolvedLine.match(pattern);
     if (match && match[1]) {
       const foundName = match[1];
       if (foundName.toLowerCase() === trimmedPersona.toLowerCase()) continue;
+      // If the found name matches the first word of the persona, it's already correct
+      if (foundName.toLowerCase() === personaFirstWord) continue;
       return resolvedLine.replace(foundName, trimmedPersona);
     }
   }

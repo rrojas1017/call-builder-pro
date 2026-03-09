@@ -44,10 +44,15 @@ function runtimeGuardResolvedLine(resolvedLine: string, personaName: string): st
   if (!resolvedLine || !personaName) return resolvedLine;
   const trimmed = personaName.trim();
   if (!trimmed) return resolvedLine;
+  const personaFirstWord = trimmed.split(/\s+/)[0].toLowerCase();
   for (const pattern of INTRO_PATTERNS) {
     const match = resolvedLine.match(pattern);
-    if (match && match[1] && match[1].toLowerCase() !== trimmed.toLowerCase()) {
-      return resolvedLine.replace(match[1], trimmed);
+    if (match && match[1]) {
+      const foundName = match[1];
+      if (foundName.toLowerCase() === trimmed.toLowerCase()) continue;
+      // If found name matches first word of multi-word persona, it's already correct
+      if (foundName.toLowerCase() === personaFirstWord) continue;
+      return resolvedLine.replace(foundName, trimmed);
     }
   }
   return resolvedLine;
