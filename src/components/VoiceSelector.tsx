@@ -85,7 +85,11 @@ export function VoiceSelector({ voices, loading, selectedVoice, onSelect, sample
   }, [voices, search, languageFilter, genderFilter, accentFilter, selectedVoice]);
 
   const customVoices = filtered.filter((v) => v.is_custom);
-  const presetVoices = filtered.filter((v) => !v.is_custom);
+  const presetVoices = filtered.filter((v) => !v.is_custom).sort((a, b) => {
+    const aIsMinimax = a.name.toLowerCase().startsWith("minimax-") ? 1 : 0;
+    const bIsMinimax = b.name.toLowerCase().startsWith("minimax-") ? 1 : 0;
+    return bIsMinimax - aIsMinimax;
+  });
 
   if (loading) {
     return (

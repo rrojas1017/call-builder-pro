@@ -110,3 +110,6 @@ verify_jwt = false
 
 [functions.backfill-call-costs]
 verify_jwt = false
+
+[functions.generate-script]
+verify_jwt = false
