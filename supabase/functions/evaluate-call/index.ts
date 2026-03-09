@@ -384,6 +384,12 @@ ${call.transcript}`;
               }
 
               // For other fields, use apply-improvement
+              // Detect reorder intent from the instruction
+              const isReorder = fb.instruction?.toLowerCase().includes("first") ||
+                fb.instruction?.toLowerCase().includes("before") ||
+                fb.instruction?.toLowerCase().includes("order") ||
+                fb.instruction?.toLowerCase().includes("reorder");
+
               const applyResp = await fetch(`${supabaseUrl}/functions/v1/apply-improvement`, {
                 method: "POST",
                 headers: {
@@ -397,6 +403,7 @@ ${call.transcript}`;
                     suggested_value: fb.suggested_change,
                     reason: `[VERBAL-TRAINING] ${fb.instruction}`,
                     original_key: `verbal::${fb.target_field}::${fb.suggested_change}`.slice(0, 200),
+                    ...(isReorder ? { replace_mode: true } : {}),
                   },
                 }),
               });
