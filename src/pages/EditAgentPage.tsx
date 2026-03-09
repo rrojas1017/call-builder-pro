@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radio, User, MessageSquare, Shield, Hash, Clock, Sliders, Globe, Plus } from "lucide-react";
+import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radio, User, MessageSquare, Shield, Hash, Clock, Sliders, Globe, Plus, GripVertical } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -211,6 +211,39 @@ export default function EditAgentPage() {
 
   const handleRemoveField = (field: string) => {
     setMustCollectFields(mustCollectFields.filter(f => f !== field));
+  };
+
+  // Drag-to-reorder state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    const updated = [...mustCollectFields];
+    const [moved] = updated.splice(draggedIndex, 1);
+    updated.splice(dropIndex, 0, moved);
+    setMustCollectFields(updated);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
   };
 
   const handleSave = async () => {
@@ -602,13 +635,28 @@ export default function EditAgentPage() {
           <Label>Must-Collect Fields</Label>
           <p className="text-xs text-muted-foreground">Fields the agent must collect during the call, in order.</p>
           <div className="flex flex-wrap gap-1.5">
-            {mustCollectFields.map((field) => (
-              <Badge key={field} variant="secondary" className="text-xs gap-1 pr-1">
-                {field}
-                <button onClick={() => handleRemoveField(field)} className="ml-0.5 hover:text-destructive">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
+            {mustCollectFields.map((field, index) => (
+              <div
+                key={field}
+                draggable
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDrop={(e) => handleDrop(e, index)}
+                onDragEnd={handleDragEnd}
+                className={cn(
+                  "cursor-grab active:cursor-grabbing transition-all",
+                  draggedIndex === index && "opacity-40",
+                  dragOverIndex === index && draggedIndex !== index && "ring-2 ring-primary rounded-full"
+                )}
+              >
+                <Badge variant="secondary" className="text-xs gap-1 pr-1 select-none">
+                  <GripVertical className="h-3 w-3 text-muted-foreground" />
+                  {field}
+                  <button onClick={() => handleRemoveField(field)} className="ml-0.5 hover:text-destructive">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              </div>
             ))}
           </div>
           <div className="flex gap-2">
