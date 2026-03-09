@@ -10,15 +10,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radio, User, MessageSquare, Shield, Hash } from "lucide-react";
+import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radio, User, MessageSquare, Shield, Hash, Clock, Sliders, Globe, FileText, ChevronDown, Plus } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { guardOpeningLine } from "@/lib/openingLineGuard";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { RetellAgentManager } from "@/components/RetellAgentManager";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScriptBuilder } from "@/components/ScriptBuilder";
 
 const maturityConfig: Record<string, { label: string; color: string }> = {
   training: { label: "Training", color: "text-muted-foreground bg-muted" },
@@ -27,6 +31,35 @@ const maturityConfig: Record<string, { label: string; color: string }> = {
   expert: { label: "Expert", color: "text-emerald-600 bg-emerald-500/10 border-emerald-500/30" },
   graduated: { label: "Graduated", color: "text-purple-600 bg-purple-500/10 border-purple-500/30" },
 };
+
+const LANGUAGES = [
+  { code: "en", flag: "🇺🇸", name: "English" },
+  { code: "es", flag: "🇪🇸", name: "Español" },
+  { code: "fr", flag: "🇫🇷", name: "Français" },
+  { code: "pt", flag: "🇧🇷", name: "Português" },
+  { code: "de", flag: "🇩🇪", name: "Deutsch" },
+  { code: "it", flag: "🇮🇹", name: "Italiano" },
+] as const;
+
+const DAYS_OF_WEEK = [
+  { key: "mon", label: "Mon" },
+  { key: "tue", label: "Tue" },
+  { key: "wed", label: "Wed" },
+  { key: "thu", label: "Thu" },
+  { key: "fri", label: "Fri" },
+  { key: "sat", label: "Sat" },
+  { key: "sun", label: "Sun" },
+];
+
+const TIMEZONES = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Anchorage",
+  "Pacific/Honolulu",
+  "America/Phoenix",
+];
 
 export default function EditAgentPage() {
   const { id } = useParams<{ id: string }>();
@@ -54,6 +87,25 @@ export default function EditAgentPage() {
   const [mode, setMode] = useState("outbound");
   const [callStats, setCallStats] = useState({ total: 0, qualified: 0, avgScore: null as number | null });
 
+  // New fields
+  const [language, setLanguage] = useState("en");
+  const [useCase, setUseCase] = useState("aca_prequal");
+  const [mustCollectFields, setMustCollectFields] = useState<string[]>([]);
+  const [newField, setNewField] = useState("");
+  const [successDefinition, setSuccessDefinition] = useState("");
+  const [qualificationRules, setQualificationRules] = useState("");
+  const [disqualificationRules, setDisqualificationRules] = useState("");
+  const [consentRequired, setConsentRequired] = useState(true);
+  const [disclosureRequired, setDisclosureRequired] = useState(true);
+  const [disclosureText, setDisclosureText] = useState("");
+  const [speakingSpeed, setSpeakingSpeed] = useState(1.0);
+  const [temperature, setTemperature] = useState(0.7);
+  const [interruptionThreshold, setInterruptionThreshold] = useState(100);
+  const [businessHours, setBusinessHours] = useState({ days: ["mon", "tue", "wed", "thu", "fri"], start: "09:00", end: "17:00", timezone: "America/New_York" });
+  const [smsEnabled, setSmsEnabled] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [rawSpec, setRawSpec] = useState("");
+
   // AI Optimization
   const { optimizeAgent } = useRetellAgent(retellAgentId || null);
   const [optimizing, setOptimizing] = useState(false);
@@ -73,7 +125,7 @@ export default function EditAgentPage() {
     const load = async () => {
       const [{ data: project }, { data: spec }, callsRes, qualifiedRes, scoreCalls] = await Promise.all([
         supabase.from("agent_projects").select("name, description, maturity_level").eq("id", id).single(),
-        supabase.from("agent_specs").select("voice_id, opening_line, tone_style, persona_name, transfer_required, transfer_phone_number, background_track, voice_provider, retell_agent_id, from_number, voicemail_message, mode").eq("project_id", id).single(),
+        supabase.from("agent_specs").select("*").eq("project_id", id).single(),
         supabase.from("calls").select("id", { count: "exact", head: true }).eq("project_id", id),
         supabase.from("calls").select("id", { count: "exact", head: true }).eq("project_id", id).eq("outcome", "qualified"),
         supabase.from("calls").select("evaluation").eq("project_id", id).not("evaluation", "is", null),
@@ -87,14 +139,47 @@ export default function EditAgentPage() {
         setSelectedVoice(spec.voice_id || "");
         setOpeningLine(spec.opening_line || "");
         setToneStyle(spec.tone_style || "");
-        setPersonaName((spec as any).persona_name || "");
+        setPersonaName(spec.persona_name || "");
         setTransferEnabled(!!spec.transfer_required);
         setTransferPhone(spec.transfer_phone_number || "");
-        setRetellAgentId((spec as any).retell_agent_id || "");
-        setFromNumber((spec as any).from_number || "auto");
-        setVoicemailMessage((spec as any).voicemail_message || "");
-        setAmbientSound((spec as any).background_track || "none");
-        setMode((spec as any).mode || "outbound");
+        setRetellAgentId(spec.retell_agent_id || "");
+        setFromNumber(spec.from_number || "auto");
+        setVoicemailMessage(spec.voicemail_message || "");
+        setAmbientSound(spec.background_track || "none");
+        setMode(spec.mode || "outbound");
+        setLanguage(spec.language || "en");
+        setUseCase(spec.use_case || "aca_prequal");
+        setSuccessDefinition(spec.success_definition || "");
+        setConsentRequired(spec.consent_required ?? true);
+        setDisclosureRequired(spec.disclosure_required ?? true);
+        setDisclosureText(spec.disclosure_text || "");
+        setSpeakingSpeed(Number(spec.speaking_speed) || 1.0);
+        setTemperature(Number(spec.temperature) || 0.7);
+        setInterruptionThreshold(spec.interruption_threshold ?? 100);
+        setSmsEnabled(spec.sms_enabled ?? false);
+
+        // Parse JSON fields
+        const mcf = spec.must_collect_fields;
+        if (Array.isArray(mcf)) setMustCollectFields(mcf as string[]);
+        
+        const qr = spec.qualification_rules;
+        setQualificationRules(qr && typeof qr === "object" ? JSON.stringify(qr, null, 2) : "");
+        
+        const dr = spec.disqualification_rules;
+        setDisqualificationRules(dr && typeof dr === "object" ? JSON.stringify(dr, null, 2) : "");
+
+        const bh = spec.business_hours as any;
+        if (bh && typeof bh === "object") {
+          setBusinessHours({
+            days: bh.days || ["mon", "tue", "wed", "thu", "fri"],
+            start: bh.start || "09:00",
+            end: bh.end || "17:00",
+            timezone: bh.timezone || "America/New_York",
+          });
+        }
+
+        // Raw spec for advanced editor
+        setRawSpec(JSON.stringify(spec, null, 2));
       }
 
       // Compute avg score
@@ -111,6 +196,18 @@ export default function EditAgentPage() {
     };
     load();
   }, [id]);
+
+  const handleAddField = () => {
+    const f = newField.trim();
+    if (f && !mustCollectFields.includes(f)) {
+      setMustCollectFields([...mustCollectFields, f]);
+      setNewField("");
+    }
+  };
+
+  const handleRemoveField = (field: string) => {
+    setMustCollectFields(mustCollectFields.filter(f => f !== field));
+  };
 
   const handleSave = async () => {
     if (!id) return;
@@ -137,6 +234,12 @@ export default function EditAgentPage() {
         }
       }
 
+      // Parse qualification/disqualification rules
+      let parsedQR: any = {};
+      let parsedDR: any = {};
+      try { if (qualificationRules.trim()) parsedQR = JSON.parse(qualificationRules); } catch { /* keep empty */ }
+      try { if (disqualificationRules.trim()) parsedDR = JSON.parse(disqualificationRules); } catch { /* keep empty */ }
+
       await Promise.all([
         supabase.from("agent_projects").update({ name, description }).eq("id", id),
         supabase.from("agent_specs").update({
@@ -151,6 +254,20 @@ export default function EditAgentPage() {
           retell_agent_id: retellAgentId || null,
           from_number: fromNumber === "auto" ? null : fromNumber || null,
           voicemail_message: voicemailMessage.trim() || null,
+          language,
+          mode,
+          must_collect_fields: mustCollectFields,
+          success_definition: successDefinition || null,
+          qualification_rules: parsedQR,
+          disqualification_rules: parsedDR,
+          consent_required: consentRequired,
+          disclosure_required: disclosureRequired,
+          disclosure_text: disclosureText || null,
+          speaking_speed: speakingSpeed,
+          temperature,
+          interruption_threshold: interruptionThreshold,
+          business_hours: businessHours,
+          sms_enabled: smsEnabled,
         } as any).eq("project_id", id),
       ]);
 
@@ -309,8 +426,10 @@ export default function EditAgentPage() {
             </p>
           </div>
           <div>
-            <p className="text-muted-foreground text-xs">Tone</p>
-            <p className="font-medium text-foreground">{toneStyle || "—"}</p>
+            <p className="text-muted-foreground text-xs">Language</p>
+            <p className="font-medium text-foreground">
+              {LANGUAGES.find(l => l.code === language)?.flag} {LANGUAGES.find(l => l.code === language)?.name || language}
+            </p>
           </div>
           <div>
             <p className="text-muted-foreground text-xs">Ambient Sound</p>
@@ -320,12 +439,6 @@ export default function EditAgentPage() {
             <p className="text-muted-foreground text-xs">Transfer</p>
             <p className="font-medium text-foreground">{transferEnabled ? `Yes → ${transferPhone || "No number"}` : "Disabled"}</p>
           </div>
-          {retellAgentId && (
-            <div className="col-span-2 sm:col-span-3">
-              <p className="text-muted-foreground text-xs">Retell Agent ID</p>
-              <p className="font-mono text-xs text-foreground">{retellAgentId}</p>
-            </div>
-          )}
         </div>
 
         {/* Stats bar */}
@@ -367,6 +480,181 @@ export default function EditAgentPage() {
         </div>
       </div>
 
+      {/* Language & Mode */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <Globe className="h-4 w-4 text-primary" /> Language & Mode
+        </h3>
+        <div className="space-y-2">
+          <Label>Agent Language</Label>
+          <div className="flex gap-2 flex-wrap">
+            {LANGUAGES.map((lang) => (
+              <button
+                key={lang.code}
+                onClick={() => setLanguage(lang.code)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-sm font-medium transition-colors border",
+                  language === lang.code
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted/50 text-muted-foreground border-border hover:border-primary/50"
+                )}
+              >
+                {lang.flag} {lang.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Agent Mode</Label>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {(["outbound", "inbound", "hybrid"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition-colors",
+                  mode === m ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                )}
+              >
+                <p className="text-sm font-medium text-foreground capitalize">{m}</p>
+                <p className="text-xs text-muted-foreground">
+                  {m === "outbound" ? "Makes calls" : m === "inbound" ? "Receives calls" : "Both directions"}
+                </p>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Script */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-foreground">Script</h3>
+        <div className="space-y-2">
+          <Label>Agent Persona Name</Label>
+          <Input value={personaName} onChange={(e) => setPersonaName(e.target.value)} placeholder="e.g. Sofia, Alex, Carlos" />
+          <p className="text-xs text-muted-foreground">The name your agent introduces itself as on the call.</p>
+        </div>
+        <div className="space-y-2">
+          <Label>Opening Line Template</Label>
+          <Textarea value={openingLine} onChange={(e) => setOpeningLine(e.target.value)} rows={2} placeholder='e.g. "Hey {{first_name}}, this is {{agent_name}} calling — do you have a quick second?"' />
+          <p className="text-xs text-muted-foreground">Use <code className="bg-muted px-1 rounded">{"{{first_name}}"}</code> and <code className="bg-muted px-1 rounded">{"{{agent_name}}"}</code> as placeholders.</p>
+        </div>
+        <div className="space-y-2">
+          <Label>Tone / Style</Label>
+          <Input value={toneStyle} onChange={(e) => setToneStyle(e.target.value)} placeholder="e.g. friendly, professional, casual" />
+        </div>
+        <div className="space-y-2">
+          <Label>Success Definition</Label>
+          <Textarea value={successDefinition} onChange={(e) => setSuccessDefinition(e.target.value)} rows={2} placeholder="e.g. Caller is qualified and warm-transferred to a licensed agent" />
+          <p className="text-xs text-muted-foreground">What counts as a successful call outcome.</p>
+        </div>
+        {id && (
+          <ScriptBuilder
+            projectId={id}
+            personaName={personaName}
+            useCase={useCase}
+            language={language}
+            toneStyle={toneStyle}
+            mustCollectFields={mustCollectFields}
+            currentOpeningLine={openingLine}
+            onApplyOpeningLine={(line) => setOpeningLine(line)}
+            onApplyTone={(tone) => setToneStyle(tone)}
+          />
+        )}
+      </div>
+
+      {/* Conversation Flow */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <MessageSquare className="h-4 w-4 text-primary" /> Conversation Flow
+        </h3>
+        <div className="space-y-2">
+          <Label>Must-Collect Fields</Label>
+          <p className="text-xs text-muted-foreground">Fields the agent must collect during the call, in order.</p>
+          <div className="flex flex-wrap gap-1.5">
+            {mustCollectFields.map((field) => (
+              <Badge key={field} variant="secondary" className="text-xs gap-1 pr-1">
+                {field}
+                <button onClick={() => handleRemoveField(field)} className="ml-0.5 hover:text-destructive">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={newField}
+              onChange={(e) => setNewField(e.target.value)}
+              placeholder="e.g. zip_code, income, consent"
+              className="flex-1"
+              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddField())}
+            />
+            <Button variant="outline" size="sm" onClick={handleAddField} disabled={!newField.trim()}>
+              <Plus className="h-3.5 w-3.5 mr-1" /> Add
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Qualification Rules */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <Shield className="h-4 w-4 text-primary" /> Qualification Rules
+        </h3>
+        <div className="space-y-2">
+          <Label>Qualification Rules (JSON)</Label>
+          <Textarea
+            value={qualificationRules}
+            onChange={(e) => setQualificationRules(e.target.value)}
+            rows={4}
+            placeholder='{"age_range": "18-64", "income_range": "FPL-based"}'
+            className="font-mono text-xs"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Disqualification Rules (JSON)</Label>
+          <Textarea
+            value={disqualificationRules}
+            onChange={(e) => setDisqualificationRules(e.target.value)}
+            rows={4}
+            placeholder='{"has_employer_coverage": true}'
+            className="font-mono text-xs"
+          />
+        </div>
+      </div>
+
+      {/* Compliance */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <Shield className="h-4 w-4 text-primary" /> Compliance
+        </h3>
+        <div className="flex items-center justify-between">
+          <div>
+            <Label>Consent Required</Label>
+            <p className="text-xs text-muted-foreground">Agent must get recording consent</p>
+          </div>
+          <Switch checked={consentRequired} onCheckedChange={setConsentRequired} />
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <Label>Disclosure Required</Label>
+            <p className="text-xs text-muted-foreground">Agent must read a disclosure statement</p>
+          </div>
+          <Switch checked={disclosureRequired} onCheckedChange={setDisclosureRequired} />
+        </div>
+        {disclosureRequired && (
+          <div className="space-y-2">
+            <Label>Disclosure Text</Label>
+            <Textarea
+              value={disclosureText}
+              onChange={(e) => setDisclosureText(e.target.value)}
+              rows={3}
+              placeholder="This call may be recorded for quality assurance..."
+            />
+          </div>
+        )}
+      </div>
+
       {/* Voice Provider (Retell/Append) */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground">Voice Provider</h3>
@@ -388,26 +676,6 @@ export default function EditAgentPage() {
               </p>
             </div>
           )}
-        </div>
-      </div>
-
-
-      {/* Script */}
-      <div className="surface-elevated rounded-xl p-6 space-y-4">
-        <h3 className="font-semibold text-foreground">Script</h3>
-        <div className="space-y-2">
-          <Label>Agent Persona Name</Label>
-          <Input value={personaName} onChange={(e) => setPersonaName(e.target.value)} placeholder="e.g. Sofia, Alex, Carlos" />
-          <p className="text-xs text-muted-foreground">The name your agent introduces itself as on the call. Used to fill in <code className="bg-muted px-1 rounded">{"{{agent_name}}"}</code> in your opening line.</p>
-        </div>
-        <div className="space-y-2">
-          <Label>Opening Line Template</Label>
-          <Textarea value={openingLine} onChange={(e) => setOpeningLine(e.target.value)} rows={2} placeholder='e.g. "Hey {{first_name}}, this is {{agent_name}} calling — do you have a quick second?"' />
-          <p className="text-xs text-muted-foreground">Use <code className="bg-muted px-1 rounded">{"{{first_name}}"}</code> and <code className="bg-muted px-1 rounded">{"{{agent_name}}"}</code> as placeholders. This is a guide, not a verbatim script.</p>
-        </div>
-        <div className="space-y-2">
-          <Label>Tone / Style</Label>
-          <Input value={toneStyle} onChange={(e) => setToneStyle(e.target.value)} placeholder="e.g. friendly, professional, casual" />
         </div>
       </div>
 
@@ -465,6 +733,57 @@ export default function EditAgentPage() {
         </div>
       </div>
 
+      {/* Voice Tuning */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <Sliders className="h-4 w-4 text-primary" /> Voice Tuning
+        </h3>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Speaking Speed</Label>
+              <span className="text-xs font-mono text-muted-foreground">{speakingSpeed.toFixed(1)}x</span>
+            </div>
+            <Slider
+              value={[speakingSpeed]}
+              onValueChange={([v]) => setSpeakingSpeed(v)}
+              min={0.5}
+              max={2.0}
+              step={0.1}
+            />
+            <p className="text-xs text-muted-foreground">0.5 = slow, 1.0 = normal, 2.0 = fast</p>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Temperature</Label>
+              <span className="text-xs font-mono text-muted-foreground">{temperature.toFixed(1)}</span>
+            </div>
+            <Slider
+              value={[temperature]}
+              onValueChange={([v]) => setTemperature(v)}
+              min={0}
+              max={1}
+              step={0.1}
+            />
+            <p className="text-xs text-muted-foreground">Lower = more predictable, higher = more creative</p>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Interruption Sensitivity</Label>
+              <span className="text-xs font-mono text-muted-foreground">{interruptionThreshold}ms</span>
+            </div>
+            <Slider
+              value={[interruptionThreshold]}
+              onValueChange={([v]) => setInterruptionThreshold(v)}
+              min={0}
+              max={500}
+              step={10}
+            />
+            <p className="text-xs text-muted-foreground">Lower = more responsive to interruptions, higher = finishes sentences</p>
+          </div>
+        </div>
+      </div>
+
       {/* Transfer */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
@@ -500,6 +819,82 @@ export default function EditAgentPage() {
         )}
       </div>
 
+      {/* Business Hours */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <Clock className="h-4 w-4 text-primary" /> Business Hours
+        </h3>
+        <div className="space-y-3">
+          <div className="flex gap-1.5 flex-wrap">
+            {DAYS_OF_WEEK.map((day) => (
+              <button
+                key={day.key}
+                onClick={() => {
+                  setBusinessHours(prev => ({
+                    ...prev,
+                    days: prev.days.includes(day.key)
+                      ? prev.days.filter(d => d !== day.key)
+                      : [...prev.days, day.key],
+                  }));
+                }}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-xs font-medium transition-colors border",
+                  businessHours.days.includes(day.key)
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted/50 text-muted-foreground border-border hover:border-primary/50"
+                )}
+              >
+                {day.label}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs">Start Time</Label>
+              <Input
+                type="time"
+                value={businessHours.start}
+                onChange={(e) => setBusinessHours(prev => ({ ...prev, start: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">End Time</Label>
+              <Input
+                type="time"
+                value={businessHours.end}
+                onChange={(e) => setBusinessHours(prev => ({ ...prev, end: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Timezone</Label>
+            <Select value={businessHours.timezone} onValueChange={(v) => setBusinessHours(prev => ({ ...prev, timezone: v }))}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIMEZONES.map((tz) => (
+                  <SelectItem key={tz} value={tz}>{tz.replace("America/", "").replace("Pacific/", "").replace(/_/g, " ")}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </div>
+
+      {/* SMS */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-primary" /> SMS Follow-up
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">Send SMS messages after calls</p>
+          </div>
+          <Switch checked={smsEnabled} onCheckedChange={setSmsEnabled} />
+        </div>
+      </div>
+
       {/* Voicemail Message */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground">Voicemail Message</h3>
@@ -512,8 +907,28 @@ export default function EditAgentPage() {
         />
       </div>
 
-
-
+      {/* Advanced */}
+      <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" className="w-full justify-between">
+            <span className="flex items-center gap-2">
+              <FileText className="h-4 w-4" /> Advanced: Raw Spec Editor
+            </span>
+            <ChevronDown className={cn("h-4 w-4 transition-transform", showAdvanced && "rotate-180")} />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="surface-elevated rounded-xl p-6 mt-2 space-y-3">
+            <p className="text-xs text-muted-foreground">Edit the raw JSON spec directly. Changes here override all fields above.</p>
+            <Textarea
+              value={rawSpec}
+              onChange={(e) => setRawSpec(e.target.value)}
+              rows={20}
+              className="font-mono text-xs"
+            />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Save */}
       <Button onClick={handleSave} disabled={saving || !name.trim()} className="w-full" size="lg">
