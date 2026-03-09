@@ -1,31 +1,37 @@
 
 
-# Fix Appendify AI Educator Opening Line
+# Why Your Verbal Feedback Isn't Taking Effect
 
-## Problem
-The current opening line is long, awkward when spoken aloud, and tries to cram too much into the first breath. Phrases like "A little birdy told me" and "navigate this sea of AI solutions" sound stilted when delivered by a TTS voice. The intro needs to feel punchy, confident, and natural — setting the witty tone without overwhelming the listener.
+## The Problem (Two Issues)
 
-## Current Line
-> "Hi, my name is {{agent_name}} and yes, I am an AI agent — but very different from the ones you might be used to. A little birdy told me you might be interested in a good, solid AI agent! Give me 4 minutes of your time and let me prove how Appendify — my bosses — created me, and how we could help you navigate this sea of AI solutions."
+**Issue 1: Field order is wrong.** Your feedback "ask about their field/vertical first" was captured correctly — it's stored in `business_rules` and was added to `must_collect_fields`. But the merge logic **appended** it to the END of the list instead of moving it to position 1. The current order is:
 
-## Issues
-- Too long for an opening (3 sentences before the listener can respond)
-- "A little birdy told me" feels cliché and unnatural for AI voice
-- "Navigate this sea of AI solutions" is generic filler
-- No pause point — listener has no chance to engage
-- Asking for "4 minutes" upfront creates pressure before rapport
+1. "What is their biggest frustration with outreach?" ← still first
+2. "Which Appendify feature resonated most?"
+3. "Are they interested in a hands-on trial?"
+4. "What kind of work do you do..." ← your feedback, stuck at #4
+5. "Ask about business/industry before diving into features" ← duplicate, also at end
 
-## Proposed New Line
-> "Hey there! I'm {{agent_name}}, and full disclosure — I'm an AI. But before you hang up, I'm not one of those robotic ones you're probably thinking of. My creators at Appendify built me a little different... give me sixty seconds and I'll prove it."
+Since the prompt builder says "COLLECT (in order)", the agent asks about frustrations before even knowing what the person does.
 
-**Why this works:**
-- **Short** — one natural breath, ends with a hook
-- **Self-aware humor** — "before you hang up" disarms immediately
-- **Sixty seconds vs four minutes** — much lower commitment ask
-- **Ends with a challenge** — "I'll prove it" creates curiosity and invites a response
-- **Ellipsis pause** ("a little different...") gives the TTS a natural beat
+**Issue 2: Opening line was overwritten.** You set the witty "full disclosure — I'm an AI" opener, but the auto-critical system overwrote it with a generic compliance-focused line: "Hey there! This is Dex, an AI assistant from Appendify. Just so you know, this call is being recorded..."
 
-## Change
-- **Database only** — update `agent_specs.opening_line` for project `11034709-fbfd-497c-af82-501b3efabc94`
-- No code file changes needed
+## Fix Plan
+
+### 1. Fix the data immediately (database update)
+- Reorder `must_collect_fields` so "What field/vertical are you in?" is FIRST
+- Remove the duplicate "Ask about business/industry" instruction (it's redundant with the reordered field)
+- Restore the opening line to the witty version you approved
+
+### 2. Fix the `apply-improvement` edge function
+- When an improvement specifies a **reorder** for an array field (like `must_collect_fields`), **replace** the array instead of merging/appending. The current `mergeArrays` function always appends new items to the end, which defeats the purpose of reordering.
+- Add a `replace_mode` flag that the evaluate-call function can set when the improvement is about field ordering rather than adding new items.
+
+### 3. Protect manually-set opening lines from auto-critical overwrites
+- In `evaluate-call`, before auto-applying critical fixes to `opening_line`, check if the opening line was recently set manually (via direct database update or verbal training). If so, skip the auto-critical override or flag it for review instead of auto-applying.
+
+### Files Changed
+- **Database migration** — fix `must_collect_fields` order and restore opening line for this agent
+- **`supabase/functions/apply-improvement/index.ts`** — support replace mode for array fields
+- **`supabase/functions/evaluate-call/index.ts`** — pass replace mode for reorder improvements; protect manually-set opening lines
 
