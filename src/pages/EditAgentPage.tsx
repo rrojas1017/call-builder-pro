@@ -213,6 +213,39 @@ export default function EditAgentPage() {
     setMustCollectFields(mustCollectFields.filter(f => f !== field));
   };
 
+  // Drag-to-reorder state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    const updated = [...mustCollectFields];
+    const [moved] = updated.splice(draggedIndex, 1);
+    updated.splice(dropIndex, 0, moved);
+    setMustCollectFields(updated);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
   const handleSave = async () => {
     if (!id) return;
     setSaving(true);
