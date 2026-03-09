@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -250,6 +251,7 @@ export default function UniversityPage() {
       recording_url: r.recording_url,
       created_at: r.created_at,
       test_run_id: r.test_run_id,
+      user_feedback: r.user_feedback,
     }));
     setHistory(rows);
     setHistoryLoading(false);
@@ -751,6 +753,42 @@ function ResultCard({
   onQuickRetest: () => void;
   canRetest: boolean;
 }) {
+  const [feedbackText, setFeedbackText] = useState("");
+  const [savingFeedback, setSavingFeedback] = useState(false);
+  const [editingFeedback, setEditingFeedback] = useState(false);
+  const [savedFeedback, setSavedFeedback] = useState<string | null>(null);
+  const { toast: feedbackToast } = useToast();
+
+  // Load existing feedback when contact changes
+  useEffect(() => {
+    const existing = (contact as any).user_feedback || null;
+    setSavedFeedback(existing);
+    setFeedbackText(existing || "");
+    setEditingFeedback(false);
+  }, [contact.id]);
+
+  const handleSaveFeedback = async () => {
+    if (!feedbackText.trim()) return;
+    setSavingFeedback(true);
+    try {
+      const { error } = await supabase
+        .from("test_run_contacts")
+        .update({ user_feedback: feedbackText.trim() })
+        .eq("id", contact.id);
+      if (error) throw error;
+      setSavedFeedback(feedbackText.trim());
+      setEditingFeedback(false);
+      feedbackToast({ title: "Feedback saved" });
+    } catch (err: any) {
+      feedbackToast({ title: "Failed to save feedback", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingFeedback(false);
+    }
+  };
+
+  const showFeedbackInput = contact.status === "completed" && (!savedFeedback || editingFeedback);
+  const showSavedFeedback = contact.status === "completed" && savedFeedback && !editingFeedback;
+
   return (
     <div className="surface-elevated rounded-xl p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -906,6 +944,48 @@ function ResultCard({
               </ul>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Your Feedback */}
+      {showFeedbackInput && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            💬 Your Feedback
+          </p>
+          <Textarea
+            placeholder="How did the call sound? Any issues or suggestions..."
+            value={feedbackText}
+            onChange={(e) => setFeedbackText(e.target.value)}
+            className="text-xs min-h-[60px]"
+          />
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={handleSaveFeedback} disabled={savingFeedback || !feedbackText.trim()}>
+              {savingFeedback && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+              Save Feedback
+            </Button>
+            {editingFeedback && (
+              <Button size="sm" variant="ghost" onClick={() => { setEditingFeedback(false); setFeedbackText(savedFeedback || ""); }}>
+                Cancel
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showSavedFeedback && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              💬 Your Feedback
+            </p>
+            <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setEditingFeedback(true)}>
+              Edit
+            </Button>
+          </div>
+          <div className="rounded-lg bg-muted/30 border border-border p-3 text-xs text-foreground whitespace-pre-wrap">
+            {savedFeedback}
+          </div>
         </div>
       )}
 
