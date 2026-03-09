@@ -103,6 +103,8 @@ export default function EditAgentPage() {
   const [interruptionThreshold, setInterruptionThreshold] = useState(100);
   const [businessHours, setBusinessHours] = useState({ days: ["mon", "tue", "wed", "thu", "fri"], start: "09:00", end: "17:00", timezone: "America/New_York" });
   const [smsEnabled, setSmsEnabled] = useState(false);
+  const [smsMode, setSmsMode] = useState<"ai_generated" | "custom_script">("ai_generated");
+  const [smsScript, setSmsScript] = useState("");
 
   // AI Optimization
   const { optimizeAgent } = useRetellAgent(retellAgentId || null);
