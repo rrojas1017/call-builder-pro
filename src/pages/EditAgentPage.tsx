@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScriptBuilder } from "@/components/ScriptBuilder";
+import { SectionHelp } from "@/components/SectionHelp";
 
 const maturityConfig: Record<string, { label: string; color: string }> = {
   training: { label: "Training", color: "text-muted-foreground bg-muted" },
@@ -469,7 +470,7 @@ export default function EditAgentPage() {
 
       {/* Identity */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
-        <h3 className="font-semibold text-foreground">Identity</h3>
+        <h3 className="font-semibold text-foreground flex items-center gap-1.5">Identity <SectionHelp section="identity" /></h3>
         <div className="space-y-2">
           <Label>Agent Name</Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
@@ -483,7 +484,7 @@ export default function EditAgentPage() {
       {/* Language & Mode */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Globe className="h-4 w-4 text-primary" /> Language & Mode
+          <Globe className="h-4 w-4 text-primary" /> Language & Mode <SectionHelp section="language_mode" />
         </h3>
         <div className="space-y-2">
           <Label>Agent Language</Label>
@@ -528,7 +529,7 @@ export default function EditAgentPage() {
 
       {/* Script */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
-        <h3 className="font-semibold text-foreground">Script</h3>
+        <h3 className="font-semibold text-foreground flex items-center gap-1.5">Script <SectionHelp section="opening_line" /></h3>
         <div className="space-y-2">
           <Label>Agent Persona Name</Label>
           <Input value={personaName} onChange={(e) => setPersonaName(e.target.value)} placeholder="e.g. Sofia, Alex, Carlos" />
@@ -566,7 +567,7 @@ export default function EditAgentPage() {
       {/* Conversation Flow */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-primary" /> Conversation Flow
+          <MessageSquare className="h-4 w-4 text-primary" /> Conversation Flow <SectionHelp section="conversation_flow" />
         </h3>
         <div className="space-y-2">
           <Label>Must-Collect Fields</Label>
@@ -599,10 +600,10 @@ export default function EditAgentPage() {
       {/* Qualification Rules */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Shield className="h-4 w-4 text-primary" /> Qualification Rules
+          <Shield className="h-4 w-4 text-primary" /> Qualification Rules <SectionHelp section="qualification_rules" />
         </h3>
         <div className="space-y-2">
-          <Label>Qualification Rules (JSON)</Label>
+          <Label className="flex items-center gap-1.5">Qualification Rules (JSON) <SectionHelp section="qualification_rules" /></Label>
           <Textarea
             value={qualificationRules}
             onChange={(e) => setQualificationRules(e.target.value)}
@@ -612,7 +613,7 @@ export default function EditAgentPage() {
           />
         </div>
         <div className="space-y-2">
-          <Label>Disqualification Rules (JSON)</Label>
+          <Label className="flex items-center gap-1.5">Disqualification Rules (JSON) <SectionHelp section="disqualification_rules" /></Label>
           <Textarea
             value={disqualificationRules}
             onChange={(e) => setDisqualificationRules(e.target.value)}
@@ -626,7 +627,7 @@ export default function EditAgentPage() {
       {/* Compliance */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Shield className="h-4 w-4 text-primary" /> Compliance
+          <Shield className="h-4 w-4 text-primary" /> Compliance <SectionHelp section="compliance" />
         </h3>
         <div className="flex items-center justify-between">
           <div>
@@ -657,7 +658,7 @@ export default function EditAgentPage() {
 
       {/* Voice Provider (Retell/Append) */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
-        <h3 className="font-semibold text-foreground">Voice Provider</h3>
+        <h3 className="font-semibold text-foreground flex items-center gap-1.5">Voice Provider <SectionHelp section="voice_provider" /></h3>
         <p className="text-xs text-muted-foreground">Your agent is powered by Append.</p>
         <div className="space-y-3">
           <RetellAgentManager
@@ -682,7 +683,7 @@ export default function EditAgentPage() {
       {/* Outbound Number */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Phone className="h-4 w-4 text-primary" /> Outbound Number
+          <Phone className="h-4 w-4 text-primary" /> Outbound Number <SectionHelp section="outbound_number" />
         </h3>
         <p className="text-xs text-muted-foreground">Pick a trusted outbound number, or leave blank to auto-rotate from your pool.</p>
         <Select value={fromNumber} onValueChange={setFromNumber}>
@@ -702,7 +703,7 @@ export default function EditAgentPage() {
 
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Mic className="h-4 w-4 text-primary" /> Voice
+          <Mic className="h-4 w-4 text-primary" /> Voice <SectionHelp section="voice" />
         </h3>
         <VoiceSelector
           voices={voices}
@@ -736,7 +737,7 @@ export default function EditAgentPage() {
       {/* Voice Tuning */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Sliders className="h-4 w-4 text-primary" /> Voice Tuning
+          <Sliders className="h-4 w-4 text-primary" /> Voice Tuning <SectionHelp section="voice_tuning" />
         </h3>
         <div className="space-y-4">
           <div className="space-y-2">
@@ -787,7 +788,7 @@ export default function EditAgentPage() {
       {/* Transfer */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Phone className="h-4 w-4 text-primary" /> Call Ending
+          <Phone className="h-4 w-4 text-primary" /> Call Ending <SectionHelp section="call_ending" />
         </h3>
         <div className="grid gap-2 sm:grid-cols-2">
           <button
@@ -822,7 +823,7 @@ export default function EditAgentPage() {
       {/* Business Hours */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Clock className="h-4 w-4 text-primary" /> Business Hours
+          <Clock className="h-4 w-4 text-primary" /> Business Hours <SectionHelp section="business_hours" />
         </h3>
         <div className="space-y-3">
           <div className="flex gap-1.5 flex-wrap">
@@ -887,7 +888,7 @@ export default function EditAgentPage() {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-primary" /> SMS Follow-up
+              <MessageSquare className="h-4 w-4 text-primary" /> SMS Follow-up <SectionHelp section="sms" />
             </h3>
             <p className="text-xs text-muted-foreground mt-1">Send SMS messages after calls</p>
           </div>
@@ -897,7 +898,7 @@ export default function EditAgentPage() {
 
       {/* Voicemail Message */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
-        <h3 className="font-semibold text-foreground">Voicemail Message</h3>
+        <h3 className="font-semibold text-foreground flex items-center gap-1.5">Voicemail Message <SectionHelp section="voicemail" /></h3>
         <p className="text-xs text-muted-foreground">If a voicemail is detected, the agent will leave this message instead of hanging up. Leave blank to just disconnect.</p>
         <Textarea
           value={voicemailMessage}
