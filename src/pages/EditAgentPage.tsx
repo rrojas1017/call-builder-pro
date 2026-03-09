@@ -627,7 +627,7 @@ export default function EditAgentPage() {
       {/* Compliance */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Shield className="h-4 w-4 text-primary" /> Compliance
+          <Shield className="h-4 w-4 text-primary" /> Compliance <SectionHelp section="compliance" />
         </h3>
         <div className="flex items-center justify-between">
           <div>
