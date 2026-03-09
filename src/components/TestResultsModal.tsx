@@ -21,6 +21,7 @@ interface TestContact {
   error: string | null;
   extracted_data: any;
   recording_url?: string | null;
+  user_feedback?: string | null;
 }
 
 interface TestResultsModalProps {
