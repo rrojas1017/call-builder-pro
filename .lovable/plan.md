@@ -1,48 +1,31 @@
 
 
-# Simplify the Agent Creation Wizard
+# Fix Appendify AI Educator Opening Line
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+## Problem
+The current opening line is long, awkward when spoken aloud, and tries to cram too much into the first breath. Phrases like "A little birdy told me" and "navigate this sea of AI solutions" sound stilted when delivered by a TTS voice. The intro needs to feel punchy, confident, and natural — setting the witty tone without overwhelming the listener.
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+## Current Line
+> "Hi, my name is {{agent_name}} and yes, I am an AI agent — but very different from the ones you might be used to. A little birdy told me you might be interested in a good, solid AI agent! Give me 4 minutes of your time and let me prove how Appendify — my bosses — created me, and how we could help you navigate this sea of AI solutions."
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+## Issues
+- Too long for an opening (3 sentences before the listener can respond)
+- "A little birdy told me" feels cliché and unnatural for AI voice
+- "Navigate this sea of AI solutions" is generic filler
+- No pause point — listener has no chance to engage
+- Asking for "4 minutes" upfront creates pressure before rapport
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+## Proposed New Line
+> "Hey there! I'm {{agent_name}}, and full disclosure — I'm an AI. But before you hang up, I'm not one of those robotic ones you're probably thinking of. My creators at Appendify built me a little different... give me sixty seconds and I'll prove it."
 
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+**Why this works:**
+- **Short** — one natural breath, ends with a hook
+- **Self-aware humor** — "before you hang up" disarms immediately
+- **Sixty seconds vs four minutes** — much lower commitment ask
+- **Ends with a challenge** — "I'll prove it" creates curiosity and invites a response
+- **Ellipsis pause** ("a little different...") gives the TTS a natural beat
 
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
-
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
-
-## Plan
-
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
-
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
-
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
-
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
-
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
-
-### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
-
-No database or edge function changes needed.
+## Change
+- **Database only** — update `agent_specs.opening_line` for project `11034709-fbfd-497c-af82-501b3efabc94`
+- No code file changes needed
 
