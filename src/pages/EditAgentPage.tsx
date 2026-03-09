@@ -891,6 +891,36 @@ export default function EditAgentPage() {
           </div>
           <Switch checked={smsEnabled} onCheckedChange={setSmsEnabled} />
         </div>
+
+        {smsEnabled && (
+          <div className="space-y-4 pt-2 border-t border-border">
+            <RadioGroup value={smsMode} onValueChange={(v) => setSmsMode(v as "ai_generated" | "custom_script")} className="space-y-3">
+              <div className="flex items-start gap-3">
+                <RadioGroupItem value="ai_generated" id="sms-ai" className="mt-0.5" />
+                <div>
+                  <Label htmlFor="sms-ai" className="font-medium cursor-pointer">AI-Generated Follow-up</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">The AI will craft a personalized SMS based on the call transcript and outcome — no template needed.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <RadioGroupItem value="custom_script" id="sms-custom" className="mt-0.5" />
+                <div className="flex-1">
+                  <Label htmlFor="sms-custom" className="font-medium cursor-pointer">Custom Script</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">Write your own SMS template with variables like {"{{name}}"}, {"{{outcome}}"}, {"{{state}}"}.</p>
+                </div>
+              </div>
+            </RadioGroup>
+
+            {smsMode === "custom_script" && (
+              <Textarea
+                value={smsScript}
+                onChange={(e) => setSmsScript(e.target.value)}
+                rows={4}
+                placeholder={`Hi {{name}}, thanks for chatting with us today! Based on our conversation, we'd love to help you with your {{coverage_type}} needs. Reply YES to continue or call us back at 555-123-4567.`}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Voicemail Message */}
