@@ -1,48 +1,54 @@
 
 
-# Simplify the Agent Creation Wizard
+# Add Contextual Help to Every Edit Agent Section
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+## Problem
+Many sections (especially Qualification Rules, Conversation Flow, Voice Tuning, etc.) use technical jargon without explaining what they do or why a user would change them. Non-technical users are lost.
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+## Solution
+Create a reusable `SectionHelp` component — a small `HelpCircle` icon next to each section title that opens a popover on hover/click with:
+- **Plain-language explanation** of what the section does
+- **Concrete examples** relevant to the use case
+- **Tips** on best practices
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+## Implementation
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+### 1. New component: `src/components/SectionHelp.tsx`
+A small component using the existing `HoverCard` (hover on desktop) with:
+- `HelpCircle` icon trigger (subtle, muted color)
+- Content: title, description, examples list, optional tip
+- Responsive: works on mobile via click
 
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+### 2. Help content map
+Define a `SECTION_HELP` constant with entries for every section:
 
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+| Section | Plain explanation | Example |
+|---|---|---|
+| **Identity** | Your agent's display name and internal description | "ACA New Mover Agent" — only you see the description |
+| **Language & Mode** | What language the agent speaks + whether it makes or receives calls | Outbound = cold calls, Inbound = answers incoming |
+| **Script / Persona** | The fake human name your agent uses on calls | "Sofia Martinez" — pick a name that matches the voice |
+| **Opening Line** | The first sentence the agent says when someone picks up | `Hey {{first_name}}, this is {{agent_name}}...` |
+| **Tone/Style** | How the agent sounds personality-wise | "friendly and casual" vs "professional and formal" |
+| **Success Definition** | What counts as a "win" for this agent | "Caller confirms interest and is transferred to a licensed agent" |
+| **Conversation Flow / Must-Collect** | Data the agent MUST gather before transferring or ending | consent, zip_code, income_range, email |
+| **Qualification Rules** | Conditions that make a lead "qualified" — if met, agent transfers | `age 18-64, recently moved, no employer coverage` |
+| **Disqualification Rules** | Conditions that disqualify a lead — agent politely ends the call | `already has Medicare, under 18` |
+| **Compliance** | Legal requirements for the call (recording consent, disclosures) | TCPA consent, state-specific disclosures |
+| **Voice** | Which AI voice the agent uses on calls | MiniMax voices sound most natural |
+| **Ambient Sound** | Background noise to make the call feel more natural | "Coffee Shop" reduces echo and sounds human |
+| **Voice Tuning / Speed** | How fast the agent talks | 1.0 = normal, 0.8 = slower for elderly callers |
+| **Temperature** | How creative/unpredictable the agent's responses are | 0.3 = stays on script, 0.9 = improvises more |
+| **Interruption Sensitivity** | How quickly the agent stops talking when the caller speaks | Low = lets caller interrupt easily, High = finishes sentences |
+| **Call Ending / Transfer** | What happens when the call is done | Transfer = warm handoff to a live person |
+| **Business Hours** | When the agent is allowed to make/receive calls | Mon-Fri 9am-5pm ET — calls outside this window are skipped |
+| **SMS Follow-up** | Whether to send a text after the call ends | Useful for sending links or confirmations |
+| **Voicemail** | Message left if the call goes to voicemail | Keep it under 30 seconds, include a callback number |
+| **Advanced / Raw Spec** | Direct JSON editing for power users | Only use if you know what you're doing — overrides all fields above |
 
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
-
-## Plan
-
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
-
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
-
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
-
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
-
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+### 3. Integration into EditAgentPage
+Add `<SectionHelp section="qualification_rules" />` next to each section `<h3>` title. No layout changes — just a small icon inline with the heading.
 
 ### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
-
-No database or edge function changes needed.
+- **`src/components/SectionHelp.tsx`** — New reusable help component with all content
+- **`src/pages/EditAgentPage.tsx`** — Add `<SectionHelp>` next to every section heading
 
