@@ -737,7 +737,7 @@ export default function EditAgentPage() {
       {/* Voice Tuning */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Sliders className="h-4 w-4 text-primary" /> Voice Tuning
+          <Sliders className="h-4 w-4 text-primary" /> Voice Tuning <SectionHelp section="voice_tuning" />
         </h3>
         <div className="space-y-4">
           <div className="space-y-2">
