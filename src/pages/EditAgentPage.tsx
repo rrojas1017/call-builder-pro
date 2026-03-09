@@ -567,7 +567,7 @@ export default function EditAgentPage() {
       {/* Conversation Flow */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-primary" /> Conversation Flow
+          <MessageSquare className="h-4 w-4 text-primary" /> Conversation Flow <SectionHelp section="conversation_flow" />
         </h3>
         <div className="space-y-2">
           <Label>Must-Collect Fields</Label>
