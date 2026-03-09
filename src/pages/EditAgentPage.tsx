@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScriptBuilder } from "@/components/ScriptBuilder";
+import { SectionHelp } from "@/components/SectionHelp";
 
 const maturityConfig: Record<string, { label: string; color: string }> = {
   training: { label: "Training", color: "text-muted-foreground bg-muted" },
