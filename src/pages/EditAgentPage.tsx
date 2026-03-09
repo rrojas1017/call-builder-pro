@@ -683,7 +683,7 @@ export default function EditAgentPage() {
       {/* Outbound Number */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Phone className="h-4 w-4 text-primary" /> Outbound Number
+          <Phone className="h-4 w-4 text-primary" /> Outbound Number <SectionHelp section="outbound_number" />
         </h3>
         <p className="text-xs text-muted-foreground">Pick a trusted outbound number, or leave blank to auto-rotate from your pool.</p>
         <Select value={fromNumber} onValueChange={setFromNumber}>
