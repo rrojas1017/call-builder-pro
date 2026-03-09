@@ -14,7 +14,6 @@ import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radi
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { cn } from "@/lib/utils";
 import { guardOpeningLine } from "@/lib/openingLineGuard";
 import { VoiceSelector } from "@/components/VoiceSelector";
 import { RetellAgentManager } from "@/components/RetellAgentManager";
