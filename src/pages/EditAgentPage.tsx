@@ -635,13 +635,28 @@ export default function EditAgentPage() {
           <Label>Must-Collect Fields</Label>
           <p className="text-xs text-muted-foreground">Fields the agent must collect during the call, in order.</p>
           <div className="flex flex-wrap gap-1.5">
-            {mustCollectFields.map((field) => (
-              <Badge key={field} variant="secondary" className="text-xs gap-1 pr-1">
-                {field}
-                <button onClick={() => handleRemoveField(field)} className="ml-0.5 hover:text-destructive">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
+            {mustCollectFields.map((field, index) => (
+              <div
+                key={field}
+                draggable
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDrop={(e) => handleDrop(e, index)}
+                onDragEnd={handleDragEnd}
+                className={cn(
+                  "cursor-grab active:cursor-grabbing transition-all",
+                  draggedIndex === index && "opacity-40",
+                  dragOverIndex === index && draggedIndex !== index && "ring-2 ring-primary rounded-full"
+                )}
+              >
+                <Badge variant="secondary" className="text-xs gap-1 pr-1 select-none">
+                  <GripVertical className="h-3 w-3 text-muted-foreground" />
+                  {field}
+                  <button onClick={() => handleRemoveField(field)} className="ml-0.5 hover:text-destructive">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              </div>
             ))}
           </div>
           <div className="flex gap-2">
