@@ -157,6 +157,8 @@ export default function EditAgentPage() {
         setTemperature(Number(spec.temperature) || 0.7);
         setInterruptionThreshold(spec.interruption_threshold ?? 100);
         setSmsEnabled(spec.sms_enabled ?? false);
+        setSmsMode((spec as any).sms_mode || "ai_generated");
+        setSmsScript((spec as any).sms_script || "");
 
         // Parse JSON fields
         const mcf = spec.must_collect_fields;
