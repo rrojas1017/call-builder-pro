@@ -470,7 +470,7 @@ export default function EditAgentPage() {
 
       {/* Identity */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
-        <h3 className="font-semibold text-foreground">Identity</h3>
+        <h3 className="font-semibold text-foreground flex items-center gap-1.5">Identity <SectionHelp section="identity" /></h3>
         <div className="space-y-2">
           <Label>Agent Name</Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
