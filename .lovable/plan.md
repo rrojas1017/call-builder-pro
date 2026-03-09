@@ -1,43 +1,48 @@
 
 
-# External API Knowledge Source
+# Simplify the Agent Creation Wizard
 
-## Overview
-Add an optional feature that lets users configure external API endpoints per agent. Before each call, the system queries those APIs and includes live data in the agent's knowledge briefing.
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-## Changes
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-### 1. Database: `knowledge_api_endpoints` table
-New table with columns: `id`, `project_id` (uuid), `org_id` (uuid), `name` (text), `endpoint_url` (text), `http_method` (text, default GET), `headers` (jsonb, default {}), `query_template` (text, nullable), `response_path` (text, nullable -- dot notation like `data.results`), `enabled` (boolean, default true), `last_synced_at` (timestamptz), `last_status` (text), `created_at` (timestamptz).
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-RLS policies following existing org-scoped pattern: admins can manage (ALL), org members can view (SELECT), super admins can view all (SELECT).
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-### 2. UI: Add "API Sources" tab on AgentKnowledgePage
-Add a new top-level tab "🔌 API Sources" alongside existing category tabs. Contains:
-- List of configured endpoints with name, URL, method, enabled toggle, last status indicator
-- "Add API Source" dialog with fields: name, URL, HTTP method (GET/POST), headers (key-value pairs), response path, optional query template
-- "Test Connection" button per endpoint that calls the fetch edge function and shows a preview of returned data
-- Edit/delete actions per endpoint
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-### 3. Edge Function: `fetch-api-knowledge/index.ts`
-New function that:
-- Accepts `project_id` and optional `caller_context` (name, phone)
-- Fetches all enabled `knowledge_api_endpoints` for the project (using service role)
-- Calls each endpoint with configured method/headers, substituting `{{caller_name}}` / `{{phone}}` placeholders in query_template
-- Extracts data using `response_path` (dot-notation traversal)
-- Updates `last_synced_at` and `last_status` on each endpoint
-- Returns combined text block of all API responses
-- 10-second timeout per endpoint, errors logged but non-fatal
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-### 4. Update `summarize-agent-knowledge/index.ts`
-Before the AI summarization step, call `fetch-api-knowledge` internally (direct function call, not HTTP) to get live API data. Append it to `rawText` with `[api_source: <name>]` prefix so the AI compressor includes it in the briefing.
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-### 5. Config
-Add `[functions.fetch-api-knowledge] verify_jwt = false` to config.toml.
+## Plan
+
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
+
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
 ### Files Changed
-- **Database migration** -- `knowledge_api_endpoints` table + RLS
-- **`src/pages/AgentKnowledgePage.tsx`** -- API Sources tab with CRUD UI + test button
-- **`supabase/functions/fetch-api-knowledge/index.ts`** -- new edge function
-- **`supabase/functions/summarize-agent-knowledge/index.ts`** -- integrate API data
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 

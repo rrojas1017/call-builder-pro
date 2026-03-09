@@ -2,14 +2,18 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrgContext } from "@/hooks/useOrgContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Plus, Pencil, Trash2, Loader2, BookOpen, ExternalLink, TrendingUp, TrendingDown, Minus, Brain, Trophy, Clock, GraduationCap, Upload } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Loader2, BookOpen, ExternalLink, TrendingUp, TrendingDown, Minus, Brain, Trophy, Clock, GraduationCap, Upload, Plug, Zap, CheckCircle, XCircle, Play } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import UploadSourcesDialog from "@/components/UploadSourcesDialog";
@@ -21,6 +25,22 @@ interface KnowledgeEntry {
   content: string;
   source_url: string | null;
   source_type: string;
+  created_at: string;
+}
+
+interface ApiEndpoint {
+  id: string;
+  project_id: string;
+  org_id: string;
+  name: string;
+  endpoint_url: string;
+  http_method: string;
+  headers: Record<string, string>;
+  query_template: string | null;
+  response_path: string | null;
+  enabled: boolean;
+  last_synced_at: string | null;
+  last_status: string | null;
   created_at: string;
 }
 
@@ -101,13 +121,11 @@ function LearningProgressBar({ entries, projectId }: { entries: KnowledgeEntry[]
   const manualCount = entries.filter(e => e.source_type === "manual").length;
   const recordingCount = entries.filter(e => e.source_type === "transfer_recording").length;
 
-  // Score trend
   const validScores = snapshots.filter(s => s.avg_overall != null).map(s => s.avg_overall!);
   const latestScore = validScores[0] ?? null;
   const previousScore = validScores[1] ?? null;
   const scoreDelta = latestScore != null && previousScore != null ? latestScore - previousScore : null;
 
-  // Last activity
   const lastTimes = [
     ...entries.map(e => e.created_at),
     ...improvements.map(i => i.created_at),
@@ -123,7 +141,6 @@ function LearningProgressBar({ entries, projectId }: { entries: KnowledgeEntry[]
     return `${Math.floor(hrs / 24)}d ago`;
   };
 
-  // Graduation progress
   const currentIdx = MATURITY_LEVELS.findIndex(l => l.key === maturityLevel);
   const current = MATURITY_LEVELS[currentIdx] || MATURITY_LEVELS[0];
   const next = currentIdx < MATURITY_LEVELS.length - 1 ? MATURITY_LEVELS[currentIdx + 1] : null;
@@ -139,16 +156,13 @@ function LearningProgressBar({ entries, projectId }: { entries: KnowledgeEntry[]
 
   return (
     <div className="space-y-3">
-      {/* Graduation Progress */}
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <GraduationCap className={`h-5 w-5 ${current.color}`} />
               <span className="font-semibold text-foreground">{current.label}</span>
-              {next && (
-                <span className="text-xs text-muted-foreground">→ {next.label}</span>
-              )}
+              {next && <span className="text-xs text-muted-foreground">→ {next.label}</span>}
             </div>
             <span className="text-xs text-muted-foreground">{progressLabel}</span>
           </div>
@@ -161,7 +175,6 @@ function LearningProgressBar({ entries, projectId }: { entries: KnowledgeEntry[]
         </CardContent>
       </Card>
 
-      {/* Stats cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
@@ -244,6 +257,320 @@ function LearningProgressBar({ entries, projectId }: { entries: KnowledgeEntry[]
   );
 }
 
+// ─── API Sources Tab ──────────────────────────────────────────
+function ApiSourcesTab({ projectId }: { projectId: string }) {
+  const { activeOrgId } = useOrgContext();
+  const { toast } = useToast();
+  const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingEndpoint, setEditingEndpoint] = useState<ApiEndpoint | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ id: string; data: string } | null>(null);
+
+  // Form state
+  const [formName, setFormName] = useState("");
+  const [formUrl, setFormUrl] = useState("");
+  const [formMethod, setFormMethod] = useState("GET");
+  const [formHeaders, setFormHeaders] = useState<{ key: string; value: string }[]>([]);
+  const [formResponsePath, setFormResponsePath] = useState("");
+  const [formQueryTemplate, setFormQueryTemplate] = useState("");
+
+  const fetchEndpoints = async () => {
+    const { data, error } = await supabase
+      .from("knowledge_api_endpoints")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false });
+    if (!error) setEndpoints((data || []) as ApiEndpoint[]);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchEndpoints(); }, [projectId]);
+
+  const resetForm = () => {
+    setFormName("");
+    setFormUrl("");
+    setFormMethod("GET");
+    setFormHeaders([]);
+    setFormResponsePath("");
+    setFormQueryTemplate("");
+    setEditingEndpoint(null);
+  };
+
+  const openAdd = () => {
+    resetForm();
+    setDialogOpen(true);
+  };
+
+  const openEdit = (ep: ApiEndpoint) => {
+    setEditingEndpoint(ep);
+    setFormName(ep.name);
+    setFormUrl(ep.endpoint_url);
+    setFormMethod(ep.http_method);
+    setFormHeaders(
+      Object.entries(ep.headers || {}).map(([key, value]) => ({ key, value: value as string }))
+    );
+    setFormResponsePath(ep.response_path || "");
+    setFormQueryTemplate(ep.query_template || "");
+    setDialogOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!formName.trim() || !formUrl.trim() || !activeOrgId) return;
+    setSaving(true);
+
+    const headersObj: Record<string, string> = {};
+    formHeaders.forEach(h => { if (h.key.trim()) headersObj[h.key.trim()] = h.value; });
+
+    const payload = {
+      project_id: projectId,
+      org_id: activeOrgId,
+      name: formName.trim(),
+      endpoint_url: formUrl.trim(),
+      http_method: formMethod,
+      headers: headersObj,
+      response_path: formResponsePath.trim() || null,
+      query_template: formQueryTemplate.trim() || null,
+    };
+
+    if (editingEndpoint) {
+      const { error } = await supabase
+        .from("knowledge_api_endpoints")
+        .update(payload)
+        .eq("id", editingEndpoint.id);
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "API source updated" });
+        setDialogOpen(false);
+        resetForm();
+        fetchEndpoints();
+      }
+    } else {
+      const { error } = await supabase
+        .from("knowledge_api_endpoints")
+        .insert(payload);
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "API source added" });
+        setDialogOpen(false);
+        resetForm();
+        fetchEndpoints();
+      }
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    const { error } = await supabase.from("knowledge_api_endpoints").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } else {
+      setEndpoints(prev => prev.filter(e => e.id !== id));
+      toast({ title: "Deleted" });
+    }
+  };
+
+  const handleToggle = async (id: string, enabled: boolean) => {
+    const { error } = await supabase
+      .from("knowledge_api_endpoints")
+      .update({ enabled })
+      .eq("id", id);
+    if (!error) {
+      setEndpoints(prev => prev.map(e => e.id === id ? { ...e, enabled } : e));
+    }
+  };
+
+  const handleTest = async (ep: ApiEndpoint) => {
+    setTestingId(ep.id);
+    setTestResult(null);
+    try {
+      const resp = await supabase.functions.invoke("fetch-api-knowledge", {
+        body: { project_id: projectId },
+      });
+      if (resp.error) {
+        setTestResult({ id: ep.id, data: `Error: ${resp.error.message}` });
+      } else {
+        setTestResult({ id: ep.id, data: resp.data?.api_data || "No data returned" });
+      }
+      // Refresh to get updated last_status
+      fetchEndpoints();
+    } catch (err: any) {
+      setTestResult({ id: ep.id, data: `Error: ${err.message}` });
+    }
+    setTestingId(null);
+  };
+
+  if (loading) {
+    return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Connect external APIs to feed real-time data into your agent's knowledge before each call.
+        </p>
+        <Button onClick={openAdd} size="sm">
+          <Plus className="mr-1 h-4 w-4" /> Add API Source
+        </Button>
+      </div>
+
+      {endpoints.length === 0 ? (
+        <div className="text-center py-12 space-y-3">
+          <Plug className="h-10 w-10 text-muted-foreground mx-auto" />
+          <p className="text-muted-foreground">No API sources configured yet.</p>
+          <Button variant="outline" onClick={openAdd}>
+            <Plus className="mr-1 h-4 w-4" /> Add your first API source
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {endpoints.map(ep => (
+            <Card key={ep.id}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap className="h-4 w-4 text-primary shrink-0" />
+                      <span className="font-medium text-foreground truncate">{ep.name}</span>
+                      <Badge variant="outline" className="text-xs">{ep.http_method}</Badge>
+                      {ep.last_status === "ok" && (
+                        <CheckCircle className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                      )}
+                      {ep.last_status && ep.last_status !== "ok" && (
+                        <XCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">{ep.endpoint_url}</p>
+                    {ep.response_path && (
+                      <p className="text-xs text-muted-foreground mt-0.5">Path: <code className="bg-muted px-1 rounded">{ep.response_path}</code></p>
+                    )}
+                    {ep.last_synced_at && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Last synced: {new Date(ep.last_synced_at).toLocaleString()}
+                      </p>
+                    )}
+                    {testResult?.id === ep.id && (
+                      <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto max-h-32 text-foreground">
+                        {testResult.data}
+                      </pre>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="ghost" size="icon" className="h-7 w-7"
+                      onClick={() => handleTest(ep)}
+                      disabled={testingId === ep.id}
+                    >
+                      {testingId === ep.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(ep)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleDelete(ep.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <Switch checked={ep.enabled} onCheckedChange={(v) => handleToggle(ep.id, v)} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={(v) => { if (!v) resetForm(); setDialogOpen(v); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingEndpoint ? "Edit API Source" : "Add API Source"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Name</Label>
+              <Input placeholder="e.g. Product Catalog API" value={formName} onChange={e => setFormName(e.target.value)} />
+            </div>
+            <div>
+              <Label>Endpoint URL</Label>
+              <Input placeholder="https://api.example.com/data" value={formUrl} onChange={e => setFormUrl(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>HTTP Method</Label>
+                <Select value={formMethod} onValueChange={setFormMethod}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GET">GET</SelectItem>
+                    <SelectItem value="POST">POST</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Response Path</Label>
+                <Input placeholder="e.g. data.results" value={formResponsePath} onChange={e => setFormResponsePath(e.target.value)} />
+                <p className="text-xs text-muted-foreground mt-1">Dot-notation to extract data from JSON response</p>
+              </div>
+            </div>
+
+            {/* Headers */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <Label>Headers</Label>
+                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setFormHeaders([...formHeaders, { key: "", value: "" }])}>
+                  <Plus className="h-3 w-3 mr-1" /> Add
+                </Button>
+              </div>
+              {formHeaders.map((h, i) => (
+                <div key={i} className="flex gap-2 mb-1">
+                  <Input placeholder="Key" value={h.key} onChange={e => {
+                    const updated = [...formHeaders];
+                    updated[i].key = e.target.value;
+                    setFormHeaders(updated);
+                  }} className="flex-1" />
+                  <Input placeholder="Value" value={h.value} onChange={e => {
+                    const updated = [...formHeaders];
+                    updated[i].value = e.target.value;
+                    setFormHeaders(updated);
+                  }} className="flex-1" />
+                  <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0" onClick={() => setFormHeaders(formHeaders.filter((_, j) => j !== i))}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            {formMethod === "POST" && (
+              <div>
+                <Label>Query Template (POST body)</Label>
+                <Textarea
+                  placeholder={'{"query": "{{caller_name}}"}'}
+                  value={formQueryTemplate}
+                  onChange={e => setFormQueryTemplate(e.target.value)}
+                  rows={3}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use {"{{caller_name}}"} and {"{{phone}}"} as placeholders
+                </p>
+              </div>
+            )}
+
+            <Button onClick={handleSave} disabled={saving || !formName.trim() || !formUrl.trim()} className="w-full">
+              {saving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+              {editingEndpoint ? "Update" : "Add"} API Source
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────
 export default function AgentKnowledgePage() {
   const { id: projectId } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -354,7 +681,7 @@ export default function AgentKnowledgePage() {
       {projectId && <LearningProgressBar entries={entries} projectId={projectId} />}
 
       <Tabs defaultValue="all">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="all">All ({entries.length})</TabsTrigger>
           {CATEGORIES.map(c => {
             const count = entries.filter(e => e.category === c.value).length;
@@ -364,8 +691,10 @@ export default function AgentKnowledgePage() {
               </TabsTrigger>
             ) : null;
           })}
+          <TabsTrigger value="api_sources">🔌 API Sources</TabsTrigger>
         </TabsList>
 
+        {/* Knowledge category tabs */}
         {["all", ...CATEGORIES.map(c => c.value)].map(tab => (
           <TabsContent key={tab} value={tab} className="space-y-3 mt-4">
             {filterByCategory(tab === "all" ? null : tab).length === 0 ? (
@@ -420,6 +749,11 @@ export default function AgentKnowledgePage() {
             )}
           </TabsContent>
         ))}
+
+        {/* API Sources tab */}
+        <TabsContent value="api_sources" className="mt-4">
+          {projectId && <ApiSourcesTab projectId={projectId} />}
+        </TabsContent>
       </Tabs>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>

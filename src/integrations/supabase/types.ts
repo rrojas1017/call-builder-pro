@@ -937,6 +937,69 @@ export type Database = {
           },
         ]
       }
+      knowledge_api_endpoints: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          endpoint_url: string
+          headers: Json
+          http_method: string
+          id: string
+          last_status: string | null
+          last_synced_at: string | null
+          name: string
+          org_id: string
+          project_id: string
+          query_template: string | null
+          response_path: string | null
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          endpoint_url: string
+          headers?: Json
+          http_method?: string
+          id?: string
+          last_status?: string | null
+          last_synced_at?: string | null
+          name: string
+          org_id: string
+          project_id: string
+          query_template?: string | null
+          response_path?: string | null
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          endpoint_url?: string
+          headers?: Json
+          http_method?: string
+          id?: string
+          last_status?: string | null
+          last_synced_at?: string | null
+          name?: string
+          org_id?: string
+          project_id?: string
+          query_template?: string | null
+          response_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_api_endpoints_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "knowledge_api_endpoints_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       org_invitations: {
         Row: {
           created_at: string
