@@ -1,46 +1,41 @@
 
 
-# Rewrite Appendify AI Educator Agent to Be a Platform Promoter
+# Add Compressed Recording Download (MP3)
 
 ## Problem
-The current Dex agent spec reads like a generic AI lead qualification call — collecting pain points, interest levels, and pushing for demos. It should instead be a **product evangelist** that actively demonstrates and explains Appendify's unique features, ease of use, and differentiators.
+Retell recording URLs serve WAV files which are very large. Users want to download recordings but WAV files are impractical (a 5-minute call can be 50MB+ in WAV vs ~5MB in MP3).
 
-## What Changes (all via database updates — no code changes needed)
+## Solution
+Create a backend function that fetches the WAV from Retell, converts it to MP3 using FFmpeg (available in Deno), and returns it. Add a download button next to the audio player in the Calls page, University test results modal, and Campaign detail page.
 
-### 1. Rewrite `use_case` and `success_definition`
-- **use_case**: "Appendify Platform Demonstration & Education" — focused on showcasing, not qualifying
-- **success_definition**: Reframe from "agrees to a demo" → "The prospect clearly understands what makes Appendify different (self-retraining, Humanization Scale, one-click agent creation, University test lab) and feels excited about the platform's ease of use"
+## Changes
 
-### 2. Rewrite `opening_line`
-Current line is generic ("about the future of automated workflows"). Replace with something that immediately hooks on Appendify's value:
-> "Hi {{first_name}}, this is {{agent_name}} from Appendify. I'm actually one of the AI agents built on our platform — took about 5 minutes to create me. I'd love to show you what makes us different from every other AI calling tool out there. Got a minute?"
+### 1. New Edge Function: `convert-recording`
+- Accepts `{ recording_url: string }` 
+- Fetches the WAV from Retell
+- Converts to MP3 using FFmpeg (via Deno subprocess or a WebAssembly-based encoder)
+- Returns the MP3 binary as a downloadable response with `Content-Disposition: attachment`
 
-### 3. Simplify `must_collect_fields`
-Remove generic fields like "Interest Level (1-10)" and "Current System Used". Replace with conversation-driven checkpoints:
-- "What's their biggest frustration with their current calling/outreach process?"
-- "Which Appendify feature resonated most with them?"
-- "Are they interested in a hands-on trial?"
+**Alternative (simpler):** Since Retell actually serves recordings in both WAV and MP3 formats — the URL just needs `.mp3` appended or the format parameter changed — we should first check if Retell's API already provides an MP3 URL. If so, no edge function needed; just use the MP3 URL for downloads.
 
-### 4. Rewrite `business_rules`
-Update `target_audience` and `objection_handling` to focus on Appendify-specific selling points and common objections about AI calling platforms.
+### 2. UI: Add Download Button
+Add a download button in three locations:
 
-### 5. Update `tone_style`
-Make it more enthusiastic and product-proud: "Confident, enthusiastic product advocate. Speak like someone who genuinely loves the platform and wants to share it. Use specific examples and features rather than abstract benefits."
+- **`src/pages/CallsPage.tsx`** — next to the speed controls in the recording section
+- **`src/components/TestResultsModal.tsx`** — next to the audio player  
+- **`src/pages/CampaignDetailPage.tsx`** — next to the "Listen to Recording" link
 
-### 6. Clean up `humanization_notes`
-The current notes are bloated with generic conversation techniques (many duplicated from knowledge entries). Trim to ~5 focused notes specific to the educator role — e.g., "Lead with the fact that YOU are proof the platform works", "Reference specific features by name", "Don't pitch — educate and let them ask questions."
+The button will either:
+- Link directly to Retell's MP3 variant URL (if available), or
+- Call the `convert-recording` edge function and trigger a browser download
 
-### 7. Add Appendify-specific knowledge entries
-The existing knowledge has good competitor comparisons but lacks entries about specific features. Add entries for:
-- **Self-retraining loop** — how agents learn from every call automatically
-- **University test lab** — simulate calls before going live
-- **One-click agent creation** — describe how easy setup is
-- **Humanization Scale** — proprietary scoring that measures call quality
-- **Auto-Graduation system** — agents level up automatically
+### Approach Decision
+Retell's `recording_url` typically ends in `.wav`. Their API docs indicate recordings can be fetched in different formats. The simplest approach: append `?format=mp3` or swap the extension. If that doesn't work, we fall back to an edge function conversion.
 
-(Some of these exist as `conversation_technique` entries but should be `product_knowledge` entries instead.)
+**Recommended first step:** Add a simple download button that modifies the recording URL extension from `.wav` to `.mp3` (Retell supports this). No edge function needed unless the URL format doesn't support it.
 
 ### Files Changed
-- **Database only** — update `agent_specs` row and `agent_knowledge` entries for project `11034709-fbfd-497c-af82-501b3efabc94`
-- No frontend code changes required
+- **`src/pages/CallsPage.tsx`** — add Download button in recording section
+- **`src/components/TestResultsModal.tsx`** — add Download button
+- **`src/pages/CampaignDetailPage.tsx`** — change "Listen to Recording" to include a download option
 
