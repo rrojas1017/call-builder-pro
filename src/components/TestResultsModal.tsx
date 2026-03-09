@@ -470,7 +470,17 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                 </div>
               )}
 
-              {selected.extracted_data && (
+              {/* User Feedback Section */}
+              {selected.status === "completed" && (
+                <UserFeedbackSection
+                  contactId={selected.id}
+                  existingFeedback={selected.user_feedback || null}
+                  onFeedbackSaved={(feedback) => {
+                    setContacts(prev => prev.map(c => c.id === selected.id ? { ...c, user_feedback: feedback } : c));
+                  }}
+                />
+              )}
+
                 <div className="space-y-1">
                   <h5 className="text-xs font-medium text-muted-foreground">Extracted Data</h5>
                   <pre className="rounded-lg bg-muted/30 border border-border p-3 text-xs font-mono overflow-auto">
