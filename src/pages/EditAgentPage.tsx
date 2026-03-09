@@ -613,7 +613,7 @@ export default function EditAgentPage() {
           />
         </div>
         <div className="space-y-2">
-          <Label>Disqualification Rules (JSON)</Label>
+          <Label className="flex items-center gap-1.5">Disqualification Rules (JSON) <SectionHelp section="disqualification_rules" /></Label>
           <Textarea
             value={disqualificationRules}
             onChange={(e) => setDisqualificationRules(e.target.value)}
