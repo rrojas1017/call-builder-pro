@@ -161,10 +161,12 @@ export default function EditAgentPage() {
         if (Array.isArray(mcf)) setMustCollectFields(mcf as string[]);
         
         const qr = spec.qualification_rules as any;
-        setQualificationRules(qr?.description || (qr && typeof qr === "object" ? JSON.stringify(qr, null, 2) : ""));
+        const qrStr = qr?.description || (qr && typeof qr === "object" ? JSON.stringify(qr, null, 2) : "");
+        setQualificationRules(qrStr === "{}" || qrStr === "null" ? "" : qrStr);
         
         const dr = spec.disqualification_rules as any;
-        setDisqualificationRules(dr?.description || (dr && typeof dr === "object" ? JSON.stringify(dr, null, 2) : ""));
+        const drStr = dr?.description || (dr && typeof dr === "object" ? JSON.stringify(dr, null, 2) : "");
+        setDisqualificationRules(drStr === "{}" || drStr === "null" ? "" : drStr);
 
         const bh = spec.business_hours as any;
         if (bh && typeof bh === "object") {
