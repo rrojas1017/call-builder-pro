@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2, GraduationCap, Download } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2, GraduationCap, Download, Mic, MicOff, MessageSquarePlus, Pencil, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { downloadRecordingMp3 } from "@/lib/recordingDownload";
 
