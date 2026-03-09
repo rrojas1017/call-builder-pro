@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, RefreshCw, AlertTriangle, CheckCircle2, ChevronDown, ArrowRightLeft } from "lucide-react";
+import { Loader2, Plus, CheckCircle2, ChevronDown, AlertTriangle, ArrowRightLeft } from "lucide-react";
 import { useRetellAgent } from "@/hooks/useRetellAgent";
 import { useToast } from "@/hooks/use-toast";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -24,7 +24,7 @@ export function RetellAgentManager({
   language,
 }: RetellAgentManagerProps) {
   const { toast } = useToast();
-  const { config, loading, error, createAgent, updateAgent, switchToOutbound } = useRetellAgent(
+  const { config, loading, error, createAgent, switchToOutbound } = useRetellAgent(
     retellAgentId || null
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -47,20 +47,6 @@ export function RetellAgentManager({
       toast({ title: "Append agent created!", description: `Agent ID: ${result.agent_id}` });
     } else if (error) {
       toast({ title: "Failed to create agent", description: error, variant: "destructive" });
-    }
-  };
-
-  const handleUpdate = async () => {
-    if (!retellAgentId) return;
-    const result = await updateAgent(retellAgentId, {
-      agent_name: personaName || undefined,
-      voice_id: voiceId || undefined,
-      language: mapLanguage(language),
-    });
-    if (result) {
-      toast({ title: "Append agent updated!" });
-    } else if (error) {
-      toast({ title: "Failed to update agent", description: error, variant: "destructive" });
     }
   };
 
@@ -94,22 +80,18 @@ export function RetellAgentManager({
     );
   }
 
-  // Agent exists — show status card
-      const isTransferAgent = config?.is_transfer_agent === true || 
-        (config as any)?.agent_type === "transfer";
+  // Agent exists — show read-only status card
+  const isTransferAgent = config?.is_transfer_agent === true || 
+    (config as any)?.agent_type === "transfer";
+
   return (
     <div className="space-y-3">
-      {/* Status card */}
+      {/* Status card (read-only) */}
       {config && (
         <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-green-500" />
-              <span className="text-sm font-medium text-foreground">Append Agent Connected</span>
-            </div>
-            <Button variant="ghost" size="sm" onClick={handleUpdate} disabled={loading}>
-              {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-            </Button>
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-green-500" />
+            <span className="text-sm font-medium text-foreground">Append Agent Connected</span>
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <span className="text-muted-foreground">Agent ID</span>
@@ -123,6 +105,9 @@ export function RetellAgentManager({
             <span className="text-muted-foreground">Webhook</span>
             <span className="text-foreground truncate">{config.webhook_url ? "✓ Configured" : "✗ Missing"}</span>
           </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Settings are synced automatically when you save changes.
+          </p>
         </div>
       )}
 
@@ -169,12 +154,6 @@ export function RetellAgentManager({
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       )}
-
-      {/* Sync button */}
-      <Button variant="outline" size="sm" onClick={handleUpdate} disabled={loading} className="w-full">
-        {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-        Sync Settings to Append
-      </Button>
 
       {/* Advanced: manual ID override */}
       <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
