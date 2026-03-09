@@ -1002,25 +1002,48 @@ function ResultCard({
         </div>
       )}
 
-      {/* Your Feedback */}
+      {/* Your Feedback — chat-style with voice recording */}
       {showFeedbackInput && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-            💬 Your Feedback
+          <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            <MessageSquarePlus className="h-3 w-3" /> Add Your Feedback
+          </h5>
+          <p className="text-[11px] text-muted-foreground">
+            Share what you noticed during this call. Your feedback will be factored into the evaluation and agent improvements.
           </p>
           <Textarea
-            placeholder="How did the call sound? Any issues or suggestions..."
             value={feedbackText}
             onChange={(e) => setFeedbackText(e.target.value)}
-            className="text-xs min-h-[60px]"
+            placeholder="e.g., 'The agent was too pushy about scheduling', 'Great job handling the objection about pricing'..."
+            className="min-h-[60px] text-xs"
           />
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={handleSaveFeedback} disabled={savingFeedback || !feedbackText.trim()}>
-              {savingFeedback && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-              Save Feedback
+            <Button
+              onClick={handleSaveFeedback}
+              disabled={savingFeedback || !feedbackText.trim()}
+              size="sm"
+              className="h-7 text-xs"
+            >
+              {savingFeedback ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Send className="mr-1 h-3 w-3" />}
+              {savedFeedback ? "Update Feedback" : "Submit Feedback"}
             </Button>
-            {editingFeedback && (
-              <Button size="sm" variant="ghost" onClick={() => { setEditingFeedback(false); setFeedbackText(savedFeedback || ""); }}>
+            <Button
+              onClick={recording ? stopRecording : startRecording}
+              disabled={transcribing}
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+            >
+              {transcribing ? (
+                <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Transcribing...</>
+              ) : recording ? (
+                <><MicOff className="mr-1 h-3 w-3 text-destructive" /> Stop Recording</>
+              ) : (
+                <><Mic className="mr-1 h-3 w-3" /> Record Feedback</>
+              )}
+            </Button>
+            {editingFeedback && savedFeedback && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setEditingFeedback(false); setFeedbackText(savedFeedback); }}>
                 Cancel
               </Button>
             )}
@@ -1031,14 +1054,14 @@ function ResultCard({
       {showSavedFeedback && (
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              💬 Your Feedback
-            </p>
-            <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setEditingFeedback(true)}>
-              Edit
+            <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <MessageSquarePlus className="h-3 w-3" /> Your Feedback
+            </h5>
+            <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => setEditingFeedback(true)}>
+              <Pencil className="mr-1 h-3 w-3" /> Edit
             </Button>
           </div>
-          <div className="rounded-lg bg-muted/30 border border-border p-3 text-xs text-foreground whitespace-pre-wrap">
+          <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-foreground whitespace-pre-wrap">
             {savedFeedback}
           </div>
         </div>
