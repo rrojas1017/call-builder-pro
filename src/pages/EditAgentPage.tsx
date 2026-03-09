@@ -529,7 +529,7 @@ export default function EditAgentPage() {
 
       {/* Script */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
-        <h3 className="font-semibold text-foreground">Script</h3>
+        <h3 className="font-semibold text-foreground flex items-center gap-1.5">Script <SectionHelp section="opening_line" /></h3>
         <div className="space-y-2">
           <Label>Agent Persona Name</Label>
           <Input value={personaName} onChange={(e) => setPersonaName(e.target.value)} placeholder="e.g. Sofia, Alex, Carlos" />
