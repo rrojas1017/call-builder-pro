@@ -4,8 +4,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2, GraduationCap } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2, GraduationCap, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { downloadRecordingMp3 } from "@/lib/recordingDownload";
 
 interface TestContact {
   id: string;
@@ -223,6 +224,14 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                   <audio controls className="w-full h-8" src={selected.recording_url}>
                     Your browser does not support the audio element.
                   </audio>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => downloadRecordingMp3(selected.recording_url!, `test-${selected.id}.mp3`)}
+                  >
+                    <Download className="mr-1 h-3 w-3" /> Download MP3
+                  </Button>
                 </div>
               )}
 

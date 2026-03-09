@@ -1,41 +1,48 @@
 
 
-# Add Compressed Recording Download (MP3)
+# Simplify the Agent Creation Wizard
 
-## Problem
-Retell recording URLs serve WAV files which are very large. Users want to download recordings but WAV files are impractical (a 5-minute call can be 50MB+ in WAV vs ~5MB in MP3).
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-## Solution
-Create a backend function that fetches the WAV from Retell, converts it to MP3 using FFmpeg (available in Deno), and returns it. Add a download button next to the audio player in the Calls page, University test results modal, and Campaign detail page.
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-## Changes
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-### 1. New Edge Function: `convert-recording`
-- Accepts `{ recording_url: string }` 
-- Fetches the WAV from Retell
-- Converts to MP3 using FFmpeg (via Deno subprocess or a WebAssembly-based encoder)
-- Returns the MP3 binary as a downloadable response with `Content-Disposition: attachment`
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-**Alternative (simpler):** Since Retell actually serves recordings in both WAV and MP3 formats — the URL just needs `.mp3` appended or the format parameter changed — we should first check if Retell's API already provides an MP3 URL. If so, no edge function needed; just use the MP3 URL for downloads.
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-### 2. UI: Add Download Button
-Add a download button in three locations:
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-- **`src/pages/CallsPage.tsx`** — next to the speed controls in the recording section
-- **`src/components/TestResultsModal.tsx`** — next to the audio player  
-- **`src/pages/CampaignDetailPage.tsx`** — next to the "Listen to Recording" link
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-The button will either:
-- Link directly to Retell's MP3 variant URL (if available), or
-- Call the `convert-recording` edge function and trigger a browser download
+## Plan
 
-### Approach Decision
-Retell's `recording_url` typically ends in `.wav`. Their API docs indicate recordings can be fetched in different formats. The simplest approach: append `?format=mp3` or swap the extension. If that doesn't work, we fall back to an edge function conversion.
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
 
-**Recommended first step:** Add a simple download button that modifies the recording URL extension from `.wav` to `.mp3` (Retell supports this). No edge function needed unless the URL format doesn't support it.
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
+
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
 ### Files Changed
-- **`src/pages/CallsPage.tsx`** — add Download button in recording section
-- **`src/components/TestResultsModal.tsx`** — add Download button
-- **`src/pages/CampaignDetailPage.tsx`** — change "Listen to Recording" to include a download option
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 
