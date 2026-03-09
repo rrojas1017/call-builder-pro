@@ -272,6 +272,8 @@ export default function EditAgentPage() {
           interruption_threshold: interruptionThreshold,
           business_hours: businessHours,
           sms_enabled: smsEnabled,
+          sms_mode: smsMode,
+          sms_script: smsScript || null,
         } as any).eq("project_id", id),
       ]);
 
