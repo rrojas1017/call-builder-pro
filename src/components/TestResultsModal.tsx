@@ -524,7 +524,165 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
   );
 }
 
-function ScoreCard({ label, score }: { label: string; score?: number }) {
+function UserFeedbackSection({ contactId, existingFeedback, onFeedbackSaved }: {
+  contactId: string;
+  existingFeedback: string | null;
+  onFeedbackSaved: (feedback: string) => void;
+}) {
+  const { toast } = useToast();
+  const [feedback, setFeedback] = useState(existingFeedback || "");
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(!existingFeedback);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  // Reset state when contact changes
+  useEffect(() => {
+    setFeedback(existingFeedback || "");
+    setEditing(!existingFeedback);
+  }, [contactId, existingFeedback]);
+
+  const handleSave = useCallback(async () => {
+    if (!feedback.trim()) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("test_run_contacts")
+        .update({ user_feedback: feedback.trim() } as any)
+        .eq("id", contactId);
+      if (error) throw error;
+      onFeedbackSaved(feedback.trim());
+      setEditing(false);
+      toast({ title: "Feedback saved", description: "Your feedback will be included in the next evaluation." });
+    } catch (err: any) {
+      toast({ title: "Failed to save feedback", description: err.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }, [feedback, contactId, onFeedbackSaved, toast]);
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      chunksRef.current = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        await transcribeAudio(blob);
+      };
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setRecording(true);
+    } catch (err: any) {
+      toast({ title: "Microphone access denied", description: "Please allow microphone access to record feedback.", variant: "destructive" });
+    }
+  }, [toast]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+    }
+  }, []);
+
+  const transcribeAudio = useCallback(async (blob: Blob) => {
+    setTranscribing(true);
+    try {
+      // Convert blob to base64
+      const arrayBuffer = await blob.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+      const { data, error } = await supabase.functions.invoke("transcribe-and-ingest", {
+        body: { audio_base64: base64, mode: "transcribe_only" },
+      });
+      if (error) throw error;
+      const transcribedText = data?.text || data?.transcript || "";
+      if (transcribedText) {
+        setFeedback(prev => prev ? prev + "\n" + transcribedText : transcribedText);
+      } else {
+        toast({ title: "No speech detected", description: "Try recording again with clearer audio.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      toast({ title: "Transcription failed", description: err.message, variant: "destructive" });
+    } finally {
+      setTranscribing(false);
+    }
+  }, [toast]);
+
+  if (!editing && existingFeedback) {
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            <MessageSquarePlus className="h-3 w-3" /> Your Feedback
+          </h5>
+          <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => setEditing(true)}>
+            <Pencil className="mr-1 h-3 w-3" /> Edit
+          </Button>
+        </div>
+        <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-foreground whitespace-pre-wrap">
+          {existingFeedback}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+        <MessageSquarePlus className="h-3 w-3" /> Add Your Feedback
+      </h5>
+      <p className="text-[11px] text-muted-foreground">
+        Share what you noticed during this call. Your feedback will be factored into the evaluation and agent improvements.
+      </p>
+      <Textarea
+        value={feedback}
+        onChange={(e) => setFeedback(e.target.value)}
+        placeholder="e.g., 'The agent was too pushy about scheduling', 'Great job handling the objection about pricing'..."
+        className="min-h-[60px] text-xs"
+      />
+      <div className="flex items-center gap-2">
+        <Button
+          onClick={handleSave}
+          disabled={saving || !feedback.trim()}
+          size="sm"
+          className="h-7 text-xs"
+        >
+          {saving ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Send className="mr-1 h-3 w-3" />}
+          {existingFeedback ? "Update Feedback" : "Submit Feedback"}
+        </Button>
+        <Button
+          onClick={recording ? stopRecording : startRecording}
+          disabled={transcribing}
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs"
+        >
+          {transcribing ? (
+            <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Transcribing...</>
+          ) : recording ? (
+            <><MicOff className="mr-1 h-3 w-3 text-destructive" /> Stop Recording</>
+          ) : (
+            <><Mic className="mr-1 h-3 w-3" /> Record Feedback</>
+          )}
+        </Button>
+        {editing && existingFeedback && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setEditing(false); setFeedback(existingFeedback); }}>
+            Cancel
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
   if (score == null) return null;
   const color = score >= 70 ? "text-green-400" : score >= 40 ? "text-yellow-400" : "text-destructive";
   return (
