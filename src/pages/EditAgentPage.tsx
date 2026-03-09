@@ -898,28 +898,6 @@ export default function EditAgentPage() {
         />
       </div>
 
-      {/* Advanced */}
-      <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" className="w-full justify-between">
-            <span className="flex items-center gap-2">
-              <FileText className="h-4 w-4" /> Advanced: Raw Spec Editor
-            </span>
-            <ChevronDown className={cn("h-4 w-4 transition-transform", showAdvanced && "rotate-180")} />
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="surface-elevated rounded-xl p-6 mt-2 space-y-3">
-            <p className="text-xs text-muted-foreground">Edit the raw JSON spec directly. Changes here override all fields above.</p>
-            <Textarea
-              value={rawSpec}
-              onChange={(e) => setRawSpec(e.target.value)}
-              rows={20}
-              className="font-mono text-xs"
-            />
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
 
       {/* Save */}
       <Button onClick={handleSave} disabled={saving || !name.trim()} className="w-full" size="lg">
