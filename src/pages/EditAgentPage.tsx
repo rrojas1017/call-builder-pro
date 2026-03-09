@@ -603,7 +603,7 @@ export default function EditAgentPage() {
           <Shield className="h-4 w-4 text-primary" /> Qualification Rules <SectionHelp section="qualification_rules" />
         </h3>
         <div className="space-y-2">
-          <Label>Qualification Rules (JSON)</Label>
+          <Label className="flex items-center gap-1.5">Qualification Rules (JSON) <SectionHelp section="qualification_rules" /></Label>
           <Textarea
             value={qualificationRules}
             onChange={(e) => setQualificationRules(e.target.value)}
