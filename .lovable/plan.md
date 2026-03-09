@@ -1,48 +1,40 @@
 
 
-# Simplify the Agent Creation Wizard
+# Fix ACA New Mover Agent — Doubled Name + Flow Issues
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+## Root Cause: Doubled Name Bug
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+The `runtimeGuardOpeningLine` function uses `(\w+)` regex which only captures a single word. After `{{agent_name}}` resolves to "Jonathan Stone", the pattern `\bthis is (\w+)` matches only "Jonathan". Since "Jonathan" !== "Jonathan Stone", the guard replaces "Jonathan" with "Jonathan Stone" — producing "Jonathan Stone Stone".
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+This is a **platform-wide bug** affecting any agent with a multi-word persona name.
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+## Changes
 
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+### 1. Fix multi-word name guard (platform bug)
 
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+**`src/lib/openingLineGuard.ts`** — In both `guardOpeningLine` and `runtimeGuardOpeningLine`, change the comparison logic: if the found single-word name is a prefix/first-word of the persona name, treat it as a match and skip. This prevents the guard from "correcting" an already-correct name.
 
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
+**`supabase/functions/_shared/buildTaskPrompt.ts`** — Same fix in `runtimeGuardResolvedLine`.
 
-## Plan
+### 2. Update agent opening line + fields (database)
 
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+Current opening line: `"Hey {{first_name}}, this is {{agent_name}} calling about your recent move — do you have a quick moment?"`
 
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+This is actually decent but missing the disclosure and doesn't explain the enrollment opportunity. Update to:
 
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
+> "Hey {{first_name}}, this is {{agent_name}}. I'm reaching out because it looks like you've recently moved, and that could qualify you for a Special Enrollment Period to get health coverage — do you have a quick minute?"
 
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+Update `must_collect_fields` to a proper ordered sequence that explains purpose before collecting data:
+1. consent (recording disclosure)
+2. Confirm recent move and new state/zip
+3. Coverage status
+4. Household size
+5. Income estimate
+6. Email (before transfer)
 
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+### 3. Files changed
 
-### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
-
-No database or edge function changes needed.
+- **`src/lib/openingLineGuard.ts`** — Fix prefix matching for multi-word names
+- **`supabase/functions/_shared/buildTaskPrompt.ts`** — Same fix in edge function copy
+- **Database migration** — Update `agent_specs` row for project `0144f838-ece5-4a6d-a9ac-a676ae7f3f4f`: new `opening_line`, expanded `must_collect_fields`, add `qualification_rules` and `disqualification_rules` for move-based SEP logic
 
