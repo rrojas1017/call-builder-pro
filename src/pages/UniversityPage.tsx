@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
+import { Mic, MicOff, Send, MessageSquarePlus, Pencil } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -757,6 +758,10 @@ function ResultCard({
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [editingFeedback, setEditingFeedback] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const { toast: feedbackToast } = useToast();
 
   // Load existing feedback when contact changes
@@ -778,13 +783,63 @@ function ResultCard({
       if (error) throw error;
       setSavedFeedback(feedbackText.trim());
       setEditingFeedback(false);
-      feedbackToast({ title: "Feedback saved" });
+      feedbackToast({ title: "Feedback saved", description: "Your feedback will be included in the next evaluation." });
     } catch (err: any) {
       feedbackToast({ title: "Failed to save feedback", description: err.message, variant: "destructive" });
     } finally {
       setSavingFeedback(false);
     }
   };
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      chunksRef.current = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        await transcribeAudio(blob);
+      };
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setRecording(true);
+    } catch (err: any) {
+      feedbackToast({ title: "Microphone access denied", description: "Please allow microphone access to record feedback.", variant: "destructive" });
+    }
+  }, [feedbackToast]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+    }
+  }, []);
+
+  const transcribeAudio = useCallback(async (blob: Blob) => {
+    setTranscribing(true);
+    try {
+      const arrayBuffer = await blob.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const { data, error } = await supabase.functions.invoke("transcribe-and-ingest", {
+        body: { audio_base64: base64, mode: "transcribe_only" },
+      });
+      if (error) throw error;
+      const transcribedText = data?.text || data?.transcript || "";
+      if (transcribedText) {
+        setFeedbackText(prev => prev ? prev + "\n" + transcribedText : transcribedText);
+      } else {
+        feedbackToast({ title: "No speech detected", description: "Try recording again with clearer audio.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      feedbackToast({ title: "Transcription failed", description: err.message, variant: "destructive" });
+    } finally {
+      setTranscribing(false);
+    }
+  }, [feedbackToast]);
 
   const showFeedbackInput = contact.status === "completed" && (!savedFeedback || editingFeedback);
   const showSavedFeedback = contact.status === "completed" && savedFeedback && !editingFeedback;
@@ -947,25 +1002,48 @@ function ResultCard({
         </div>
       )}
 
-      {/* Your Feedback */}
+      {/* Your Feedback — chat-style with voice recording */}
       {showFeedbackInput && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-            💬 Your Feedback
+          <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            <MessageSquarePlus className="h-3 w-3" /> Add Your Feedback
+          </h5>
+          <p className="text-[11px] text-muted-foreground">
+            Share what you noticed during this call. Your feedback will be factored into the evaluation and agent improvements.
           </p>
           <Textarea
-            placeholder="How did the call sound? Any issues or suggestions..."
             value={feedbackText}
             onChange={(e) => setFeedbackText(e.target.value)}
-            className="text-xs min-h-[60px]"
+            placeholder="e.g., 'The agent was too pushy about scheduling', 'Great job handling the objection about pricing'..."
+            className="min-h-[60px] text-xs"
           />
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={handleSaveFeedback} disabled={savingFeedback || !feedbackText.trim()}>
-              {savingFeedback && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-              Save Feedback
+            <Button
+              onClick={handleSaveFeedback}
+              disabled={savingFeedback || !feedbackText.trim()}
+              size="sm"
+              className="h-7 text-xs"
+            >
+              {savingFeedback ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Send className="mr-1 h-3 w-3" />}
+              {savedFeedback ? "Update Feedback" : "Submit Feedback"}
             </Button>
-            {editingFeedback && (
-              <Button size="sm" variant="ghost" onClick={() => { setEditingFeedback(false); setFeedbackText(savedFeedback || ""); }}>
+            <Button
+              onClick={recording ? stopRecording : startRecording}
+              disabled={transcribing}
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+            >
+              {transcribing ? (
+                <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Transcribing...</>
+              ) : recording ? (
+                <><MicOff className="mr-1 h-3 w-3 text-destructive" /> Stop Recording</>
+              ) : (
+                <><Mic className="mr-1 h-3 w-3" /> Record Feedback</>
+              )}
+            </Button>
+            {editingFeedback && savedFeedback && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setEditingFeedback(false); setFeedbackText(savedFeedback); }}>
                 Cancel
               </Button>
             )}
@@ -976,14 +1054,14 @@ function ResultCard({
       {showSavedFeedback && (
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-              💬 Your Feedback
-            </p>
-            <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setEditingFeedback(true)}>
-              Edit
+            <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <MessageSquarePlus className="h-3 w-3" /> Your Feedback
+            </h5>
+            <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => setEditingFeedback(true)}>
+              <Pencil className="mr-1 h-3 w-3" /> Edit
             </Button>
           </div>
-          <div className="rounded-lg bg-muted/30 border border-border p-3 text-xs text-foreground whitespace-pre-wrap">
+          <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-foreground whitespace-pre-wrap">
             {savedFeedback}
           </div>
         </div>
