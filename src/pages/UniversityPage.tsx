@@ -758,6 +758,10 @@ function ResultCard({
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [editingFeedback, setEditingFeedback] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const { toast: feedbackToast } = useToast();
 
   // Load existing feedback when contact changes
@@ -779,13 +783,63 @@ function ResultCard({
       if (error) throw error;
       setSavedFeedback(feedbackText.trim());
       setEditingFeedback(false);
-      feedbackToast({ title: "Feedback saved" });
+      feedbackToast({ title: "Feedback saved", description: "Your feedback will be included in the next evaluation." });
     } catch (err: any) {
       feedbackToast({ title: "Failed to save feedback", description: err.message, variant: "destructive" });
     } finally {
       setSavingFeedback(false);
     }
   };
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      chunksRef.current = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        await transcribeAudio(blob);
+      };
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setRecording(true);
+    } catch (err: any) {
+      feedbackToast({ title: "Microphone access denied", description: "Please allow microphone access to record feedback.", variant: "destructive" });
+    }
+  }, [feedbackToast]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+      setRecording(false);
+    }
+  }, []);
+
+  const transcribeAudio = useCallback(async (blob: Blob) => {
+    setTranscribing(true);
+    try {
+      const arrayBuffer = await blob.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const { data, error } = await supabase.functions.invoke("transcribe-and-ingest", {
+        body: { audio_base64: base64, mode: "transcribe_only" },
+      });
+      if (error) throw error;
+      const transcribedText = data?.text || data?.transcript || "";
+      if (transcribedText) {
+        setFeedbackText(prev => prev ? prev + "\n" + transcribedText : transcribedText);
+      } else {
+        feedbackToast({ title: "No speech detected", description: "Try recording again with clearer audio.", variant: "destructive" });
+      }
+    } catch (err: any) {
+      feedbackToast({ title: "Transcription failed", description: err.message, variant: "destructive" });
+    } finally {
+      setTranscribing(false);
+    }
+  }, [feedbackToast]);
 
   const showFeedbackInput = contact.status === "completed" && (!savedFeedback || editingFeedback);
   const showSavedFeedback = contact.status === "completed" && savedFeedback && !editingFeedback;
