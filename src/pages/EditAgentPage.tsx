@@ -484,7 +484,7 @@ export default function EditAgentPage() {
       {/* Language & Mode */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Globe className="h-4 w-4 text-primary" /> Language & Mode
+          <Globe className="h-4 w-4 text-primary" /> Language & Mode <SectionHelp section="language_mode" />
         </h3>
         <div className="space-y-2">
           <Label>Agent Language</Label>
