@@ -231,11 +231,13 @@ export default function EditAgentPage() {
         }
       }
 
-      // Parse qualification/disqualification rules
-      let parsedQR: any = {};
-      let parsedDR: any = {};
-      try { if (qualificationRules.trim()) parsedQR = JSON.parse(qualificationRules); } catch { /* keep empty */ }
-      try { if (disqualificationRules.trim()) parsedDR = JSON.parse(disqualificationRules); } catch { /* keep empty */ }
+      // Parse qualification/disqualification rules from plain language
+      const parsedQR = qualificationRules.trim()
+        ? { description: qualificationRules.trim() }
+        : {};
+      const parsedDR = disqualificationRules.trim()
+        ? { description: disqualificationRules.trim() }
+        : {};
 
       await Promise.all([
         supabase.from("agent_projects").update({ name, description }).eq("id", id),
