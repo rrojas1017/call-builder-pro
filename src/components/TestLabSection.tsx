@@ -205,6 +205,55 @@ export default function TestLabSection({ projectId }: TestLabSectionProps) {
 
   return (
     <div className="space-y-4">
+      {/* How to Train Your Agent */}
+      <Collapsible>
+        <div className="surface-elevated rounded-xl">
+          <CollapsibleTrigger className="w-full p-6 flex items-center justify-between">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <GraduationCap className="h-4 w-4 text-primary" />
+              How to Train Your Agent
+              <span className="inline-flex items-center rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                <MessageSquare className="h-2.5 w-2.5 mr-1" /> Verbal Training Enabled
+              </span>
+            </h3>
+            <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform [[data-state=open]_&]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="px-6 pb-6 space-y-3">
+            <p className="text-xs text-foreground">
+              During test calls, you can <strong>verbally coach your agent</strong>. The system will extract your feedback and apply it automatically.
+            </p>
+            <div className="rounded-lg bg-muted/30 border border-border p-3 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Examples of what you can say:</p>
+              <ul className="text-xs text-foreground space-y-1.5">
+                <li className="flex items-start gap-2">
+                  <span className="text-primary shrink-0">💬</span>
+                  <span>"You should be more casual when greeting people"</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary shrink-0">💬</span>
+                  <span>"Don't ask about their income so early in the conversation"</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary shrink-0">💬</span>
+                  <span>"When someone asks about pricing, mention the free trial first"</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary shrink-0">💬</span>
+                  <span>"Try saying 'I'd love to help' instead of 'I can assist you'"</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary shrink-0">💬</span>
+                  <span>"You need to slow down between questions"</span>
+                </li>
+              </ul>
+            </div>
+            <p className="text-xs text-muted-foreground italic">
+              💡 Speak naturally — the AI understands context. Just tell the agent what to do differently as if you were coaching a new employee.
+            </p>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
+
       {/* Test calls section */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <div>

@@ -357,6 +357,57 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                     </div>
                   )}
 
+              {selected.evaluation.verbal_training_feedback?.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                        🎓 Verbal Training Feedback
+                      </p>
+                      <ul className="text-xs text-foreground space-y-2">
+                        {selected.evaluation.verbal_training_feedback.map((fb: any, i: number) => (
+                          <li key={i} className="rounded-lg bg-primary/5 border border-primary/20 p-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className="font-medium">"{fb.instruction}"</p>
+                                <p className="text-muted-foreground text-xs mt-1">
+                                  → <span className="text-primary">{fb.target_field}</span>: {fb.suggested_change}
+                                </p>
+                              </div>
+                              <div className="shrink-0 flex items-center gap-1.5">
+                                <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                                  fb.confidence === "high" ? "bg-green-500/15 text-green-400 border-green-500/30" :
+                                  fb.confidence === "medium" ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/30" :
+                                  "bg-muted text-muted-foreground border-border"
+                                }`}>
+                                  {fb.confidence}
+                                </span>
+                                {fb.auto_applied ? (
+                                  <span className="inline-flex items-center gap-0.5 text-[10px] text-green-400 font-medium">
+                                    <CheckCircle className="h-3 w-3" /> Applied
+                                  </span>
+                                ) : (
+                                  <Button
+                                    onClick={() => handleApplyFix({
+                                      field: fb.target_field,
+                                      suggested_value: fb.suggested_change,
+                                      reason: `[VERBAL-TRAINING] ${fb.instruction}`,
+                                    })}
+                                    disabled={applyingFixId === fb.target_field}
+                                    size="sm"
+                                    variant="default"
+                                    className="h-6 text-[10px] px-2"
+                                  >
+                                    {applyingFixId === fb.target_field && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                                    Apply
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {selected.evaluation.recommended_improvements?.length > 0 && (
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
