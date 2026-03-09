@@ -272,7 +272,29 @@ export default function EditAgentPage() {
         } as any).eq("project_id", id),
       ]);
 
-      toast({ title: "Agent updated!" });
+      // Auto-sync to Retell if agent is provisioned
+      if (retellAgentId) {
+        try {
+          const langMap: Record<string, string> = {
+            en: "en-US", es: "es-ES", fr: "fr-FR", pt: "pt-BR", de: "de-DE", it: "it-IT",
+          };
+          await supabase.functions.invoke("manage-retell-agent", {
+            body: {
+              action: "update",
+              agent_id: retellAgentId,
+              config: {
+                agent_name: personaName || name,
+                voice_id: selectedVoice || undefined,
+                language: langMap[language] || "en-US",
+              },
+            },
+          });
+        } catch (syncErr: any) {
+          console.warn("Retell sync failed:", syncErr.message);
+        }
+      }
+
+      toast({ title: "Agent saved & synced!" });
       navigate("/agents");
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
