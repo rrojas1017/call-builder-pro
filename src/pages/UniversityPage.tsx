@@ -547,7 +547,7 @@ export default function UniversityPage() {
           />
         </div>
 
-        <Button onClick={handleRunTest} disabled={running || !agentId || !phone.trim()} className="w-full">
+        <Button onClick={handleRunTest} disabled={running || !agentId || !phone.trim()} className="w-full hover:glow-primary transition-all">
           {running ? (
             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Calling...</>
           ) : (
