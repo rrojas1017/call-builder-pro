@@ -850,15 +850,17 @@ ${call.transcript}`;
           }
         }
 
-        if (criticalFixes.length > 0) {
+      if (criticalFixes.length > 0) {
           console.log(`Auto-applied ${criticalFixes.length} critical improvements`);
         }
       } catch (e) {
         console.error("Failed to auto-apply critical improvements:", e);
       }
+    } else if (!isSimulatedOrTest && evaluation.recommended_improvements?.length > 0) {
+      console.log(`[evaluate-call] Live call ${call_id} — ${evaluation.recommended_improvements.length} improvements found but auto-apply SKIPPED (live call protection)`);
     }
 
-    // Trigger auto-research when gaps are significant
+    // Trigger auto-research when gaps are significant (ONLY for simulated/test calls)
     // Research cooldown: only trigger if not researched recently for this version
     const shouldResearch =
       (evaluation.humanness_score != null && evaluation.humanness_score < 80) ||
