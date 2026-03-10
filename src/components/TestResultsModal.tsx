@@ -527,8 +527,9 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
   );
 }
 
-function UserFeedbackSection({ contactId, existingFeedback, onFeedbackSaved }: {
+function UserFeedbackSection({ contactId, projectId, existingFeedback, onFeedbackSaved }: {
   contactId: string;
+  projectId: string;
   existingFeedback: string | null;
   onFeedbackSaved: (feedback: string) => void;
 }) {
