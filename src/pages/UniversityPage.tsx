@@ -791,6 +791,8 @@ function ResultCard({
   const [savedFeedback, setSavedFeedback] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [detectedRule, setDetectedRule] = useState<string | null>(null);
+  const [savingRule, setSavingRule] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const { toast: feedbackToast } = useToast();
