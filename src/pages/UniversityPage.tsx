@@ -662,6 +662,11 @@ export default function UniversityPage() {
         />
       )}
 
+      {/* Pending Changes Review */}
+      {agentId && (
+        <PendingChangesReview projectId={agentId} onChangeApplied={() => loadHistory()} />
+      )}
+
       {/* AI Simulation Training — collapsible */}
       {agentId && (
         <Collapsible>
@@ -679,6 +684,24 @@ export default function UniversityPage() {
               disabled={running}
               onComplete={() => loadHistory()}
             />
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* Change Log — collapsible */}
+      {agentId && (
+        <Collapsible>
+          <CollapsibleTrigger className="w-full gradient-border glass-card rounded-xl px-5 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors group">
+            <div className="flex items-center gap-2">
+              <History className="h-5 w-5 text-primary" />
+              <span className="text-sm font-semibold text-foreground">Agent Change Log</span>
+            </div>
+            <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2">
+            <div className="glass-card rounded-xl p-5">
+              <SpecChangeLog projectId={agentId} />
+            </div>
           </CollapsibleContent>
         </Collapsible>
       )}
