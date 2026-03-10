@@ -818,13 +818,36 @@ ${call.transcript}`;
     }
 
     // Trigger auto-research when gaps are significant
+    // Research cooldown: only trigger if not researched recently for this version
     const shouldResearch =
       (evaluation.humanness_score != null && evaluation.humanness_score < 80) ||
-      (evaluation.issues_detected?.length >= 2) ||
-      (evaluation.humanness_suggestions?.length >= 2) ||
-      (evaluation.knowledge_gaps?.length >= 1);
+      (evaluation.issues_detected?.length >= 3) ||
+      (evaluation.knowledge_gaps?.length >= 2);
 
     if (shouldResearch) {
+      // Check cooldown: skip if researched in last 5 calls for this project
+      let skipResearch = false;
+      try {
+        const { data: recentKnowledge } = await supabase
+          .from("agent_knowledge")
+          .select("created_at")
+          .eq("project_id", call.project_id)
+          .eq("source_type", "auto_research")
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (recentKnowledge?.length > 0) {
+          const lastResearch = new Date(recentKnowledge[0].created_at);
+          const hoursSince = (Date.now() - lastResearch.getTime()) / (1000 * 60 * 60);
+          if (hoursSince < 2) {
+            skipResearch = true;
+            console.log(`Skipping research — last research was ${Math.round(hoursSince * 60)}min ago (cooldown: 2h)`);
+          }
+        }
+      } catch (e) {
+        console.error("Research cooldown check failed:", e);
+      }
+
+      if (!skipResearch) {
       try {
         console.log("Triggering research-and-improve for project:", call.project_id);
         const researchResp = await fetch(`${supabaseUrl}/functions/v1/research-and-improve`, {
