@@ -663,6 +663,7 @@ export default function UniversityPage() {
           onApplyFix={handleApplyFix}
           onQuickRetest={handleQuickRetest}
           canRetest={!running && !!phone.trim() && !!agentId}
+          projectId={agentId}
         />
         </div>
       )}
@@ -772,6 +773,7 @@ function ResultCard({
   onApplyFix,
   onQuickRetest,
   canRetest,
+  projectId,
 }: {
   contact: TestContact;
   isDone: boolean | null;
@@ -781,6 +783,7 @@ function ResultCard({
   onApplyFix: (imp: any) => void;
   onQuickRetest: () => void;
   canRetest: boolean;
+  projectId: string;
 }) {
   const [feedbackText, setFeedbackText] = useState("");
   const [savingFeedback, setSavingFeedback] = useState(false);
@@ -811,7 +814,27 @@ function ResultCard({
       if (error) throw error;
       setSavedFeedback(feedbackText.trim());
       setEditingFeedback(false);
-      feedbackToast({ title: "Feedback saved", description: "Your feedback will be included in the next evaluation." });
+      feedbackToast({ title: "Feedback saved", description: "Applying feedback and re-evaluating..." });
+
+      // 1. Apply feedback as an agent improvement immediately
+      if (projectId) {
+        supabase.functions.invoke("apply-audit-recommendation", {
+          body: { project_id: projectId, recommendation: feedbackText.trim(), category: "user_feedback" },
+        }).then(({ data }) => {
+          if (data?.success) {
+            feedbackToast({ title: "Agent updated", description: data.reason || "Your feedback was applied to the agent's configuration." });
+          }
+        }).catch(() => {});
+      }
+
+      // 2. Re-evaluate the call with the new feedback included
+      supabase.functions.invoke("evaluate-call", {
+        body: { test_run_contact_id: contact.id },
+      }).then(({ data }) => {
+        if (data?.evaluation) {
+          feedbackToast({ title: "Re-evaluation complete", description: "Scores updated with your feedback." });
+        }
+      }).catch(() => {});
     } catch (err: any) {
       feedbackToast({ title: "Failed to save feedback", description: err.message, variant: "destructive" });
     } finally {

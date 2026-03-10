@@ -1,61 +1,48 @@
 
 
-## Feedback System Analysis
+# Simplify the Agent Creation Wizard
 
-### What Works
-1. **UI is correct** — The feedback input appears for completed/cancelled contacts with text + voice recording support
-2. **Saving works** — Feedback is saved to `test_run_contacts.user_feedback` in the database
-3. **Evaluate-call reads it** — The `evaluate-call` function fetches `user_feedback` and injects it as a high-priority block into the AI evaluation prompt (lines 170-185)
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-### The Critical Timing Problem
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-**The feedback is never actually consumed by the AI.** Here's why:
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-1. Call ends → Retell webhook fires → `evaluate-call` is triggered **immediately**
-2. At this point, `user_feedback` is `null` because the user hasn't had time to type anything
-3. User types feedback and saves it → stored in DB ✓
-4. **No re-evaluation is ever triggered** — there's no button or mechanism to re-run the evaluation with the new feedback
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-So the feedback sits in the database but the AI evaluation has already completed without it. The toast message "Your feedback will be included in the next evaluation" is misleading — there is no "next evaluation" for that call.
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-### Fix Plan
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-**File: `src/pages/UniversityPage.tsx`**
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-After `handleSaveFeedback` successfully saves, automatically trigger a re-evaluation by calling `evaluate-call` with the contact's associated `call_id`. This requires:
+## Plan
 
-1. In `handleSaveFeedback`, after the DB update succeeds, invoke the `evaluate-call` edge function with the call ID and test_run_contact_id
-2. To get the call_id, query the `calls` table using the contact's `retell_call_id` — or simpler, pass `test_run_contact_id` to `evaluate-call` which already looks up the call
-3. Clear the current evaluation display and show the "Grading in Progress" state while re-evaluation runs
-4. Poll or subscribe to the contact for the updated evaluation
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
 
-Specifically in `handleSaveFeedback` (around line 813):
-- After `setSavedFeedback(...)`, invoke `supabase.functions.invoke("evaluate-call", { body: { test_run_contact_id: contact.id } })`
-- But `evaluate-call` requires a `call_id`. So we need to look up the call by `retell_call_id` from the contact, or modify `evaluate-call` to accept `test_run_contact_id` alone
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
 
-**File: `supabase/functions/evaluate-call/index.ts`**
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
 
-Add a fallback lookup: if `call_id` is not provided but `test_run_contact_id` is, look up the call via `retell_call_id` matching. This way the frontend can trigger re-evaluation with just the contact ID.
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
 
-### Alternative Simpler Approach
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
-Instead of re-evaluating, route the feedback directly through `apply-audit-recommendation` (which already maps natural language feedback to agent spec fields). This would:
-- Save the feedback to DB ✓ (already done)
-- Immediately apply it as an improvement to the agent spec
+### Files Changed
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
 
-Add to `handleSaveFeedback`:
-```typescript
-await supabase.functions.invoke("apply-audit-recommendation", {
-  body: { project_id: projectId, recommendation: feedbackText.trim(), category: "user_feedback" }
-});
-```
-
-This matches the pattern already used in `LiveSimulationChat.tsx` (line 96-99) where inline coaching feedback is routed through the same pipeline.
-
-### Recommended Approach: Both
-
-1. **Immediately apply** the feedback via `apply-audit-recommendation` so the agent learns right away
-2. **Optionally re-evaluate** so the user can see updated scores reflecting their feedback
-
-This is a small change — ~10 lines added to `handleSaveFeedback` in `UniversityPage.tsx`.
+No database or edge function changes needed.
 
