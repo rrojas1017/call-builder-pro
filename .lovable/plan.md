@@ -1,52 +1,48 @@
 
 
-# Merge Training + Live Chat into One Unified Section
+# Simplify the Agent Creation Wizard
 
-## Problem
-Right now the University page shows **two separate blocks** stacked vertically:
-1. **SimulationTraining** — "Start 3-Round Training" + "Test 1 Call"
-2. **LiveSimulationChat** — "Start" / "Restart"
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-Both do essentially the same thing (run AI-vs-AI simulations) but with different UIs. It's confusing which to use.
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-## Solution
-Combine them into **one component with tabs**:
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-```text
-┌─────────────────────────────────────┐
-│  AI Simulation Training             │
-│  ┌──────────┐ ┌──────────────────┐  │
-│  │ Training │ │ Live Practice    │  │
-│  └──────────┘ └──────────────────┘  │
-│                                     │
-│  [Tab content here]                 │
-└─────────────────────────────────────┘
-```
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-- **Training tab** — Multi-round scored training (current SimulationTraining: rounds slider, calls-per-round, difficulty, progress bar, round results)
-- **Live Practice tab** — Watch a single conversation unfold in real-time with typing indicators (current LiveSimulationChat)
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-One section, one set of shared controls (difficulty selector), two modes via tabs.
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-## Changes
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-### `src/components/SimulationTraining.tsx`
-- Add a tab bar at the top: "Training" | "Live Practice"
-- **Training tab**: Keep existing multi-round training UI (config sliders, start button, results)
-- **Live Practice tab**: Embed the LiveSimulationChat component inline
-- Share the difficulty selector between both tabs
-- Only one action can run at a time (disable the other tab's controls when active)
+## Plan
 
-### `src/pages/UniversityPage.tsx`
-- Remove the separate `<LiveSimulationChat>` render block (lines 603-606)
-- Keep only `<SimulationTraining>` which now contains both modes
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
 
-### `src/components/LiveSimulationChat.tsx`
-- Add optional `difficulty` prop so the parent can pass it in
-- Keep component as-is otherwise (it works well standalone)
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
 
-## Files
-- `src/components/SimulationTraining.tsx` — Add tabs, embed LiveSimulationChat
-- `src/components/LiveSimulationChat.tsx` — Add `difficulty` prop
-- `src/pages/UniversityPage.tsx` — Remove standalone LiveSimulationChat
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
+
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+
+### Files Changed
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 

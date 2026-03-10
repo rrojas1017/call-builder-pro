@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface LiveSimulationChatProps {
   projectId: string;
+  difficulty?: string;
   onClose?: () => void;
 }
 
@@ -17,11 +18,13 @@ interface ChatMessage {
   timestamp: number;
 }
 
-export default function LiveSimulationChat({ projectId, onClose }: LiveSimulationChatProps) {
+export default function LiveSimulationChat({ projectId, difficulty: externalDifficulty, onClose }: LiveSimulationChatProps) {
   const { toast } = useToast();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const [difficulty, setDifficulty] = useState("medium");
+  const [internalDifficulty, setInternalDifficulty] = useState("medium");
+  const difficulty = externalDifficulty || internalDifficulty;
+  const showDifficultyPicker = !externalDifficulty;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [running, setRunning] = useState(false);
   const [stopped, setStopped] = useState(false);
@@ -177,8 +180,8 @@ export default function LiveSimulationChat({ projectId, onClose }: LiveSimulatio
         </div>
 
         <div className="flex items-center gap-2">
-          {!running && (
-            <Select value={difficulty} onValueChange={setDifficulty}>
+          {!running && showDifficultyPicker && (
+            <Select value={difficulty} onValueChange={setInternalDifficulty}>
               <SelectTrigger className="w-28 h-9">
                 <SelectValue />
               </SelectTrigger>
