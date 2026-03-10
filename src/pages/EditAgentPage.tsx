@@ -100,6 +100,7 @@ export default function EditAgentPage() {
   const [businessRules, setBusinessRules] = useState<string[]>([]);
   const [newBusinessRule, setNewBusinessRule] = useState("");
   const [brDraggedIndex, setBrDraggedIndex] = useState<number | null>(null);
+  const [parsingRules, setParsingRules] = useState(false);
   const [brDragOverIndex, setBrDragOverIndex] = useState<number | null>(null);
   const [consentRequired, setConsentRequired] = useState(true);
   const [disclosureRequired, setDisclosureRequired] = useState(true);
