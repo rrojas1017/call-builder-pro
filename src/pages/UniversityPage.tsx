@@ -862,7 +862,10 @@ function ResultCard({
 
   // Load existing feedback when contact changes
   useEffect(() => {
-    const existing = contact.user_feedback || null;
+    // For simulation calls, feedback is stored in evaluation.user_feedback
+    const existing = contact.source === "simulation"
+      ? (contact.evaluation?.user_feedback || null)
+      : (contact.user_feedback || null);
     setSavedFeedback(existing);
     setFeedbackText(existing || "");
     setEditingFeedback(false);
