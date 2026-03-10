@@ -191,6 +191,11 @@ serve(async (req) => {
       if (spec?.persona_name) agentPatch.agent_name = spec.persona_name;
       const ambientSound = spec?.background_track || null;
       if (ambientSound) agentPatch.ambient_sound = ambientSound;
+      // Sync voice tuning settings
+      if (spec?.speaking_speed != null) agentPatch.voice_speed = Number(spec.speaking_speed);
+      if (spec?.interruption_threshold != null) {
+        agentPatch.interruption_sensitivity = Math.min(1, Math.max(0, Number(spec.interruption_threshold) / 100));
+      }
 
       // Build comprehensive post_call_analysis_data
       const standardFields = [
