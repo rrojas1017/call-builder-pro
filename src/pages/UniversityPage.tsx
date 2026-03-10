@@ -329,7 +329,8 @@ export default function UniversityPage() {
     setTrendLoading(true);
 
     const loadTrend = async () => {
-      const { data } = await supabase
+      // Phone test calls
+      const { data: testData } = await supabase
         .from("test_run_contacts")
         .select("evaluation, created_at, test_run_id, test_runs!inner(project_id)")
         .eq("test_runs.project_id", agentId)
@@ -338,7 +339,23 @@ export default function UniversityPage() {
         .order("created_at", { ascending: true })
         .limit(20);
 
-      const points: TrendPoint[] = (data || []).map((row: any, idx: number) => ({
+      // Simulated calls
+      const { data: simData } = await supabase
+        .from("calls")
+        .select("evaluation, created_at")
+        .eq("project_id", agentId)
+        .eq("voice_provider", "simulated")
+        .not("evaluation", "is", null)
+        .order("created_at", { ascending: true })
+        .limit(20);
+
+      const allRows = [
+        ...(testData || []).map((r: any) => ({ evaluation: r.evaluation, created_at: r.created_at })),
+        ...(simData || []).map((r: any) => ({ evaluation: r.evaluation, created_at: r.created_at })),
+      ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+       .slice(0, 20);
+
+      const points: TrendPoint[] = allRows.map((row: any, idx: number) => ({
         label: `Call ${idx + 1}`,
         humanness: row.evaluation?.humanness_score ?? null,
         naturalness: row.evaluation?.naturalness_score ?? null,
