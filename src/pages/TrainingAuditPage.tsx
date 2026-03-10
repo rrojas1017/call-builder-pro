@@ -454,6 +454,9 @@ export default function TrainingAuditPage() {
   const handleApplied = (rec: string, result: any) => {
     if (result.success) {
       setAppliedRecs((prev) => new Set(prev).add(rec));
+      if (result.synced_to_retell) {
+        setSyncedRecs((prev) => new Set(prev).add(rec));
+      }
     } else if (result.manual) {
       setManualRecs((prev) => new Set(prev).add(rec));
     }
