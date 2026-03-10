@@ -113,3 +113,6 @@ verify_jwt = false
 
 [functions.generate-script]
 verify_jwt = false
+
+[functions.auto-train]
+verify_jwt = false

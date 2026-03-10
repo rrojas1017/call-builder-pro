@@ -29,9 +29,9 @@ serve(async (req) => {
       .order("created_at", { ascending: false })
       .limit(5);
 
-    if (!successCalls || successCalls.length < 5) {
-      console.log(`Only ${successCalls?.length || 0} successful calls, need 5. Skipping.`);
-      return new Response(JSON.stringify({ skipped: true, reason: "not_enough_successes" }), {
+    if (!successCalls || successCalls.length < 3) {
+      console.log(`Only ${successCalls?.length || 0} successful calls, need at least 3. Skipping.`);
+      return new Response(JSON.stringify({ skipped: true, reason: "not_enough_successes", current: successCalls?.length || 0, required: 3 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

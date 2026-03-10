@@ -72,14 +72,19 @@ export function buildCompactFplSep(): string {
 ENROLLMENT TIMING: Outside Open Enrollment (Nov 1 - Dec 15), caller MUST have a Qualifying Life Event (lost coverage, marriage, baby, move, citizenship, divorce w/ coverage loss) within 60 days. No QLE = next Open Enrollment. Income alone does NOT qualify for SEP.`;
 }
 
-/** Compress knowledge entries: group by category, truncate, limit */
+/** Compress knowledge entries: group by category, smart-truncate, limit */
 export function buildCompactKnowledge(entries: KnowledgeEntry[]): string {
   if (!entries.length) return "";
   const grouped: Record<string, string[]> = {};
   for (const e of entries) {
     if (!grouped[e.category]) grouped[e.category] = [];
-    if (grouped[e.category].length >= 4) continue;
-    const text = e.content.length > 150 ? e.content.substring(0, 147) + "..." : e.content;
+    if (grouped[e.category].length >= 5) continue;
+    // Smart truncation: prefer cutting at sentence boundaries, higher limit (300 chars)
+    let text = e.content;
+    if (text.length > 300) {
+      const cutPoint = text.lastIndexOf(".", 297);
+      text = cutPoint > 150 ? text.substring(0, cutPoint + 1) : text.substring(0, 297) + "...";
+    }
     grouped[e.category].push(text);
   }
   const labels: Record<string, string> = {
