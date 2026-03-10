@@ -803,6 +803,7 @@ function ResultCard({
     setSavedFeedback(existing);
     setFeedbackText(existing || "");
     setEditingFeedback(false);
+    setDetectedRule(null);
   }, [contact.id]);
 
   const handleSaveFeedback = async () => {
