@@ -663,6 +663,7 @@ export default function UniversityPage() {
           onApplyFix={handleApplyFix}
           onQuickRetest={handleQuickRetest}
           canRetest={!running && !!phone.trim() && !!agentId}
+          projectId={agentId}
         />
         </div>
       )}
