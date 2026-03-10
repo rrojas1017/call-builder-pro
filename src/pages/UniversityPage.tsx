@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen, ArrowUp, ArrowDown, Minus, History, StopCircle, GraduationCap, RotateCcw, Clock, Trophy, TrendingUp, Zap } from "lucide-react";
 import LiveCallMonitor from "@/components/LiveCallMonitor";
-import SimulationTrainingPanel from "@/components/SimulationTrainingPanel";
+import SimulationTraining from "@/components/SimulationTraining";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 
