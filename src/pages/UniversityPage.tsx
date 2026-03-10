@@ -481,17 +481,17 @@ export default function UniversityPage() {
 
       {/* Graduation Badge */}
       {agentId && history.length > 0 && (
-        <div className={`rounded-xl border p-5 ${stats.level.bgColor} border-border`}>
+        <div className={`gradient-border glass-card rounded-xl p-5`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg ${stats.level.bgColor} ${stats.level.color}`}>
+              <div className={`p-2.5 rounded-lg ${stats.level.bgColor} ${stats.level.color} glow-primary`}>
                 {stats.level.icon}
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-lg font-bold ${stats.level.color}`}>{stats.level.label}</span>
+                  <span className={`text-lg font-bold ${stats.level.label === "Graduated" ? "text-gradient-primary" : stats.level.color}`}>{stats.level.label}</span>
                   {stats.avgHumanness != null && (
-                    <span className="text-sm text-muted-foreground">({stats.avgHumanness} avg)</span>
+                    <span className="text-sm text-muted-foreground font-mono">({stats.avgHumanness} avg)</span>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -504,7 +504,7 @@ export default function UniversityPage() {
           </div>
           {stats.progress.nextLevel && (
             <div className="mt-3">
-              <Progress value={stats.progress.percent} className="h-2" />
+              <Progress value={stats.progress.percent} className={`h-2 ${running ? "shimmer-bar" : ""}`} />
             </div>
           )}
         </div>
