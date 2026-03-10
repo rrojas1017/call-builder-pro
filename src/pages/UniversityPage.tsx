@@ -781,7 +781,7 @@ function ResultCard({
 
   // Load existing feedback when contact changes
   useEffect(() => {
-    const existing = (contact as any).user_feedback || null;
+    const existing = contact.user_feedback || null;
     setSavedFeedback(existing);
     setFeedbackText(existing || "");
     setEditingFeedback(false);
