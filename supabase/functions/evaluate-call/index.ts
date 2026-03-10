@@ -911,6 +911,8 @@ ${call.transcript}`;
         console.error("Failed to trigger research:", e);
       }
       } // end !skipResearch
+    } else if (shouldResearch && !isSimulatedOrTest) {
+      console.log(`[evaluate-call] Live call ${call_id} — research triggers met but SKIPPED (live call protection)`);
     }
 
     // ── Auto-Graduation Check ──

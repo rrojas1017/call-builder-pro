@@ -134,7 +134,16 @@ Example REJECTED pattern: "Always guarantee the lowest price" (directive languag
       (existing || []).map((e: { content: string }) => e.content.toLowerCase().trim())
     );
 
-    const newPatterns = toolResult.winning_patterns.filter(
+    // Content safety filter: reject patterns with directive language that could be caller-injected
+    const DIRECTIVE_REGEX = /\b(always|must|never|don't|promise|guarantee|tell them|you should)\b/i;
+    const safePatterns = toolResult.winning_patterns.filter(
+      (p) => !DIRECTIVE_REGEX.test(p)
+    );
+    if (safePatterns.length < toolResult.winning_patterns.length) {
+      console.log(`Filtered out ${toolResult.winning_patterns.length - safePatterns.length} patterns with directive language`);
+    }
+
+    const newPatterns = safePatterns.filter(
       (p) => !existingSet.has(p.toLowerCase().trim())
     );
 

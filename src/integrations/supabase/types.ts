@@ -1135,6 +1135,69 @@ export type Database = {
           },
         ]
       }
+      research_requests: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          completed_at: string | null
+          created_at: string
+          humanness_score: number | null
+          id: string
+          knowledge_gaps: Json | null
+          org_id: string
+          project_id: string
+          proposed_queries: Json | null
+          results: Json | null
+          status: string
+          trigger_reason: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          completed_at?: string | null
+          created_at?: string
+          humanness_score?: number | null
+          id?: string
+          knowledge_gaps?: Json | null
+          org_id: string
+          project_id: string
+          proposed_queries?: Json | null
+          results?: Json | null
+          status?: string
+          trigger_reason?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          completed_at?: string | null
+          created_at?: string
+          humanness_score?: number | null
+          id?: string
+          knowledge_gaps?: Json | null
+          org_id?: string
+          project_id?: string
+          proposed_queries?: Json | null
+          results?: Json | null
+          status?: string
+          trigger_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_requests_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       score_snapshots: {
         Row: {
           avg_humanness: number | null
