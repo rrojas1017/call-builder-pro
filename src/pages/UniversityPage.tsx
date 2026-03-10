@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
-import { Mic, MicOff, Send, MessageSquarePlus, Pencil } from "lucide-react";
+import { Mic, MicOff, Send, MessageSquarePlus, Pencil, BrainCircuit, ChevronDown, Database } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -593,13 +594,25 @@ export default function UniversityPage() {
         />
       )}
 
-      {/* AI Simulation Training */}
+      {/* AI Simulation Training — collapsible */}
       {agentId && (
-        <SimulationTraining
-          projectId={agentId}
-          disabled={running}
-          onComplete={() => loadHistory()}
-        />
+        <Collapsible>
+          <CollapsibleTrigger className="w-full gradient-border glass-card rounded-xl px-5 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors group">
+            <div className="flex items-center gap-2">
+              <BrainCircuit className="h-5 w-5 text-primary" />
+              <span className="text-sm font-semibold text-foreground">AI Simulation Training</span>
+              <Badge variant="secondary" className="text-xs"><Zap className="h-3 w-3 mr-1" />No Phone Needed</Badge>
+            </div>
+            <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2">
+            <SimulationTraining
+              projectId={agentId}
+              disabled={running}
+              onComplete={() => loadHistory()}
+            />
+          </CollapsibleContent>
+        </Collapsible>
       )}
 
 
@@ -1084,12 +1097,20 @@ function ResultCard({
       )}
 
       {contact.extracted_data && (
-        <div className="space-y-1">
-          <h5 className="text-xs font-medium text-muted-foreground">Extracted Data</h5>
-          <pre className="rounded-lg bg-muted/30 border border-border p-3 text-xs font-mono overflow-auto">
-            {JSON.stringify(contact.extracted_data, null, 2)}
-          </pre>
-        </div>
+        <Collapsible>
+          <CollapsibleTrigger className="w-full flex items-center justify-between py-1 group">
+            <div className="flex items-center gap-1.5">
+              <Database className="h-3.5 w-3.5 text-muted-foreground" />
+              <h5 className="text-xs font-medium text-muted-foreground">Extracted Data</h5>
+            </div>
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <pre className="mt-1 rounded-lg bg-muted/30 border border-border p-3 text-xs font-mono overflow-auto">
+              {JSON.stringify(contact.extracted_data, null, 2)}
+            </pre>
+          </CollapsibleContent>
+        </Collapsible>
       )}
     </div>
   );
