@@ -546,6 +546,7 @@ function UserFeedbackSection({ contactId, existingFeedback, onFeedbackSaved }: {
   useEffect(() => {
     setFeedback(existingFeedback || "");
     setEditing(!existingFeedback);
+    setDetectedRule(null);
   }, [contactId, existingFeedback]);
 
   const handleSave = useCallback(async () => {
