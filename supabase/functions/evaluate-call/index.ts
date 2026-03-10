@@ -624,7 +624,7 @@ ${call.transcript}`;
       console.error("Failed to compute voice recommendation:", e);
     }
 
-    // Auto-apply humanness learnings
+    // Auto-apply humanness learnings via apply-improvement (proper versioning)
     if (evaluation.humanness_suggestions?.length > 0) {
       try {
         const currentNotes: string[] = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
@@ -633,8 +633,29 @@ ${call.transcript}`;
         );
         if (newSuggestions.length > 0) {
           const merged = [...currentNotes, ...newSuggestions].slice(-20);
-          await supabase.from("agent_specs").update({ humanization_notes: merged }).eq("id", spec.id);
-          console.log(`Auto-applied ${newSuggestions.length} humanness suggestions`);
+          // Route through apply-improvement for proper version tracking
+          const applyResp = await fetch(`${supabaseUrl}/functions/v1/apply-improvement`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${supabaseKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              project_id: call.project_id,
+              improvement: {
+                field: "humanization_notes",
+                suggested_value: merged,
+                reason: `[AUTO-HUMANNESS] Applied ${newSuggestions.length} humanness suggestions`,
+                original_key: `humanness::batch::${Date.now()}`,
+                replace_mode: true,
+              },
+            }),
+          });
+          if (applyResp.ok) {
+            console.log(`Auto-applied ${newSuggestions.length} humanness suggestions via apply-improvement`);
+          } else {
+            console.error("Failed to apply humanness via apply-improvement:", await applyResp.text());
+          }
         }
 
         // Also save to global_human_behaviors for cross-agent learning
