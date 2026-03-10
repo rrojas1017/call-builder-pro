@@ -262,6 +262,7 @@ function UnifiedCategoryCard({
   data,
   projectId,
   appliedSet,
+  syncedSet,
   manualSet,
   onApplied,
 }: {
