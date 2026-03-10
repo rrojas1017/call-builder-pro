@@ -237,7 +237,9 @@ export default function UniversityPage() {
   const loadHistory = useCallback(async () => {
     if (!agentId) return;
     setHistoryLoading(true);
-    const { data } = await supabase
+
+    // 1. Phone test calls from test_run_contacts
+    const { data: testData } = await supabase
       .from("test_run_contacts")
       .select("*, test_runs!inner(project_id)")
       .eq("test_runs.project_id", agentId)
@@ -246,7 +248,7 @@ export default function UniversityPage() {
       .order("created_at", { ascending: false })
       .limit(20);
 
-    const rows = (data || []).map((r: any) => ({
+    const testRows: TestContact[] = (testData || []).map((r: any) => ({
       id: r.id,
       name: r.name,
       phone: r.phone,
@@ -261,10 +263,44 @@ export default function UniversityPage() {
       created_at: r.created_at,
       test_run_id: r.test_run_id,
       user_feedback: r.user_feedback,
+      source: "test_call" as const,
     }));
-    setHistory(rows);
+
+    // 2. Simulated calls from calls table
+    const { data: simData } = await supabase
+      .from("calls")
+      .select("*")
+      .eq("project_id", agentId)
+      .eq("voice_provider", "simulated")
+      .not("evaluation", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    const simRows: TestContact[] = (simData || []).map((r: any) => ({
+      id: r.id,
+      call_id: r.id,
+      name: "Simulation",
+      phone: "—",
+      status: r.outcome ? "completed" : "completed",
+      transcript: r.transcript,
+      evaluation: r.evaluation,
+      duration_seconds: r.duration_seconds,
+      outcome: r.outcome,
+      error: null,
+      extracted_data: r.extracted_data,
+      recording_url: r.recording_url,
+      created_at: r.created_at,
+      source: "simulation" as const,
+    }));
+
+    // Merge and sort by date desc, take top 20
+    const merged = [...testRows, ...simRows]
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+      .slice(0, 20);
+
+    setHistory(merged);
     setHistoryLoading(false);
-    return rows;
+    return merged;
   }, [agentId]);
 
   useEffect(() => {
