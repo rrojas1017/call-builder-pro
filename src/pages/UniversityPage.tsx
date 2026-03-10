@@ -655,7 +655,7 @@ export default function UniversityPage() {
 
       {/* History */}
       {history.length > 0 && (
-        <div className="surface-elevated rounded-xl p-6 space-y-3">
+        <div className="glass-card rounded-xl p-6 space-y-3">
           <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <History className="h-4 w-4 text-primary" />
             Call History
@@ -680,7 +680,7 @@ export default function UniversityPage() {
                   return (
                     <TableRow
                       key={item.id}
-                      className={`cursor-pointer ${isSelected ? "bg-primary/5" : ""}`}
+                      className={`cursor-pointer transition-colors ${isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"} ${idx % 2 === 1 ? "bg-muted/10" : ""}`}
                       onClick={() => handleSelectHistory(item)}
                     >
                       <TableCell className="text-xs text-muted-foreground">
