@@ -721,11 +721,12 @@ export default function UniversityPage() {
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="surface-elevated rounded-xl p-4 flex items-center gap-3">
-      <div className="text-primary">{icon}</div>
+    <div className="glass-card hover-lift rounded-xl p-4 flex items-center gap-3 relative overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary/60 via-primary/20 to-transparent" />
+      <div className="text-primary glow-primary rounded-lg p-1.5">{icon}</div>
       <div>
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-lg font-bold text-foreground">{value}</p>
+        <p className="text-lg font-bold text-foreground font-mono tabular-nums">{value}</p>
       </div>
     </div>
   );
