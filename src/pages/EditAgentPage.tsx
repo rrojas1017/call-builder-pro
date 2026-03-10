@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radio, User, MessageSquare, Shield, Hash, Clock, Sliders, Globe, Plus, GripVertical, ScrollText, Upload } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -732,53 +733,56 @@ export default function EditAgentPage() {
         <p className="text-xs text-muted-foreground">
           Define specific rules your agent must follow. These are treated as high-priority directives that override default behavior.
         </p>
-        <div className="space-y-2">
-          {businessRules.map((rule, index) => (
-            <div
-              key={index}
-              draggable
-              onDragStart={() => setBrDraggedIndex(index)}
-              onDragOver={(e) => { e.preventDefault(); setBrDragOverIndex(index); }}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (brDraggedIndex === null || brDraggedIndex === index) { setBrDraggedIndex(null); setBrDragOverIndex(null); return; }
-                const updated = [...businessRules];
-                const [moved] = updated.splice(brDraggedIndex, 1);
-                updated.splice(index, 0, moved);
-                setBusinessRules(updated);
-                setBrDraggedIndex(null);
-                setBrDragOverIndex(null);
-              }}
-              onDragEnd={() => { setBrDraggedIndex(null); setBrDragOverIndex(null); }}
-              className={cn(
-                "flex items-start gap-2 rounded-lg border bg-background p-3 cursor-grab active:cursor-grabbing transition-all",
-                brDraggedIndex === index && "opacity-40",
-                brDragOverIndex === index && brDraggedIndex !== index && "ring-2 ring-primary"
-              )}
-            >
-              <GripVertical className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
-              <span className="flex-1 text-sm text-foreground">{rule}</span>
-              <button onClick={() => setBusinessRules(businessRules.filter((_, i) => i !== index))} className="shrink-0 hover:text-destructive text-muted-foreground">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          <Input
+        <ScrollArea className="max-h-[400px]">
+          <div className="space-y-2 pr-3">
+            {businessRules.map((rule, index) => (
+              <div
+                key={index}
+                draggable
+                onDragStart={() => setBrDraggedIndex(index)}
+                onDragOver={(e) => { e.preventDefault(); setBrDragOverIndex(index); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (brDraggedIndex === null || brDraggedIndex === index) { setBrDraggedIndex(null); setBrDragOverIndex(null); return; }
+                  const updated = [...businessRules];
+                  const [moved] = updated.splice(brDraggedIndex, 1);
+                  updated.splice(index, 0, moved);
+                  setBusinessRules(updated);
+                  setBrDraggedIndex(null);
+                  setBrDragOverIndex(null);
+                }}
+                onDragEnd={() => { setBrDraggedIndex(null); setBrDragOverIndex(null); }}
+                className={cn(
+                  "flex items-start gap-2 rounded-lg border bg-background p-3 cursor-grab active:cursor-grabbing transition-all",
+                  brDraggedIndex === index && "opacity-40",
+                  brDragOverIndex === index && brDraggedIndex !== index && "ring-2 ring-primary"
+                )}
+              >
+                <GripVertical className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+                <span className="flex-1 text-sm text-foreground">{rule}</span>
+                <button onClick={() => setBusinessRules(businessRules.filter((_, i) => i !== index))} className="shrink-0 hover:text-destructive text-muted-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+        <div className="flex gap-2 items-end">
+          <Textarea
             value={newBusinessRule}
             onChange={(e) => setNewBusinessRule(e.target.value)}
             placeholder="e.g. If caller has Medicaid, do not transfer — explain they are not eligible"
-            className="flex-1"
+            className="flex-1 min-h-[60px]"
+            rows={2}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 const r = newBusinessRule.trim();
                 if (r && !businessRules.includes(r)) { setBusinessRules([...businessRules, r]); setNewBusinessRule(""); }
               }
             }}
           />
-          <Button variant="outline" size="sm" onClick={() => {
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
             const r = newBusinessRule.trim();
             if (r && !businessRules.includes(r)) { setBusinessRules([...businessRules, r]); setNewBusinessRule(""); }
           }} disabled={!newBusinessRule.trim()}>
