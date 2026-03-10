@@ -773,6 +773,7 @@ function ResultCard({
   onApplyFix,
   onQuickRetest,
   canRetest,
+  projectId,
 }: {
   contact: TestContact;
   isDone: boolean | null;
@@ -782,6 +783,7 @@ function ResultCard({
   onApplyFix: (imp: any) => void;
   onQuickRetest: () => void;
   canRetest: boolean;
+  projectId: string;
 }) {
   const [feedbackText, setFeedbackText] = useState("");
   const [savingFeedback, setSavingFeedback] = useState(false);
