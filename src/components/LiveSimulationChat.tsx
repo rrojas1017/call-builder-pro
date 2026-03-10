@@ -18,11 +18,13 @@ interface ChatMessage {
   timestamp: number;
 }
 
-export default function LiveSimulationChat({ projectId, onClose }: LiveSimulationChatProps) {
+export default function LiveSimulationChat({ projectId, difficulty: externalDifficulty, onClose }: LiveSimulationChatProps) {
   const { toast } = useToast();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const [difficulty, setDifficulty] = useState("medium");
+  const [internalDifficulty, setInternalDifficulty] = useState("medium");
+  const difficulty = externalDifficulty || internalDifficulty;
+  const showDifficultyPicker = !externalDifficulty;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [running, setRunning] = useState(false);
   const [stopped, setStopped] = useState(false);
