@@ -394,6 +394,11 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
                       <CheckCircle className="h-4 w-4 text-green-500" />
                       <span className="font-medium text-foreground">Round {round.round}</span>
                       <Badge variant="outline" className="text-xs">{round.calls.length} calls</Badge>
+                      {round.fixesApplied != null && round.fixesApplied > 0 && (
+                        <Badge variant="outline" className="text-xs border-primary/30 text-primary">
+                          <Zap className="h-3 w-3 mr-0.5" /> {round.fixesApplied} fix{round.fixesApplied > 1 ? "es" : ""} applied
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       {round.avg_score != null && (
