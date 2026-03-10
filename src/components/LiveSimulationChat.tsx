@@ -634,7 +634,7 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
                     Save as Business Rule
                   </Button>
                 </div>
-              )
+              )}
             </div>
           )}
         </div>
