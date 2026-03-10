@@ -134,7 +134,14 @@ function buildCustomerPrompt(spec: any, difficulty: string, callerName: string):
     hard: `You are challenging. You're skeptical ("How do I know this is legit?"), give vague answers, have strong objections ("I've been burned before"), create time pressure ("I only have 2 minutes"), but CAN be won over by a skilled agent.`,
   };
 
+  const interruptionRules: Record<string, string> = {
+    easy: `INTERRUPTIONS: Rarely interrupt (at most once in the whole conversation). If you do, it's polite — "Oh sorry, go ahead" or "Wait, did you say—?"`,
+    medium: `INTERRUPTIONS: Sometimes interrupt the agent mid-thought (2-3 times in the conversation). Start with "wait—", "hold on—", "sorry but—", or just jump in mid-sentence. You might: redirect the topic, express mild impatience ("yeah yeah, I get it—"), ask an unrelated question, or cut them off to answer before they finish asking.`,
+    hard: `INTERRUPTIONS: Frequently interrupt the agent (4-5 times in the conversation). You're impatient. Cut them off with "yeah yeah I know—", "look—", "hold on hold on—", talk over them, change the subject abruptly, say "you already said that—". Sometimes interrupt to object or to rush them. Don't let them finish long pitches.`,
+  };
+
   const traits = difficultyTraits[difficulty] || difficultyTraits.medium;
+  const interruptions = interruptionRules[difficulty] || interruptionRules.medium;
   const customerData = generateCustomerData(useCase);
 
   return `You are ${callerName}, a real person receiving a phone call. Stay in character.
