@@ -286,30 +286,16 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
           <TabsContent value="training" className="space-y-4 mt-4">
             {/* Shared difficulty + training mode */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Training Mode</Label>
-                <Select value={mode} onValueChange={(v) => setMode(v as any)} disabled={isDisabled}>
-                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="simulate"><span className="flex items-center gap-1.5"><Bot className="h-3.5 w-3.5" /> Simulate Only</span></SelectItem>
-                    <SelectItem value="hybrid"><span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Hybrid</span></SelectItem>
-                    <SelectItem value="live"><span className="flex items-center gap-1.5"><Play className="h-3.5 w-3.5" /> Live Calls Only</span></SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Customer Difficulty</Label>
-                <Select value={difficulty} onValueChange={(v) => setDifficulty(v as any)} disabled={isDisabled}>
-                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="easy">Easy — Cooperative</SelectItem>
-                    <SelectItem value="medium">Medium — Realistic</SelectItem>
-                    <SelectItem value="hard">Hard — Challenging</SelectItem>
-                    <SelectItem value="mixed">Mixed — Rotates</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Training Mode</Label>
+              <Select value={mode} onValueChange={(v) => setMode(v as any)} disabled={isDisabled}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="simulate"><span className="flex items-center gap-1.5"><Bot className="h-3.5 w-3.5" /> Simulate Only</span></SelectItem>
+                  <SelectItem value="hybrid"><span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Hybrid</span></SelectItem>
+                  <SelectItem value="live"><span className="flex items-center gap-1.5"><Play className="h-3.5 w-3.5" /> Live Calls Only</span></SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
