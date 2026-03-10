@@ -319,7 +319,7 @@ export default function EditAgentPage() {
           temperature,
           interruption_threshold: interruptionThreshold,
           business_hours: businessHours,
-          business_rules: businessRules.trim() ? { text: businessRules.trim() } : null,
+          business_rules: businessRules.length > 0 ? { rules: businessRules } : null,
           sms_enabled: smsEnabled,
           sms_mode: smsMode,
           sms_script: smsScript || null,
