@@ -362,3 +362,4 @@ async function applyRecommendations(
 
   return appliedFixes;
 }
+
