@@ -865,6 +865,13 @@ function ResultCard({
   const [transcribing, setTranscribing] = useState(false);
   const [detectedRule, setDetectedRule] = useState<string | null>(null);
   const [savingRule, setSavingRule] = useState(false);
+  const [lastAppliedFeedback, setLastAppliedFeedback] = useState<{
+    text: string; field?: string; patch?: any; synced: boolean;
+  } | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<{
+    verified: boolean; evidence: string;
+  } | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const { toast: feedbackToast } = useToast();
