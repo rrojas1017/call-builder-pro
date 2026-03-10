@@ -94,7 +94,7 @@ serve(async (req) => {
         direction: "outbound",
         voice_provider: "simulated",
         transcript,
-        started_at: new Date(Date.now() - 120_000).toISOString(),
+        started_at: new Date(Date.now() - (Math.round(safeTurns * 10) * 1000)).toISOString(),
         ended_at: new Date().toISOString(),
         duration_seconds: Math.round(safeTurns * 10),
         outcome: "completed",
