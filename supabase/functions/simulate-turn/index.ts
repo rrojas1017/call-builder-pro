@@ -137,6 +137,7 @@ function buildCustomerPrompt(spec: any, difficulty: string, callerName: string):
   const customerData = generateCustomerData(useCase);
 
   return `You are ${callerName}, a real person receiving a phone call. Stay in character.
+IMPORTANT: Always finish your sentences completely. Never stop mid-word or mid-sentence.
 
 YOUR DETAILS:
 ${customerData}
