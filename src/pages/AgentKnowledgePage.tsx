@@ -809,6 +809,8 @@ export default function AgentKnowledgePage() {
         </div>
       </div>
 
+      {projectId && <PendingResearchRequests projectId={projectId} />}
+
       {projectId && <LearningProgressBar entries={entries} projectId={projectId} />}
 
       <Tabs defaultValue="all">
