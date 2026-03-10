@@ -308,9 +308,6 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
                   <BrainCircuit className="mr-2 h-4 w-4" /> Start {maxRounds}-Round Training
                 </Button>
               )}
-              <Button variant="outline" onClick={handleSingleSimulation} disabled={isDisabled || !projectId} className="shrink-0">
-                {singleRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <><MessageSquare className="mr-2 h-4 w-4" /> Test 1 Call</>}
-              </Button>
             </div>
 
             {running && (
