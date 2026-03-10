@@ -315,6 +315,54 @@ Rules:
       source_recommendation: recommendation,
     });
 
+    // ── Resync Retell agent so changes take effect on next call ──
+    if (spec.retell_agent_id) {
+      try {
+        const retellKey = Deno.env.get("RETELL_API_KEY");
+        if (retellKey) {
+          // Merge patch into spec for prompt rebuild
+          const updatedSpec = { ...spec, ...patch };
+          
+          // Fetch knowledge briefing
+          const { data: kEntries } = await supabase
+            .from("agent_knowledge")
+            .select("content, category")
+            .eq("project_id", project_id)
+            .order("usage_count", { ascending: false })
+            .limit(20);
+          const knowledgeBriefing = (kEntries || []).map((e: any) => e.content).join("\n\n");
+          
+          const newPrompt = buildTaskPrompt(updatedSpec, [], knowledgeBriefing, "");
+          const trimmedPrompt = newPrompt.length > 28000
+            ? newPrompt.substring(0, 28000) + "\n\n[Trimmed for length]"
+            : newPrompt;
+
+          // Get the agent's LLM ID from Retell
+          const agentRes = await fetch(`https://api.retellai.com/get-agent/${spec.retell_agent_id}`, {
+            headers: { Authorization: `Bearer ${retellKey}` },
+          });
+          if (agentRes.ok) {
+            const agentData = await agentRes.json();
+            const llmId = agentData.response_engine?.llm_id;
+            if (llmId) {
+              const llmPatchRes = await fetch(`https://api.retellai.com/update-retell-llm/${llmId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellKey}` },
+                body: JSON.stringify({ general_prompt: trimmedPrompt }),
+              });
+              if (llmPatchRes.ok) {
+                console.log(`✅ Retell LLM ${llmId} resynced after audit recommendation`);
+              } else {
+                console.error("Failed to resync Retell LLM:", await llmPatchRes.text());
+              }
+            }
+          }
+        }
+      } catch (syncErr: any) {
+        console.error("Retell resync failed (non-fatal):", syncErr.message);
+      }
+    }
+
     return new Response(JSON.stringify({
       success: true,
       action: "patch_spec",
