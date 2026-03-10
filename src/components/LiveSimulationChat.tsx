@@ -342,7 +342,7 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
               body: {
                 project_id: projectId,
                 recommendation: `${rec.reason}. Set ${rec.field} to: ${rec.suggested_value}`,
-                category: rec.severity,
+                category: "save_and_learn",
               },
             });
             if (applyResult?.success) fixesApplied++;
