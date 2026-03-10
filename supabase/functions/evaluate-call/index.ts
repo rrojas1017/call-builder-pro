@@ -770,12 +770,17 @@ ${call.transcript}`;
       }
     }
 
+    // ── SAFE LEARNING GATE: Only auto-modify from simulated/test calls ──
+    // Live calls are scored and reviewed but NEVER auto-modify the agent.
+    // This prevents callers from manipulating the agent's behavior.
+    const isSimulatedOrTest = call.voice_provider === "simulated" || !!test_run_contact_id;
+
     // ── Auto-apply critical-severity improvements ──
     // Protected fields: skip auto-critical overwrites for fields that were
     // recently set manually (verbal training or direct DB update)
     const PROTECTED_FIELDS = ["opening_line"];
 
-    if (evaluation.recommended_improvements?.length > 0) {
+    if (isSimulatedOrTest && evaluation.recommended_improvements?.length > 0) {
       try {
         const criticalFixes = evaluation.recommended_improvements.filter(
           (imp: any) => imp.severity === "critical"
