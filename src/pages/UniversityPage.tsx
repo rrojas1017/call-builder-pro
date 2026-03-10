@@ -856,8 +856,9 @@ function ResultCard({
     }
   }, [feedbackToast]);
 
-  const showFeedbackInput = contact.status === "completed" && (!savedFeedback || editingFeedback);
-  const showSavedFeedback = contact.status === "completed" && savedFeedback && !editingFeedback;
+  const isTerminal = ["completed", "cancelled"].includes(contact.status);
+  const showFeedbackInput = isTerminal && (!savedFeedback || editingFeedback);
+  const showSavedFeedback = isTerminal && savedFeedback && !editingFeedback;
 
   return (
     <div className="gradient-border glass-card rounded-xl p-6 space-y-4">
