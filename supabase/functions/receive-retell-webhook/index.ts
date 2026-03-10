@@ -4,9 +4,13 @@ import { corsHeaders } from "../_shared/auth.ts";
 
 // ===== WEBHOOK SIGNATURE VERIFICATION =====
 async function verifyRetellSignature(rawBody: string, signatureHeader: string | null): Promise<boolean> {
+  // Try RETELL_WEBHOOK_SECRET first (the webhook-badged key), then RETELL_API_KEY as fallback
+  const webhookSecret = Deno.env.get("RETELL_WEBHOOK_SECRET");
   const apiKey = Deno.env.get("RETELL_API_KEY");
-  if (!apiKey) {
-    console.warn("[SECURITY] RETELL_API_KEY not configured — skipping signature check");
+  const keysToTry = [webhookSecret, apiKey].filter(Boolean) as string[];
+
+  if (keysToTry.length === 0) {
+    console.warn("[SECURITY] No RETELL_WEBHOOK_SECRET or RETELL_API_KEY configured — skipping signature check");
     return true;
   }
   if (!signatureHeader) {
@@ -27,25 +31,39 @@ async function verifyRetellSignature(rawBody: string, signatureHeader: string | 
   const timestamp = timestampPart.slice(2);
   const expectedDigest = digestPart.slice(2);
 
-  // Replay protection: reject if older than 5 minutes
-  const currentTime = Math.floor(Date.now() / 1000);
-  const timeDiff = currentTime - parseInt(timestamp, 10);
-  if (timeDiff > 300) {
-    console.error("[SECURITY] Webhook signature timestamp too old:", timeDiff, "seconds");
+  // Replay protection: Retell timestamps are in MILLISECONDS
+  const now = Date.now();
+  const timeDiffMs = now - parseInt(timestamp, 10);
+  console.log(`[SECURITY] Timestamp check: header=${timestamp} now=${now} diffMs=${timeDiffMs}`);
+  if (Math.abs(timeDiffMs) > 300_000) {
+    console.error("[SECURITY] Webhook signature timestamp too old:", timeDiffMs, "ms");
     return false;
   }
 
-  // HMAC-SHA256 over (rawBody + timestamp) using RETELL_API_KEY
+  // Try each key until one matches
   const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", encoder.encode(apiKey), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody + timestamp));
-  const computedHex = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
+  const payload = encoder.encode(rawBody + timestamp);
 
-  const isValid = computedHex === expectedDigest;
-  if (!isValid) {
-    console.error("[SECURITY] Digest mismatch. computed:", computedHex.slice(0, 16) + "...", "expected:", expectedDigest.slice(0, 16) + "...");
+  for (let i = 0; i < keysToTry.length; i++) {
+    const secret = keysToTry[i];
+    const keyLabel = i === 0 && webhookSecret ? "RETELL_WEBHOOK_SECRET" : "RETELL_API_KEY";
+    try {
+      const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      const signature = await crypto.subtle.sign("HMAC", key, payload);
+      const computedHex = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+      console.log(`[SECURITY] Key=${keyLabel} computed=${computedHex.slice(0, 16)}... expected=${expectedDigest.slice(0, 16)}...`);
+      if (computedHex === expectedDigest) {
+        console.log(`[SECURITY] Signature verified with ${keyLabel}`);
+        return true;
+      }
+    } catch (e) {
+      console.error(`[SECURITY] Error verifying with ${keyLabel}:`, e);
+    }
   }
-  return isValid;
+
+  console.error("[SECURITY] Digest mismatch with all keys");
+  return false;
 }
 
 // ===== INBOUND DETECTION HELPER =====
