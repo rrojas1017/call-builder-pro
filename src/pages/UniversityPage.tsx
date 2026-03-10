@@ -873,11 +873,22 @@ function ResultCard({
     if (!feedbackText.trim()) return;
     setSavingFeedback(true);
     try {
-      const { error } = await supabase
-        .from("test_run_contacts")
-        .update({ user_feedback: feedbackText.trim() })
-        .eq("id", contact.id);
-      if (error) throw error;
+      // Save feedback to the appropriate table based on source
+      if (contact.source === "simulation" && contact.call_id) {
+        // For simulation calls, store feedback in the calls table evaluation
+        const existingEval = contact.evaluation || {};
+        const { error } = await supabase
+          .from("calls")
+          .update({ evaluation: { ...existingEval, user_feedback: feedbackText.trim() } })
+          .eq("id", contact.call_id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("test_run_contacts")
+          .update({ user_feedback: feedbackText.trim() })
+          .eq("id", contact.id);
+        if (error) throw error;
+      }
       setSavedFeedback(feedbackText.trim());
       setEditingFeedback(false);
       feedbackToast({ title: "Feedback saved", description: "Applying feedback and re-evaluating..." });
@@ -893,14 +904,16 @@ function ResultCard({
         }).catch(() => {});
       }
 
-      // 2. Re-evaluate the call with the new feedback included
-      supabase.functions.invoke("evaluate-call", {
-        body: { test_run_contact_id: contact.id },
-      }).then(({ data }) => {
-        if (data?.evaluation) {
-          feedbackToast({ title: "Re-evaluation complete", description: "Scores updated with your feedback." });
-        }
-      }).catch(() => {});
+      // 2. Re-evaluate the call with the new feedback included (only for phone test calls)
+      if (contact.source !== "simulation") {
+        supabase.functions.invoke("evaluate-call", {
+          body: { test_run_contact_id: contact.id },
+        }).then(({ data }) => {
+          if (data?.evaluation) {
+            feedbackToast({ title: "Re-evaluation complete", description: "Scores updated with your feedback." });
+          }
+        }).catch(() => {});
+      }
     } catch (err: any) {
       feedbackToast({ title: "Failed to save feedback", description: err.message, variant: "destructive" });
     } finally {
