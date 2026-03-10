@@ -51,6 +51,13 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
   const [feedbackApplied, setFeedbackApplied] = useState<string[]>([]);
   const [detectedRule, setDetectedRule] = useState<string | null>(null);
   const [savingRule, setSavingRule] = useState(false);
+  const [lastAppliedFeedback, setLastAppliedFeedback] = useState<{
+    text: string; field?: string; synced: boolean;
+  } | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<{
+    verified: boolean; evidence: string;
+  } | null>(null);
 
   const stoppedRef = useRef(false);
   const agentSystemRef = useRef("");
