@@ -892,7 +892,13 @@ function ResultCard({
       if (error) throw error;
       const transcribedText = data?.text || data?.transcript || "";
       if (transcribedText) {
-        setFeedbackText(prev => prev ? prev + "\n" + transcribedText : transcribedText);
+        const newText = feedbackText ? feedbackText + "\n" + transcribedText : transcribedText;
+        setFeedbackText(newText);
+        // Check for business rule intent
+        const detection = detectBusinessRuleIntent(newText);
+        if (detection.isBusinessRule) {
+          setDetectedRule(detection.ruleText);
+        }
       } else {
         feedbackToast({ title: "No speech detected", description: "Try recording again with clearer audio.", variant: "destructive" });
       }
