@@ -316,6 +316,7 @@ Rules:
     });
 
     // ── Resync Retell agent so changes take effect on next call ──
+    let syncedToRetell = false;
     if (spec.retell_agent_id) {
       try {
         const retellKey = Deno.env.get("RETELL_API_KEY");
@@ -352,6 +353,7 @@ Rules:
               });
               if (llmPatchRes.ok) {
                 console.log(`✅ Retell LLM ${llmId} resynced after audit recommendation`);
+                syncedToRetell = true;
               } else {
                 console.error("Failed to resync Retell LLM:", await llmPatchRes.text());
               }
@@ -371,6 +373,7 @@ Rules:
       to_version: toVersion,
       reason: mapping.reason,
       patch,
+      synced_to_retell: syncedToRetell,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

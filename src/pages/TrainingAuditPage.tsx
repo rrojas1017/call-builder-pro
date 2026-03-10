@@ -181,22 +181,31 @@ function ApplyButton({
   recommendation,
   category,
   applied,
+  syncedToRetell,
   onApplied,
 }: {
   projectId: string;
   recommendation: string;
   category: string;
   applied: boolean;
-  onApplied: (rec: string, result: { success: boolean; manual?: boolean; note?: string; reason?: string; action?: string }) => void;
+  syncedToRetell: boolean;
+  onApplied: (rec: string, result: { success: boolean; manual?: boolean; note?: string; reason?: string; action?: string; synced_to_retell?: boolean }) => void;
 }) {
   const [applying, setApplying] = useState(false);
   const { toast } = useToast();
 
   if (applied) {
     return (
-      <Badge variant="default" className="bg-green-600 text-white text-[10px] px-2 py-0.5 shrink-0">
-        <Check className="h-3 w-3 mr-1" />Applied
-      </Badge>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <Badge variant="default" className="bg-green-600 text-white text-[10px] px-2 py-0.5">
+          <Check className="h-3 w-3 mr-1" />Applied
+        </Badge>
+        {syncedToRetell && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 border-green-500 text-green-600 bg-green-500/10">
+            <Zap className="h-3 w-3 mr-0.5" />Synced to live agent
+          </Badge>
+        )}
+      </div>
     );
   }
 
@@ -211,8 +220,10 @@ function ApplyButton({
       if (data.success) {
         onApplied(recommendation, data);
         toast({
-          title: data.action === "add_knowledge" ? "Knowledge Added" : "Spec Updated",
-          description: data.reason || `Applied: ${recommendation.slice(0, 60)}…`,
+          title: data.action === "add_knowledge" ? "Knowledge Added" : data.synced_to_retell ? "Spec Updated & Synced" : "Spec Updated",
+          description: data.synced_to_retell
+            ? `✅ Synced to live agent — ${data.reason || recommendation.slice(0, 60)}…`
+            : data.reason || `Applied: ${recommendation.slice(0, 60)}…`,
         });
       } else if (data.manual) {
         onApplied(recommendation, { success: false, manual: true, note: data.note });
@@ -251,6 +262,7 @@ function UnifiedCategoryCard({
   data,
   projectId,
   appliedSet,
+  syncedSet,
   manualSet,
   onApplied,
 }: {
@@ -258,6 +270,7 @@ function UnifiedCategoryCard({
   data: UnifiedCategoryResult;
   projectId: string;
   appliedSet: Set<string>;
+  syncedSet: Set<string>;
   manualSet: Set<string>;
   onApplied: (rec: string, result: any) => void;
 }) {
@@ -328,6 +341,7 @@ function UnifiedCategoryCard({
                           recommendation={r.text}
                           category={cat}
                           applied={appliedSet.has(r.text)}
+                          syncedToRetell={syncedSet.has(r.text)}
                           onApplied={onApplied}
                         />
                       )}
@@ -362,6 +376,7 @@ export default function TrainingAuditPage() {
   const [pastAudits, setPastAudits] = useState<AuditRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [appliedRecs, setAppliedRecs] = useState<Set<string>>(new Set());
+  const [syncedRecs, setSyncedRecs] = useState<Set<string>>(new Set());
   const [manualRecs, setManualRecs] = useState<Set<string>>(new Set());
   const [applyingAll, setApplyingAll] = useState(false);
   const [applyAllProgress, setApplyAllProgress] = useState<{ current: number; total: number } | null>(null);
@@ -439,6 +454,9 @@ export default function TrainingAuditPage() {
   const handleApplied = (rec: string, result: any) => {
     if (result.success) {
       setAppliedRecs((prev) => new Set(prev).add(rec));
+      if (result.synced_to_retell) {
+        setSyncedRecs((prev) => new Set(prev).add(rec));
+      }
     } else if (result.manual) {
       setManualRecs((prev) => new Set(prev).add(rec));
     }
@@ -648,6 +666,7 @@ export default function TrainingAuditPage() {
                   data={data}
                   projectId={selectedAgent}
                   appliedSet={appliedRecs}
+                  syncedSet={syncedRecs}
                   manualSet={manualRecs}
                   onApplied={handleApplied}
                 />
