@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
-import { Mic, MicOff, Send, MessageSquarePlus, Pencil, BrainCircuit, ChevronDown, Database } from "lucide-react";
+import { Mic, MicOff, Send, MessageSquarePlus, Pencil, BrainCircuit, ChevronDown, Database, BookmarkPlus } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
