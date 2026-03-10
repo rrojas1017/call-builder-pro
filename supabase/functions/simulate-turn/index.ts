@@ -108,7 +108,7 @@ async function handleTurn(body: any) {
     provider: "gemini",
     messages,
     temperature: role === "customer" ? 0.8 : 0.6,
-    max_tokens: 512,
+    max_tokens: 1024,
   });
 
   let text = reply.content?.trim() || "(silence)";
