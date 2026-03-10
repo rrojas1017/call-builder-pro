@@ -1,63 +1,48 @@
 
 
-# Add AI Training UI to University Page
+# Simplify the Agent Creation Wizard
 
-## Overview
-Add a new "AI Simulation Training" section to the University page that lets users run the `auto-train` function in simulate mode directly from the UI, with configuration options and real-time progress display.
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-## Changes
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-### 1. New Component: `src/components/SimulationTrainingPanel.tsx`
-A collapsible panel added to the University page (below the test call form, before the trend chart) with:
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-**Configuration form:**
-- Difficulty selector: easy / medium / hard / mixed (radio group or select)
-- Number of rounds: slider or select (1-5, default 3)
-- Calls per round: slider or select (1-5, default 3)
-- Mode selector: Simulate (default) / Hybrid (shows threshold input when selected)
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-**Run button:** "Start AI Training" — invokes `auto-train` with `mode: "simulate"` (or hybrid)
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-**Progress display** (shown while running):
-- Current round indicator (e.g., "Round 2 of 3")
-- Per-round results as they come in: score, fixes applied, status badges (completed / regression_rollback / etc.)
-- Final summary: score progression, total fixes applied
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-**State management:**
-- Uses `supabase.functions.invoke('auto-train', ...)` — single long-running call
-- Shows a loading/progress state while waiting for the response
-- On completion, refreshes the trend chart and history data
-- Disables the panel while a live test call is running (and vice versa)
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-### 2. Modify `src/pages/UniversityPage.tsx`
-- Import and render `SimulationTrainingPanel` after the test call form section (around line 580)
-- Pass `agentId` and a callback to refresh history/trend data after training completes
-- Gate visibility: only show when an agent is selected
+## Plan
 
-## UI Layout (in University page order)
-```text
-┌─────────────────────────────────┐
-│ Graduation Badge                │
-│ Summary Stats                   │
-│ Agent Select + Phone + Run Test │
-│ Live Call Monitor               │
-│ ┌─────────────────────────────┐ │  ← NEW
-│ │ ⚡ AI Simulation Training   │ │
-│ │ Difficulty: [easy|med|hard] │ │
-│ │ Rounds: [3]  Calls/round:[3]│ │
-│ │ [▶ Start AI Training]       │ │
-│ │                             │ │
-│ │ Round 1: ✓ Score 7.2 (+0.4) │ │
-│ │ Round 2: ✓ Score 7.8 (+0.6) │ │
-│ │ Round 3: ⏳ Running...       │ │
-│ └─────────────────────────────┘ │
-│ Humanness Trend Chart           │
-│ Results                         │
-│ Call History                    │
-└─────────────────────────────────┘
-```
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
 
-## Files
-- `src/components/SimulationTrainingPanel.tsx` — **New**
-- `src/pages/UniversityPage.tsx` — Add import and render the panel
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
+
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+
+### Files Changed
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 
