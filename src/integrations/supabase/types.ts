@@ -1106,6 +1106,80 @@ export type Database = {
           },
         ]
       }
+      pending_spec_changes: {
+        Row: {
+          affected_fields: Json | null
+          change_type: string | null
+          conflict_description: string
+          conflict_type: string | null
+          created_at: string | null
+          current_value: string | null
+          field_to_change: string
+          id: string
+          impact_summary: string | null
+          org_id: string
+          project_id: string
+          proposed_value: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source: string
+          source_category: string | null
+          source_detail: string | null
+          status: string
+        }
+        Insert: {
+          affected_fields?: Json | null
+          change_type?: string | null
+          conflict_description: string
+          conflict_type?: string | null
+          created_at?: string | null
+          current_value?: string | null
+          field_to_change: string
+          id?: string
+          impact_summary?: string | null
+          org_id: string
+          project_id: string
+          proposed_value?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source: string
+          source_category?: string | null
+          source_detail?: string | null
+          status?: string
+        }
+        Update: {
+          affected_fields?: Json | null
+          change_type?: string | null
+          conflict_description?: string
+          conflict_type?: string | null
+          created_at?: string | null
+          current_value?: string | null
+          field_to_change?: string
+          id?: string
+          impact_summary?: string | null
+          org_id?: string
+          project_id?: string
+          proposed_value?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source?: string
+          source_category?: string | null
+          source_detail?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_spec_changes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -1345,6 +1419,71 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "sms_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      spec_change_log: {
+        Row: {
+          approved_by: string | null
+          change_type: string
+          conflict_description: string | null
+          conflict_detected: boolean | null
+          created_at: string | null
+          field_changed: string
+          id: string
+          new_value: string | null
+          old_value: string | null
+          org_id: string
+          project_id: string
+          source: string
+          source_category: string | null
+          source_detail: string | null
+          was_auto_applied: boolean | null
+          was_user_approved: boolean | null
+        }
+        Insert: {
+          approved_by?: string | null
+          change_type?: string
+          conflict_description?: string | null
+          conflict_detected?: boolean | null
+          created_at?: string | null
+          field_changed: string
+          id?: string
+          new_value?: string | null
+          old_value?: string | null
+          org_id: string
+          project_id: string
+          source: string
+          source_category?: string | null
+          source_detail?: string | null
+          was_auto_applied?: boolean | null
+          was_user_approved?: boolean | null
+        }
+        Update: {
+          approved_by?: string | null
+          change_type?: string
+          conflict_description?: string | null
+          conflict_detected?: boolean | null
+          created_at?: string | null
+          field_changed?: string
+          id?: string
+          new_value?: string | null
+          old_value?: string | null
+          org_id?: string
+          project_id?: string
+          source?: string
+          source_category?: string | null
+          source_detail?: string | null
+          was_auto_applied?: boolean | null
+          was_user_approved?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "spec_change_log_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "agent_projects"
             referencedColumns: ["id"]
           },
         ]
