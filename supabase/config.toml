@@ -119,3 +119,6 @@ verify_jwt = false
 
 [functions.simulate-call]
 verify_jwt = false
+
+[functions.simulate-turn]
+verify_jwt = false

@@ -600,6 +600,11 @@ export default function UniversityPage() {
         />
       )}
 
+      {/* Live Simulation Chat */}
+      {agentId && (
+        <LiveSimulationChat projectId={agentId} />
+      )}
+
       {/* Humanness Trend Chart */}
       {hasTrendData ? (
         <div className="surface-elevated rounded-xl p-6 space-y-3">
