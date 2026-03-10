@@ -604,10 +604,10 @@ export default function UniversityPage() {
 
       {/* Humanness Trend Chart */}
       {hasTrendData ? (
-        <div className="surface-elevated rounded-xl p-6 space-y-3">
-          <h2 className="text-lg font-semibold text-foreground">Agent Humanness Progress</h2>
+        <div className="gradient-border glass-card rounded-xl p-6 space-y-3 mesh-gradient">
+          <h2 className="text-lg font-semibold text-gradient-primary">Agent Humanness Progress</h2>
           <p className="text-xs text-muted-foreground">Last 20 evaluated calls. Dashed line = auto-improvement threshold (80).</p>
-          <div className="h-56">
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
