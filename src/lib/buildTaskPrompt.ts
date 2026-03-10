@@ -16,6 +16,7 @@ interface AgentSpec {
   mode?: string | null;
   opening_line?: string | null;
   persona_name?: string | null;
+  business_rules?: Record<string, any> | null;
 }
 
 interface KnowledgeEntry {
@@ -119,8 +120,10 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[] = [
     }
   }
 
-  // Inject email collection near end if not already present
-  if (fields.length > 0 && !fields.some(f => f.toLowerCase().includes('email'))) {
+  // Guard email injection: skip if business_rules forbid it
+  const rulesStr = JSON.stringify(spec.business_rules || {}).toLowerCase();
+  const forbidsEmail = rulesStr.includes("not ask for email") || rulesStr.includes("no email") || rulesStr.includes("don't ask for email") || rulesStr.includes("do not collect email");
+  if (!forbidsEmail && fields.length > 0 && !fields.some(f => f.toLowerCase().includes('email'))) {
     fields.push("Before I connect you, what's the best email address to send your plan details and next steps to?");
   }
 
@@ -160,6 +163,17 @@ RULES:
 - PACING: Do NOT rapid-fire through questions. After each answer, pause and acknowledge naturally ("Got it", "That helps", "Okay, great") before moving to the next question. When shifting topics (e.g., from personal info to income), use a brief transition like "Alright, just a couple more things..." to signal the change.
 - If the caller gives a detailed answer or shares something personal, react to it briefly before continuing — do not immediately jump to the next field.
 - ONE QUESTION PER TURN: Never ask more than one question in a single response. Ask one thing, then STOP and wait for the caller to answer before continuing.`;
+
+
+  // Inject business rules as high-priority instructions
+  if (spec.business_rules && typeof spec.business_rules === "object" && Object.keys(spec.business_rules).length > 0) {
+    const brText = typeof spec.business_rules === "string"
+      ? spec.business_rules
+      : Object.entries(spec.business_rules)
+          .map(([key, val]) => `- ${key}: ${val}`)
+          .join("\n");
+    prompt += `\n\nBUSINESS RULES (MUST follow strictly — these override any default behavior):\n${brText}`;
+  }
 
   if (resolvedOpeningLine) {
     const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "(caller's name — ask if unknown)";
