@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
-import { Mic, MicOff, Send, MessageSquarePlus, Pencil, BrainCircuit, ChevronDown, Database, BookmarkPlus } from "lucide-react";
+import { Mic, MicOff, Send, MessageSquarePlus, Pencil, BrainCircuit, ChevronDown, Database, BookmarkPlus, ShieldCheck, ShieldAlert } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -132,6 +132,15 @@ export default function UniversityPage() {
 
   const [applyingFixId, setApplyingFixId] = useState<string | null>(null);
   const [appliedFixes, setAppliedFixes] = useState<string[]>([]);
+
+  // Feedback verification state
+  const [verifyingFeedback, setVerifyingFeedback] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<{
+    verified: boolean;
+    evidence: string;
+    feedback_text: string;
+    field_changed?: string;
+  } | null>(null);
 
   // Trend data
   const [trendData, setTrendData] = useState<TrendPoint[]>([]);
@@ -856,6 +865,13 @@ function ResultCard({
   const [transcribing, setTranscribing] = useState(false);
   const [detectedRule, setDetectedRule] = useState<string | null>(null);
   const [savingRule, setSavingRule] = useState(false);
+  const [lastAppliedFeedback, setLastAppliedFeedback] = useState<{
+    text: string; field?: string; patch?: any; synced: boolean;
+  } | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<{
+    verified: boolean; evidence: string;
+  } | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const { toast: feedbackToast } = useToast();
@@ -902,7 +918,19 @@ function ResultCard({
           body: { project_id: projectId, recommendation: feedbackText.trim(), category: "user_feedback" },
         }).then(({ data }) => {
           if (data?.success) {
-            feedbackToast({ title: "Agent updated", description: data.reason || "Your feedback was applied to the agent's configuration." });
+            const fieldInfo = data.field ? ` Updated: ${data.field}` : "";
+            const syncInfo = data.synced_to_retell ? " • Synced to live agent" : "";
+            feedbackToast({
+              title: "✅ Agent updated",
+              description: (data.reason || "Your feedback was applied.") + fieldInfo + syncInfo,
+            });
+            // Store for verification
+            setLastAppliedFeedback({
+              text: feedbackText.trim(),
+              field: data.field || undefined,
+              patch: data.patch || undefined,
+              synced: !!data.synced_to_retell,
+            });
           }
         }).catch(() => {});
       }
@@ -1230,7 +1258,7 @@ function ResultCard({
       )}
 
       {showSavedFeedback && (
-        <div className="space-y-1">
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
               <MessageSquarePlus className="h-3 w-3" /> Your Feedback
@@ -1242,6 +1270,81 @@ function ResultCard({
           <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 text-xs text-foreground whitespace-pre-wrap">
             {savedFeedback}
           </div>
+
+          {/* Applied feedback details */}
+          {lastAppliedFeedback && (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center gap-2 text-xs">
+                <CheckCircle className="h-3.5 w-3.5 text-green-400 shrink-0" />
+                <span className="font-medium text-foreground">
+                  Applied{lastAppliedFeedback.field ? `: Updated ${lastAppliedFeedback.field}` : ""}
+                </span>
+                {lastAppliedFeedback.synced && (
+                  <Badge variant="outline" className="text-[10px] h-4 border-green-500/30 text-green-400">Synced to live agent</Badge>
+                )}
+              </div>
+              {lastAppliedFeedback.patch && lastAppliedFeedback.field && (
+                <p className="text-[11px] text-muted-foreground">
+                  New value: <span className="text-primary font-mono">{JSON.stringify(lastAppliedFeedback.patch[lastAppliedFeedback.field])?.substring(0, 100)}</span>
+                </p>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                disabled={verifying}
+                onClick={async () => {
+                  setVerifying(true);
+                  setVerificationResult(null);
+                  try {
+                    const { data, error } = await supabase.functions.invoke("verify-feedback", {
+                      body: {
+                        project_id: projectId,
+                        feedback_text: lastAppliedFeedback.text,
+                        field_changed: lastAppliedFeedback.field,
+                      },
+                    });
+                    if (error) throw error;
+                    setVerificationResult({
+                      verified: data.verified,
+                      evidence: data.evidence,
+                    });
+                    feedbackToast({
+                      title: data.verified ? "✅ Verified!" : "⚠️ Not verified",
+                      description: data.evidence,
+                    });
+                  } catch (err: any) {
+                    feedbackToast({ title: "Verification failed", description: err.message, variant: "destructive" });
+                  } finally {
+                    setVerifying(false);
+                  }
+                }}
+              >
+                {verifying ? (
+                  <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Verifying...</>
+                ) : verificationResult ? (
+                  verificationResult.verified ? (
+                    <><ShieldCheck className="mr-1 h-3 w-3 text-green-400" /> Verified ✅</>
+                  ) : (
+                    <><ShieldAlert className="mr-1 h-3 w-3 text-yellow-400" /> Re-verify</>
+                  )
+                ) : (
+                  <><ShieldCheck className="mr-1 h-3 w-3" /> Verify It Works</>
+                )}
+              </Button>
+
+              {verificationResult && (
+                <div className={`rounded-lg p-2.5 text-xs ${
+                  verificationResult.verified
+                    ? "bg-green-500/10 border border-green-500/20 text-green-400"
+                    : "bg-yellow-500/10 border border-yellow-500/20 text-yellow-400"
+                }`}>
+                  <span className="font-medium">{verificationResult.verified ? "✅ Verified" : "⚠️ Not verified"}</span>
+                  <span className="text-foreground ml-1">— {verificationResult.evidence}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

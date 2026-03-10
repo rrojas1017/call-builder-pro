@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Play, Square, Bot, User, Eye, RotateCcw, GraduationCap, Zap, MessageCircle, Send, CheckCircle, BookmarkPlus } from "lucide-react";
+import { Loader2, Play, Square, Bot, User, Eye, RotateCcw, GraduationCap, Zap, MessageCircle, Send, CheckCircle, BookmarkPlus, ShieldCheck, ShieldAlert } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { detectBusinessRuleIntent } from "@/lib/detectBusinessRuleIntent";
 import { addBusinessRule } from "@/lib/addBusinessRule";
@@ -51,6 +51,13 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
   const [feedbackApplied, setFeedbackApplied] = useState<string[]>([]);
   const [detectedRule, setDetectedRule] = useState<string | null>(null);
   const [savingRule, setSavingRule] = useState(false);
+  const [lastAppliedFeedback, setLastAppliedFeedback] = useState<{
+    text: string; field?: string; synced: boolean;
+  } | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<{
+    verified: boolean; evidence: string;
+  } | null>(null);
 
   const stoppedRef = useRef(false);
   const agentSystemRef = useRef("");
@@ -105,14 +112,27 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
 
       if (error) throw error;
 
+      const fieldInfo = data?.field ? ` Updated: ${data.field}` : "";
+      const syncInfo = data?.synced_to_retell ? " • Synced to live agent" : "";
       const desc = data?.action === "patch_spec"
-        ? `Updated: ${data?.field || "agent config"}`
+        ? `${data?.field || "agent config"}${syncInfo}`
         : data?.action === "add_knowledge"
         ? "Added to agent knowledge"
         : "Noted for manual review";
 
       setFeedbackApplied((prev) => [...prev, feedback.trim()]);
-      toast({ title: "Feedback applied!", description: desc });
+      toast({ title: "✅ Feedback applied!", description: desc });
+
+      // Store for verification
+      if (data?.action === "patch_spec") {
+        setLastAppliedFeedback({
+          text: feedback.trim(),
+          field: data?.field,
+          synced: !!data?.synced_to_retell,
+        });
+        setVerificationResult(null);
+      }
+
       setFeedbackText("");
       setGeneralFeedback("");
       setFeedbackMessageIndex(null);
@@ -571,6 +591,74 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
               )}
             </div>
           </div>
+
+          {/* Verification result */}
+          {lastAppliedFeedback && (
+            <div className="px-5 pb-2">
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <CheckCircle className="h-3.5 w-3.5 text-green-400 shrink-0" />
+                  <span className="font-medium text-foreground">
+                    Applied{lastAppliedFeedback.field ? `: ${lastAppliedFeedback.field}` : ""}
+                  </span>
+                  {lastAppliedFeedback.synced && (
+                    <Badge variant="outline" className="text-[10px] h-4 border-green-500/30 text-green-400">Synced</Badge>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-[10px]"
+                  disabled={verifying}
+                  onClick={async () => {
+                    setVerifying(true);
+                    setVerificationResult(null);
+                    try {
+                      const { data, error } = await supabase.functions.invoke("verify-feedback", {
+                        body: {
+                          project_id: projectId,
+                          feedback_text: lastAppliedFeedback.text,
+                          field_changed: lastAppliedFeedback.field,
+                        },
+                      });
+                      if (error) throw error;
+                      setVerificationResult({ verified: data.verified, evidence: data.evidence });
+                      toast({
+                        title: data.verified ? "✅ Verified!" : "⚠️ Not verified",
+                        description: data.evidence,
+                      });
+                    } catch (err: any) {
+                      toast({ title: "Verification failed", description: err.message, variant: "destructive" });
+                    } finally {
+                      setVerifying(false);
+                    }
+                  }}
+                >
+                  {verifying ? (
+                    <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Verifying...</>
+                  ) : verificationResult ? (
+                    verificationResult.verified ? (
+                      <><ShieldCheck className="mr-1 h-3 w-3 text-green-400" /> Verified ✅</>
+                    ) : (
+                      <><ShieldAlert className="mr-1 h-3 w-3 text-yellow-400" /> Re-verify</>
+                    )
+                  ) : (
+                    <><ShieldCheck className="mr-1 h-3 w-3" /> Verify It Works</>
+                  )}
+                </Button>
+                {verificationResult && (
+                  <div className={`rounded-lg p-2 text-[11px] ${
+                    verificationResult.verified
+                      ? "bg-green-500/10 border border-green-500/20 text-green-400"
+                      : "bg-yellow-500/10 border border-yellow-500/20 text-yellow-400"
+                  }`}>
+                    <span className="font-medium">{verificationResult.verified ? "✅ Verified" : "⚠️ Not verified"}</span>
+                    <span className="text-foreground ml-1">— {verificationResult.evidence}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* General feedback box */}
           {messages.length > 2 && (
