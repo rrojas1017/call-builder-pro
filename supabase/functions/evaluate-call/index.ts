@@ -770,12 +770,17 @@ ${call.transcript}`;
       }
     }
 
+    // ── SAFE LEARNING GATE: Only auto-modify from simulated/test calls ──
+    // Live calls are scored and reviewed but NEVER auto-modify the agent.
+    // This prevents callers from manipulating the agent's behavior.
+    const isSimulatedOrTest = call.voice_provider === "simulated" || !!test_run_contact_id;
+
     // ── Auto-apply critical-severity improvements ──
     // Protected fields: skip auto-critical overwrites for fields that were
     // recently set manually (verbal training or direct DB update)
     const PROTECTED_FIELDS = ["opening_line"];
 
-    if (evaluation.recommended_improvements?.length > 0) {
+    if (isSimulatedOrTest && evaluation.recommended_improvements?.length > 0) {
       try {
         const criticalFixes = evaluation.recommended_improvements.filter(
           (imp: any) => imp.severity === "critical"
@@ -845,22 +850,24 @@ ${call.transcript}`;
           }
         }
 
-        if (criticalFixes.length > 0) {
+      if (criticalFixes.length > 0) {
           console.log(`Auto-applied ${criticalFixes.length} critical improvements`);
         }
       } catch (e) {
         console.error("Failed to auto-apply critical improvements:", e);
       }
+    } else if (!isSimulatedOrTest && evaluation.recommended_improvements?.length > 0) {
+      console.log(`[evaluate-call] Live call ${call_id} — ${evaluation.recommended_improvements.length} improvements found but auto-apply SKIPPED (live call protection)`);
     }
 
-    // Trigger auto-research when gaps are significant
+    // Trigger auto-research when gaps are significant (ONLY for simulated/test calls)
     // Research cooldown: only trigger if not researched recently for this version
     const shouldResearch =
       (evaluation.humanness_score != null && evaluation.humanness_score < 80) ||
       (evaluation.issues_detected?.length >= 3) ||
       (evaluation.knowledge_gaps?.length >= 2);
 
-    if (shouldResearch) {
+    if (shouldResearch && isSimulatedOrTest) {
       // Check cooldown: skip if researched in last 5 calls for this project
       let skipResearch = false;
       try {
@@ -892,7 +899,7 @@ ${call.transcript}`;
             Authorization: `Bearer ${supabaseKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ project_id: call.project_id, evaluation, spec }),
+          body: JSON.stringify({ project_id: call.project_id, evaluation, spec, mode: "request" }),
         });
         if (researchResp.ok) {
           const researchData = await researchResp.json();
@@ -904,6 +911,8 @@ ${call.transcript}`;
         console.error("Failed to trigger research:", e);
       }
       } // end !skipResearch
+    } else if (shouldResearch && !isSimulatedOrTest) {
+      console.log(`[evaluate-call] Live call ${call_id} — research triggers met but SKIPPED (live call protection)`);
     }
 
     // ── Auto-Graduation Check ──

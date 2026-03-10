@@ -116,6 +116,21 @@ serve(async (req) => {
     const { project_id, recommendation, category } = await req.json();
     if (!project_id || !recommendation) throw new Error("project_id and recommendation required");
 
+    // ── SAFE LEARNING GATE ──
+    // Block auto-applies that originate from live call evaluations.
+    const BLOCKED_CATEGORIES = ["live_call_evaluation", "live_call_auto"];
+    if (BLOCKED_CATEGORIES.includes(category)) {
+      console.warn(`[apply-audit-recommendation] BLOCKED: category="${category}" — live calls cannot modify agent spec`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          blocked: true,
+          reason: "Live call evaluations cannot automatically modify agent behavior. Use simulation training or manual feedback instead."
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
