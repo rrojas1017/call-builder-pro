@@ -56,7 +56,8 @@ async function handleInit(body: any) {
 
   const names = ["Maria Garcia", "James Wilson", "Sarah Johnson", "Carlos Martinez", "Jennifer Thompson", "David Brown", "Lisa Anderson", "Michael Davis", "Patricia Rodriguez", "Robert Taylor", "Amanda Mitchell", "Jose Hernandez"];
   const callerName = customer_name || names[Math.floor(Math.random() * names.length)];
-  const agentSystem = buildTaskPrompt(spec, knowledge || [], undefined, callerName);
+  let agentSystem = buildTaskPrompt(spec, knowledge || [], undefined, callerName);
+  agentSystem += "\n\nIMPORTANT: Always finish your sentences completely. Never stop mid-word or mid-sentence.";
 
   const openingLine = spec.opening_line
     ? resolveBeginMessage(spec.opening_line, spec.persona_name)
