@@ -899,7 +899,7 @@ ${call.transcript}`;
             Authorization: `Bearer ${supabaseKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ project_id: call.project_id, evaluation, spec }),
+          body: JSON.stringify({ project_id: call.project_id, evaluation, spec, mode: "request" }),
         });
         if (researchResp.ok) {
           const researchData = await researchResp.json();
