@@ -49,6 +49,8 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
   const [generalFeedback, setGeneralFeedback] = useState("");
   const [applyingFeedback, setApplyingFeedback] = useState(false);
   const [feedbackApplied, setFeedbackApplied] = useState<string[]>([]);
+  const [detectedRule, setDetectedRule] = useState<string | null>(null);
+  const [savingRule, setSavingRule] = useState(false);
 
   const stoppedRef = useRef(false);
   const agentSystemRef = useRef("");
