@@ -615,7 +615,10 @@ function UserFeedbackSection({ contactId, existingFeedback, onFeedbackSaved }: {
       if (error) throw error;
       const transcribedText = data?.text || data?.transcript || "";
       if (transcribedText) {
-        setFeedback(prev => prev ? prev + "\n" + transcribedText : transcribedText);
+        const newText = feedback ? feedback + "\n" + transcribedText : transcribedText;
+        setFeedback(newText);
+        const detection = detectBusinessRuleIntent(newText);
+        if (detection.isBusinessRule) setDetectedRule(detection.ruleText);
       } else {
         toast({ title: "No speech detected", description: "Try recording again with clearer audio.", variant: "destructive" });
       }
