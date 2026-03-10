@@ -666,6 +666,7 @@ export default function TrainingAuditPage() {
                   data={data}
                   projectId={selectedAgent}
                   appliedSet={appliedRecs}
+                  syncedSet={syncedRecs}
                   manualSet={manualRecs}
                   onApplied={handleApplied}
                 />
