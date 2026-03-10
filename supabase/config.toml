@@ -81,6 +81,9 @@ verify_jwt = false
 [functions.transcribe-and-ingest]
 verify_jwt = false
 
+[functions.transcribe-feedback]
+verify_jwt = false
+
 [functions.receive-whatsapp-webhook]
 verify_jwt = false
 

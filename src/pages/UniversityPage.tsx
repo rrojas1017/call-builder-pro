@@ -874,9 +874,15 @@ function ResultCard({
     setTranscribing(true);
     try {
       const arrayBuffer = await blob.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-      const { data, error } = await supabase.functions.invoke("transcribe-and-ingest", {
-        body: { audio_base64: base64, mode: "transcribe_only" },
+      const uint8 = new Uint8Array(arrayBuffer);
+      let base64 = "";
+      const CHUNK = 8192;
+      for (let i = 0; i < uint8.length; i += CHUNK) {
+        base64 += String.fromCharCode(...uint8.subarray(i, i + CHUNK));
+      }
+      base64 = btoa(base64);
+      const { data, error } = await supabase.functions.invoke("transcribe-feedback", {
+        body: { audio_base64: base64, format: "webm" },
       });
       if (error) throw error;
       const transcribedText = data?.text || data?.transcript || "";
