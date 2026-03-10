@@ -97,7 +97,10 @@ export default function EditAgentPage() {
   const [successDefinition, setSuccessDefinition] = useState("");
   const [qualificationRules, setQualificationRules] = useState("");
   const [disqualificationRules, setDisqualificationRules] = useState("");
-  const [businessRules, setBusinessRules] = useState("");
+  const [businessRules, setBusinessRules] = useState<string[]>([]);
+  const [newBusinessRule, setNewBusinessRule] = useState("");
+  const [brDraggedIndex, setBrDraggedIndex] = useState<number | null>(null);
+  const [brDragOverIndex, setBrDragOverIndex] = useState<number | null>(null);
   const [consentRequired, setConsentRequired] = useState(true);
   const [disclosureRequired, setDisclosureRequired] = useState(true);
   const [disclosureText, setDisclosureText] = useState("");
@@ -176,13 +179,12 @@ export default function EditAgentPage() {
         setDisqualificationRules(drStr === "{}" || drStr === "null" ? "" : drStr);
 
         const br = spec.business_rules as any;
-        if (br && typeof br === "object" && br.text) {
-          setBusinessRules(br.text);
+        if (br && typeof br === "object" && Array.isArray(br.rules)) {
+          setBusinessRules(br.rules.filter((r: any) => typeof r === "string" && r.trim()));
+        } else if (br && typeof br === "object" && br.text) {
+          setBusinessRules(br.text.split("\n").map((l: string) => l.trim()).filter(Boolean));
         } else if (br && typeof br === "string") {
-          setBusinessRules(br);
-        } else if (br && typeof br === "object") {
-          const brStr = JSON.stringify(br, null, 2);
-          setBusinessRules(brStr === "{}" || brStr === "null" ? "" : brStr);
+          setBusinessRules(br.split("\n").map((l: string) => l.trim()).filter(Boolean));
         }
 
         const bh = spec.business_hours as any;
@@ -317,7 +319,7 @@ export default function EditAgentPage() {
           temperature,
           interruption_threshold: interruptionThreshold,
           business_hours: businessHours,
-          business_rules: businessRules.trim() ? { text: businessRules.trim() } : null,
+          business_rules: businessRules.length > 0 ? { rules: businessRules } : null,
           sms_enabled: smsEnabled,
           sms_mode: smsMode,
           sms_script: smsScript || null,
@@ -728,14 +730,60 @@ export default function EditAgentPage() {
         </h3>
         <p className="text-xs text-muted-foreground">
           Define specific rules your agent must follow. These are treated as high-priority directives that override default behavior.
-          Use plain language — e.g., conditional responses based on FPL percentage, Medicaid denial handling, etc.
         </p>
-        <Textarea
-          value={businessRules}
-          onChange={(e) => setBusinessRules(e.target.value)}
-          rows={8}
-          placeholder="e.g. Once you have the household size and estimated income, reference the 2026 FPL chart to determine their FPL percentage. If between 100-400% FPL, inform them they qualify for a subsidy..."
-        />
+        <div className="space-y-2">
+          {businessRules.map((rule, index) => (
+            <div
+              key={index}
+              draggable
+              onDragStart={() => setBrDraggedIndex(index)}
+              onDragOver={(e) => { e.preventDefault(); setBrDragOverIndex(index); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (brDraggedIndex === null || brDraggedIndex === index) { setBrDraggedIndex(null); setBrDragOverIndex(null); return; }
+                const updated = [...businessRules];
+                const [moved] = updated.splice(brDraggedIndex, 1);
+                updated.splice(index, 0, moved);
+                setBusinessRules(updated);
+                setBrDraggedIndex(null);
+                setBrDragOverIndex(null);
+              }}
+              onDragEnd={() => { setBrDraggedIndex(null); setBrDragOverIndex(null); }}
+              className={cn(
+                "flex items-start gap-2 rounded-lg border bg-background p-3 cursor-grab active:cursor-grabbing transition-all",
+                brDraggedIndex === index && "opacity-40",
+                brDragOverIndex === index && brDraggedIndex !== index && "ring-2 ring-primary"
+              )}
+            >
+              <GripVertical className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
+              <span className="flex-1 text-sm text-foreground">{rule}</span>
+              <button onClick={() => setBusinessRules(businessRules.filter((_, i) => i !== index))} className="shrink-0 hover:text-destructive text-muted-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Input
+            value={newBusinessRule}
+            onChange={(e) => setNewBusinessRule(e.target.value)}
+            placeholder="e.g. If caller has Medicaid, do not transfer — explain they are not eligible"
+            className="flex-1"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const r = newBusinessRule.trim();
+                if (r && !businessRules.includes(r)) { setBusinessRules([...businessRules, r]); setNewBusinessRule(""); }
+              }
+            }}
+          />
+          <Button variant="outline" size="sm" onClick={() => {
+            const r = newBusinessRule.trim();
+            if (r && !businessRules.includes(r)) { setBusinessRules([...businessRules, r]); setNewBusinessRule(""); }
+          }} disabled={!newBusinessRule.trim()}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add
+          </Button>
+        </div>
       </div>
 
       {/* Compliance */}
