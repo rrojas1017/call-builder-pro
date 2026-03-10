@@ -594,13 +594,25 @@ export default function UniversityPage() {
         />
       )}
 
-      {/* AI Simulation Training */}
+      {/* AI Simulation Training — collapsible */}
       {agentId && (
-        <SimulationTraining
-          projectId={agentId}
-          disabled={running}
-          onComplete={() => loadHistory()}
-        />
+        <Collapsible>
+          <CollapsibleTrigger className="w-full gradient-border glass-card rounded-xl px-5 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors group">
+            <div className="flex items-center gap-2">
+              <BrainCircuit className="h-5 w-5 text-primary" />
+              <span className="text-sm font-semibold text-foreground">AI Simulation Training</span>
+              <Badge variant="secondary" className="text-xs"><Zap className="h-3 w-3 mr-1" />No Phone Needed</Badge>
+            </div>
+            <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2">
+            <SimulationTraining
+              projectId={agentId}
+              disabled={running}
+              onComplete={() => loadHistory()}
+            />
+          </CollapsibleContent>
+        </Collapsible>
       )}
 
 
