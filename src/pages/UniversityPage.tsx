@@ -630,8 +630,8 @@ export default function UniversityPage() {
           </div>
         </div>
       ) : agentId && !trendLoading ? (
-        <div className="surface-elevated rounded-xl p-6 space-y-2 text-center">
-          <h2 className="text-lg font-semibold text-foreground">Agent Humanness Progress</h2>
+        <div className="glass-card rounded-xl p-6 space-y-2 text-center">
+          <h2 className="text-lg font-semibold text-gradient-primary">Agent Humanness Progress</h2>
           <p className="text-sm text-muted-foreground">Evaluations pending — scores will appear here after calls are graded.</p>
           <GraduationCap className="h-8 w-8 text-muted-foreground mx-auto mt-2" />
         </div>
