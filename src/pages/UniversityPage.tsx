@@ -983,7 +983,7 @@ function ResultCard({
                     return (order[a.severity] ?? 2) - (order[b.severity] ?? 2);
                   })
                   .map((imp: any, i: number) => (
-                  <li key={i} className="rounded-lg bg-muted/30 border border-border p-3">
+                  <li key={i} className="rounded-lg bg-muted/30 border-l-2 border-border p-3" style={{ borderLeftColor: imp.severity === 'critical' ? 'hsl(var(--destructive))' : imp.severity === 'important' ? 'hsl(38 92% 50%)' : 'hsl(var(--border))' }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
