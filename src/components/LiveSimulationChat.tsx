@@ -237,8 +237,12 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
         chatHistory.push(agentMessage);
         setMessages((prev) => [...prev, agentMessage]);
 
-        if (!interrupted && /\b(goodbye|bye|have a (great|good)|thank you for your time|take care)\b/i.test(agentContent)) {
-          break;
+        // Only honor agent end signals after minimum 4 turns, and only if phrase is near end of message
+        if (!interrupted && turn >= 4) {
+          const tail = agentContent.slice(-80);
+          if (/\b(goodbye|bye bye|thank you for your time|take care|have a (great|good) (day|evening|night|one))\b/i.test(tail)) {
+            break;
+          }
         }
 
         // If interrupted, immediately fire customer turn without waiting
