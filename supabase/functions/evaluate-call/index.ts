@@ -867,6 +867,7 @@ ${call.transcript}`;
       } catch (e) {
         console.error("Failed to trigger research:", e);
       }
+      } // end !skipResearch
     }
 
     // ── Auto-Graduation Check ──

@@ -285,6 +285,9 @@ serve(async (req) => {
         if (resolvedOpening) {
           llmPatchBody.begin_message = resolvedOpening;
         }
+        if (spec?.temperature != null) {
+          llmPatchBody.model_temperature = Number(spec.temperature);
+        }
 
         const llmPromptRes = await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
           method: "PATCH",
