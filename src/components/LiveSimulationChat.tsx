@@ -63,7 +63,10 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
 
   useEffect(() => {
     if (isNearBottom.current) {
-      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      const el = scrollContainerRef.current;
+      if (el) {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      }
     }
   }, [messages]);
 
