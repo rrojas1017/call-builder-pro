@@ -175,6 +175,16 @@ export default function EditAgentPage() {
         const drStr = dr?.description || (dr && typeof dr === "object" ? JSON.stringify(dr, null, 2) : "");
         setDisqualificationRules(drStr === "{}" || drStr === "null" ? "" : drStr);
 
+        const br = spec.business_rules as any;
+        if (br && typeof br === "object" && br.text) {
+          setBusinessRules(br.text);
+        } else if (br && typeof br === "string") {
+          setBusinessRules(br);
+        } else if (br && typeof br === "object") {
+          const brStr = JSON.stringify(br, null, 2);
+          setBusinessRules(brStr === "{}" || brStr === "null" ? "" : brStr);
+        }
+
         const bh = spec.business_hours as any;
         if (bh && typeof bh === "object") {
           setBusinessHours({
