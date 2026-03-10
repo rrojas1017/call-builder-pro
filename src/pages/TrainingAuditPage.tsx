@@ -270,6 +270,7 @@ function UnifiedCategoryCard({
   data: UnifiedCategoryResult;
   projectId: string;
   appliedSet: Set<string>;
+  syncedSet: Set<string>;
   manualSet: Set<string>;
   onApplied: (rec: string, result: any) => void;
 }) {
