@@ -80,6 +80,7 @@ export default function AgentsPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  const [cloningId, setCloningId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const loadAgents = async () => {
