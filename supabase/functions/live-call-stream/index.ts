@@ -1,15 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeaders, requireAuth, AuthError, unauthorizedResponse } from "../_shared/auth.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  let auth;
+  try { auth = await requireAuth(req); } catch (e) {
+    if (e instanceof AuthError) return unauthorizedResponse(e.message);
+    throw e;
+  }
+  console.log(`[live-call-stream] Authenticated user=${auth.userId} org=${auth.orgId}`);
 
   const RETELL_API_KEY = Deno.env.get("RETELL_API_KEY");
   if (!RETELL_API_KEY) {
@@ -46,7 +48,6 @@ serve(async (req) => {
 
       const data = await res.json();
 
-      // Diagnostic logging
       console.log("Retell response keys:", Object.keys(data));
       console.log("transcript type:", typeof data.transcript, "length:", data.transcript?.length);
       console.log("transcript_object:", Array.isArray(data.transcript_object), data.transcript_object?.length);
@@ -81,7 +82,6 @@ serve(async (req) => {
         }
       }
 
-      // Fallback: parse live transcript from transcript_with_tool_calls (populated during active calls)
       if (transcripts.length === 0 && Array.isArray(data.transcript_with_tool_calls)) {
         for (let i = 0; i < data.transcript_with_tool_calls.length; i++) {
           const entry = data.transcript_with_tool_calls[i];
