@@ -867,7 +867,7 @@ ${call.transcript}`;
       (evaluation.issues_detected?.length >= 3) ||
       (evaluation.knowledge_gaps?.length >= 2);
 
-    if (shouldResearch) {
+    if (shouldResearch && isSimulatedOrTest) {
       // Check cooldown: skip if researched in last 5 calls for this project
       let skipResearch = false;
       try {
