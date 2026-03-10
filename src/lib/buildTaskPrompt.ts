@@ -16,6 +16,7 @@ interface AgentSpec {
   mode?: string | null;
   opening_line?: string | null;
   persona_name?: string | null;
+  business_rules?: Record<string, any> | null;
 }
 
 interface KnowledgeEntry {

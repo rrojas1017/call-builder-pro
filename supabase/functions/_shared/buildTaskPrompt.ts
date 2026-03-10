@@ -16,6 +16,7 @@ export interface AgentSpec {
   use_case?: string | null;
   success_definition?: string | null;
   humanization_notes?: string[];
+  business_rules?: Record<string, any> | null;
 }
 
 export interface KnowledgeEntry {
