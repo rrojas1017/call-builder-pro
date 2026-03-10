@@ -431,7 +431,8 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
             <div className="rounded-lg border border-border bg-muted/30 p-3">
               <p className="text-xs text-muted-foreground">
                 Completed {roundResults.length} round{roundResults.length > 1 ? "s" : ""}.
-                {finalScore != null && finalScore >= 9.0 && <span className="text-green-400"> Agent reached excellence (9.0+)!</span>}
+                {(() => { const totalFixes = roundResults.reduce((s, r) => s + (r.fixesApplied || 0), 0); return totalFixes > 0 ? ` ${totalFixes} improvement${totalFixes > 1 ? "s" : ""} applied to agent spec.` : ""; })()}
+                {finalScore != null && finalScore >= 9.0 && <span className="text-primary"> Agent reached excellence (9.0+)!</span>}
               </p>
             </div>
           )}
