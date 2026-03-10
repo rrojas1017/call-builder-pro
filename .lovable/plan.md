@@ -1,66 +1,48 @@
 
 
-# Modernize University Page Aesthetics
+# Simplify the Agent Creation Wizard
 
-## Current State
-The University page uses basic `surface-elevated` cards with flat styling, plain text headers, and uniform rounded-xl containers. It looks functional but lacks visual hierarchy, depth, and polish.
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-## Design Direction
-Apply the same "Modern Dashboard" aesthetic already used elsewhere in the app (mesh gradients, glassmorphism, gradient borders, animated accents) to create a premium, refined feel.
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-## Changes
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-### 1. Page Header — Hero Treatment (`UniversityPage.tsx` lines 474-479)
-- Replace plain `h1` with `text-gradient-primary` gradient text
-- Add a mesh-gradient background behind the header area
-- Subtle animated accent line below the title
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-### 2. Graduation Badge — Premium Card (`UniversityPage.tsx` lines 482-510)
-- Switch to `gradient-border` with glassmorphism (`glass-card`)
-- Add a subtle glow effect around the level icon
-- Animate the progress bar with a shimmer effect
-- Larger, bolder level label with gradient text for "Graduated" level
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-### 3. Summary Stats Row — Glass Cards (`UniversityPage.tsx` lines 512-520, StatCard component lines 721-731)
-- Replace `surface-elevated` with `glass-card` + `hover-lift` for interactive feel
-- Add a colored accent line at the top of each card matching the stat type
-- Make the value use tabular numbers (`font-mono`) for alignment
-- Add subtle primary glow on the icon
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-### 4. Form Section — Cleaner, Tighter (`UniversityPage.tsx` lines 522-582)
-- Use `glass-card` instead of `surface-elevated`
-- Refined input styling with focus ring animations
-- Button gets `glow-primary` on hover
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-### 5. Trend Chart — Enhanced Container (`UniversityPage.tsx` lines 604-637)
-- `gradient-border` wrapper with mesh-gradient background
-- Slightly larger chart height (h-56 → h-64)
-- Styled legend with small colored dots
+## Plan
 
-### 6. History Table — Sleeker Rows (`UniversityPage.tsx` lines 655-714)
-- `glass-card` container
-- Alternating row opacity for readability
-- Selected row gets a left border accent in primary color
-- Hover state with subtle background shift
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
 
-### 7. Result Card — Premium Evaluation Display (`UniversityPage.tsx` lines 859-1091)
-- `gradient-border` wrapper
-- Score cards get radial gradient backgrounds matching their color
-- Improvement items get left-border severity indicators instead of badges-only
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
 
-### 8. SimulationTraining Component — Matching Treatment (`SimulationTraining.tsx`)
-- Same `glass-card` + `gradient-border` treatment for the main container
-- Tab list gets a more refined look with rounded pill indicators
-- Progress bar gets shimmer animation during training
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
 
-### 9. New CSS Utilities (`index.css`)
-- Add `@keyframes shimmer` for progress bar animation
-- Add `.shimmer-bar` utility class
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
 ### Files Changed
-- `src/pages/UniversityPage.tsx` — styling updates across all sections and sub-components
-- `src/components/SimulationTraining.tsx` — matching card/container styling
-- `src/index.css` — shimmer animation keyframes
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
 
-All changes are purely CSS/className updates. No logic or functionality changes.
+No database or edge function changes needed.
 

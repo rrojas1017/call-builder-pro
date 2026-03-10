@@ -260,7 +260,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
   return (
     <div className="space-y-4">
       {/* Header + Tabs */}
-      <div className="surface-elevated rounded-xl p-6 space-y-5">
+      <div className="gradient-border glass-card rounded-xl p-6 space-y-5">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <BrainCircuit className="h-5 w-5 text-primary" />
@@ -287,12 +287,12 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
           </Select>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="w-full">
-            <TabsTrigger value="training" className="flex-1 gap-1.5" disabled={running || singleRunning}>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="w-full bg-muted/50 p-1 rounded-lg">
+            <TabsTrigger value="training" className="flex-1 gap-1.5 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm" disabled={running || singleRunning}>
               <Trophy className="h-3.5 w-3.5" /> Training
             </TabsTrigger>
-            <TabsTrigger value="live" className="flex-1 gap-1.5" disabled={running || singleRunning}>
+            <TabsTrigger value="live" className="flex-1 gap-1.5 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm" disabled={running || singleRunning}>
               <Eye className="h-3.5 w-3.5" /> Live Practice
             </TabsTrigger>
           </TabsList>
@@ -345,7 +345,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
             {running && (
               <div className="space-y-2">
-                <Progress value={progressPct} className="h-2" />
+                <Progress value={progressPct} className={`h-2 ${running ? "shimmer-bar" : ""}`} />
                 <p className="text-xs text-muted-foreground animate-pulse">
                   Round {currentRound}/{maxRounds} — Call {currentCall}/{callsPerRound}...
                 </p>
@@ -366,7 +366,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
       {/* Training results */}
       {roundResults.length > 0 && (
-        <div ref={resultRef} className="surface-elevated rounded-xl p-6 space-y-4">
+        <div ref={resultRef} className="gradient-border glass-card rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-primary" />
@@ -443,7 +443,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
 function SingleResultCard({ result, getScoreColor }: { result: CallResult; getScoreColor: (s: number | null) => string }) {
   return (
-    <div className="surface-elevated rounded-xl p-6 space-y-4">
+    <div className="glass-card rounded-xl p-6 space-y-4">
       <div className="flex items-center gap-2">
         <MessageSquare className="h-4 w-4 text-primary" />
         <span className="text-sm font-semibold text-foreground">Single Simulation Result</span>
@@ -457,7 +457,7 @@ function SingleResultCard({ result, getScoreColor }: { result: CallResult; getSc
             { label: "Humanness", score: result.evaluation.humanness_score },
             { label: "Naturalness", score: result.evaluation.naturalness_score },
           ].map(({ label, score }) => (
-            <div key={label} className="text-center rounded-lg border border-border p-3">
+            <div key={label} className="text-center rounded-lg border border-border/50 bg-gradient-to-br from-muted/40 to-muted/20 p-3">
               <p className="text-xs text-muted-foreground">{label}</p>
               <p className={`text-2xl font-bold ${getScoreColor(score ?? null)}`}>{score ?? "—"}</p>
             </div>

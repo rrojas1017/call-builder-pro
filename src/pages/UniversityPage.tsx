@@ -473,24 +473,25 @@ export default function UniversityPage() {
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">University</h1>
+      <div className="relative rounded-xl p-6 mesh-gradient">
+        <h1 className="text-2xl font-bold text-gradient-primary">University</h1>
         <p className="text-muted-foreground mt-1">Train, test, and graduate your agents — measure humanness and refine performance until they're production-ready.</p>
+        <div className="absolute bottom-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
       </div>
 
       {/* Graduation Badge */}
       {agentId && history.length > 0 && (
-        <div className={`rounded-xl border p-5 ${stats.level.bgColor} border-border`}>
+        <div className={`gradient-border glass-card rounded-xl p-5`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-lg ${stats.level.bgColor} ${stats.level.color}`}>
+              <div className={`p-2.5 rounded-lg ${stats.level.bgColor} ${stats.level.color} glow-primary`}>
                 {stats.level.icon}
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-lg font-bold ${stats.level.color}`}>{stats.level.label}</span>
+                  <span className={`text-lg font-bold ${stats.level.label === "Graduated" ? "text-gradient-primary" : stats.level.color}`}>{stats.level.label}</span>
                   {stats.avgHumanness != null && (
-                    <span className="text-sm text-muted-foreground">({stats.avgHumanness} avg)</span>
+                    <span className="text-sm text-muted-foreground font-mono">({stats.avgHumanness} avg)</span>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -503,7 +504,7 @@ export default function UniversityPage() {
           </div>
           {stats.progress.nextLevel && (
             <div className="mt-3">
-              <Progress value={stats.progress.percent} className="h-2" />
+              <Progress value={stats.progress.percent} className={`h-2 ${running ? "shimmer-bar" : ""}`} />
             </div>
           )}
         </div>
@@ -520,7 +521,7 @@ export default function UniversityPage() {
       )}
 
       {/* Form */}
-      <div className="surface-elevated rounded-xl p-6 space-y-4">
+      <div className="glass-card rounded-xl p-6 space-y-4">
         <div className="space-y-2">
           <label className="text-sm font-medium text-foreground">Agent</label>
           <Select value={agentId} onValueChange={setAgentId} disabled={running}>
@@ -546,7 +547,7 @@ export default function UniversityPage() {
           />
         </div>
 
-        <Button onClick={handleRunTest} disabled={running || !agentId || !phone.trim()} className="w-full">
+        <Button onClick={handleRunTest} disabled={running || !agentId || !phone.trim()} className="w-full hover:glow-primary transition-all">
           {running ? (
             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Calling...</>
           ) : (
@@ -603,10 +604,10 @@ export default function UniversityPage() {
 
       {/* Humanness Trend Chart */}
       {hasTrendData ? (
-        <div className="surface-elevated rounded-xl p-6 space-y-3">
-          <h2 className="text-lg font-semibold text-foreground">Agent Humanness Progress</h2>
+        <div className="gradient-border glass-card rounded-xl p-6 space-y-3 mesh-gradient">
+          <h2 className="text-lg font-semibold text-gradient-primary">Agent Humanness Progress</h2>
           <p className="text-xs text-muted-foreground">Last 20 evaluated calls. Dashed line = auto-improvement threshold (80).</p>
-          <div className="h-56">
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -629,8 +630,8 @@ export default function UniversityPage() {
           </div>
         </div>
       ) : agentId && !trendLoading ? (
-        <div className="surface-elevated rounded-xl p-6 space-y-2 text-center">
-          <h2 className="text-lg font-semibold text-foreground">Agent Humanness Progress</h2>
+        <div className="glass-card rounded-xl p-6 space-y-2 text-center">
+          <h2 className="text-lg font-semibold text-gradient-primary">Agent Humanness Progress</h2>
           <p className="text-sm text-muted-foreground">Evaluations pending — scores will appear here after calls are graded.</p>
           <GraduationCap className="h-8 w-8 text-muted-foreground mx-auto mt-2" />
         </div>
@@ -654,7 +655,7 @@ export default function UniversityPage() {
 
       {/* History */}
       {history.length > 0 && (
-        <div className="surface-elevated rounded-xl p-6 space-y-3">
+        <div className="glass-card rounded-xl p-6 space-y-3">
           <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <History className="h-4 w-4 text-primary" />
             Call History
@@ -679,7 +680,7 @@ export default function UniversityPage() {
                   return (
                     <TableRow
                       key={item.id}
-                      className={`cursor-pointer ${isSelected ? "bg-primary/5" : ""}`}
+                      className={`cursor-pointer transition-colors ${isSelected ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-muted/40"} ${idx % 2 === 1 ? "bg-muted/10" : ""}`}
                       onClick={() => handleSelectHistory(item)}
                     >
                       <TableCell className="text-xs text-muted-foreground">
@@ -720,11 +721,12 @@ export default function UniversityPage() {
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="surface-elevated rounded-xl p-4 flex items-center gap-3">
-      <div className="text-primary">{icon}</div>
+    <div className="glass-card hover-lift rounded-xl p-4 flex items-center gap-3 relative overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary/60 via-primary/20 to-transparent" />
+      <div className="text-primary glow-primary rounded-lg p-1.5">{icon}</div>
       <div>
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-lg font-bold text-foreground">{value}</p>
+        <p className="text-lg font-bold text-foreground font-mono tabular-nums">{value}</p>
       </div>
     </div>
   );
@@ -857,7 +859,7 @@ function ResultCard({
   const showSavedFeedback = contact.status === "completed" && savedFeedback && !editingFeedback;
 
   return (
-    <div className="surface-elevated rounded-xl p-6 space-y-4">
+    <div className="gradient-border glass-card rounded-xl p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
           <Phone className="h-4 w-4 text-primary" />
@@ -981,7 +983,7 @@ function ResultCard({
                     return (order[a.severity] ?? 2) - (order[b.severity] ?? 2);
                   })
                   .map((imp: any, i: number) => (
-                  <li key={i} className="rounded-lg bg-muted/30 border border-border p-3">
+                  <li key={i} className="rounded-lg bg-muted/30 border-l-2 border-border p-3" style={{ borderLeftColor: imp.severity === 'critical' ? 'hsl(var(--destructive))' : imp.severity === 'important' ? 'hsl(38 92% 50%)' : 'hsl(var(--border))' }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
@@ -1109,9 +1111,9 @@ function ScoreCard({ label, score }: { label: string; score?: number }) {
   if (score == null) return null;
   const color = score >= 70 ? "text-green-400" : score >= 40 ? "text-yellow-400" : "text-destructive";
   return (
-    <div className="rounded-lg bg-muted/30 border border-border p-2 text-center">
+    <div className="rounded-lg bg-gradient-to-br from-muted/40 to-muted/20 border border-border/50 p-2 text-center">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`text-lg font-bold ${color}`}>{score}</p>
+      <p className={`text-lg font-bold font-mono tabular-nums ${color}`}>{score}</p>
     </div>
   );
 }
