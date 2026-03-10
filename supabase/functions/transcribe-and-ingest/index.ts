@@ -102,22 +102,12 @@ serve(async (req) => {
 
     console.log(`Transcript obtained, length: ${transcript.length} chars`);
 
-    // ── Step 3: Extract knowledge using Claude Sonnet 4 ──────────────────
-    console.log("Extracting insights with Claude Sonnet 4...");
+    // ── Step 3: Extract knowledge using Gemini 2.5 Pro ──────────────────
+    console.log("Extracting insights with Gemini 2.5 Pro...");
 
     const labelNote = source_label ? `\nRecording label: "${source_label}"` : "";
 
-    const extractRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY!,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 4000,
-        system: `You are analyzing a recording of a sales conversation that happened AFTER a qualified prospect was transferred from an AI pre-qualifier to a human closer/agent. Your goal is to extract actionable insights that would help the AI pre-qualifier do a better job of qualifying, preparing prospects, and setting up the transfer for success.
+    const extractSystemPrompt = `You are analyzing a recording of a sales conversation that happened AFTER a qualified prospect was transferred from an AI pre-qualifier to a human closer/agent. Your goal is to extract actionable insights that would help the AI pre-qualifier do a better job of qualifying, preparing prospects, and setting up the transfer for success.
 
 Extract insights in these categories:
 - "objection_handling": objections that emerged or persisted after transfer that the AI didn't handle
@@ -131,27 +121,37 @@ Return ONLY a valid JSON array (no markdown, no explanation) like:
   {"category": "objection_handling", "content": "After transfer, prospect raised price concern. Agent used 'compared to what you're currently spending on...' framing to reframe cost."}
 ]
 
-Be specific and actionable. Each entry should be a concrete, usable insight for the AI agent. Aim for 5-15 entries.`,
+Be specific and actionable. Each entry should be a concrete, usable insight for the AI agent. Aim for 5-15 entries.`;
+
+    const extractRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-pro",
         messages: [
-          {
-            role: "user",
-            content: `Here is the post-transfer call transcript:${labelNote}\n\n${transcript}`,
-          },
+          { role: "system", content: extractSystemPrompt },
+          { role: "user", content: `Here is the post-transfer call transcript:${labelNote}\n\n${transcript}` },
         ],
+        max_tokens: 4000,
+        max_completion_tokens: 4000,
       }),
     });
 
     if (!extractRes.ok) {
       const errText = await extractRes.text();
+      if (extractRes.status === 429) throw new Error("Rate limit exceeded during extraction. Please try again later.");
+      if (extractRes.status === 402) throw new Error("AI credits required. Please add credits to your workspace.");
       throw new Error(`Knowledge extraction failed (${extractRes.status}): ${errText}`);
     }
 
     const extractData = await extractRes.json();
-    const rawContent = extractData.content?.[0]?.text || "[]";
+    const rawContent = extractData.choices?.[0]?.message?.content || "[]";
 
     let insights: Array<{ category: string; content: string }> = [];
     try {
-      // Strip markdown code fences if present
       const cleaned = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       insights = JSON.parse(cleaned);
       if (!Array.isArray(insights)) insights = [];
