@@ -76,8 +76,6 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
   const [expandedRound, setExpandedRound] = useState<number | null>(null);
   const [finalScore, setFinalScore] = useState<number | null>(null);
 
-  const [singleResult, setSingleResult] = useState<CallResult | null>(null);
-  const [singleRunning, setSingleRunning] = useState(false);
 
   const cancelRef = useRef(false);
   const resultRef = useRef<HTMLDivElement>(null);
