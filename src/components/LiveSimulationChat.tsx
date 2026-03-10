@@ -21,6 +21,8 @@ interface ChatMessage {
 export default function LiveSimulationChat({ projectId, difficulty: externalDifficulty, onClose }: LiveSimulationChatProps) {
   const { toast } = useToast();
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottom = useRef(true);
 
   const [internalDifficulty, setInternalDifficulty] = useState("medium");
   const difficulty = externalDifficulty || internalDifficulty;
@@ -53,9 +55,17 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
     return null;
   };
 
+  const handleScroll = () => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    isNearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
+
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, currentSpeaker]);
+    if (isNearBottom.current) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
 
   const startSimulation = async () => {
     setRunning(true);
@@ -293,7 +303,7 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
       </div>
 
       {/* Chat area */}
-      <div className="p-4 h-[420px] overflow-y-auto space-y-3 bg-background/50">
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="p-4 h-[420px] overflow-y-auto space-y-3 bg-background/50">
         {messages.length === 0 && !running && (
           <div className="flex flex-col items-center justify-center h-full text-center gap-3">
             <Eye className="h-10 w-10 text-muted-foreground/40" />
