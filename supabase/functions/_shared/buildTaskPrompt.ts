@@ -224,6 +224,7 @@ RULES:
     prompt += `\n\nBUSINESS RULES (MUST follow strictly — these override any default behavior):\n${brText}`;
   }
 
+  if (resolvedOpeningLine) {
     const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "(caller's name — ask if unknown)";
     const filledGuide = resolvedOpeningLine.replace(/\{\{first_name\}\}/gi, nameHint);
     prompt += `\n\nOPENING GUIDE: Start with something like the line below, but adapt it naturally — do NOT read it word-for-word as a script.\nOpening guide: "${filledGuide}"`;
