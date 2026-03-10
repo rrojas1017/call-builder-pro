@@ -326,12 +326,17 @@ async function runConversation(
     customerMessages.push({ role: "assistant", content: cleanCustomer });
     agentMessages.push({ role: "user", content: cleanCustomer });
 
-    // Check for natural conversation end signals
-    const endSignals = [
-      /\b(goodbye|bye|have a good|take care|talk later|hang up)\b/i,
-      /\b(no thanks|not interested|don't call|stop calling)\b/i,
-    ];
-    const customerEnded = endSignals.some((r) => r.test(cleanCustomer));
+    // Check for natural conversation end signals — only after minimum 4 turns
+    const MIN_TURNS = 4;
+    let customerEnded = false;
+    if (turn >= MIN_TURNS) {
+      const custTail = cleanCustomer.slice(-80);
+      const custEndSignals = [
+        /\b(goodbye|bye bye|talk later|hang up)\b/i,
+        /\b(no thanks|not interested|don't call|stop calling)\b/i,
+      ];
+      customerEnded = custEndSignals.some((r) => r.test(custTail));
+    }
 
     // ── Agent responds ──
     const agentReply = await callAI({
