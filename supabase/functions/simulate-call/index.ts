@@ -94,7 +94,7 @@ serve(async (req) => {
         direction: "outbound",
         voice_provider: "simulated",
         transcript,
-        started_at: new Date(Date.now() - 120_000).toISOString(),
+        started_at: new Date(Date.now() - (Math.round(safeTurns * 10) * 1000)).toISOString(),
         ended_at: new Date().toISOString(),
         duration_seconds: Math.round(safeTurns * 10),
         outcome: "completed",
@@ -326,12 +326,17 @@ async function runConversation(
     customerMessages.push({ role: "assistant", content: cleanCustomer });
     agentMessages.push({ role: "user", content: cleanCustomer });
 
-    // Check for natural conversation end signals
-    const endSignals = [
-      /\b(goodbye|bye|have a good|take care|talk later|hang up)\b/i,
-      /\b(no thanks|not interested|don't call|stop calling)\b/i,
-    ];
-    const customerEnded = endSignals.some((r) => r.test(cleanCustomer));
+    // Check for natural conversation end signals — only after minimum 4 turns
+    const MIN_TURNS = 4;
+    let customerEnded = false;
+    if (turn >= MIN_TURNS) {
+      const custTail = cleanCustomer.slice(-80);
+      const custEndSignals = [
+        /\b(goodbye|bye bye|talk later|hang up)\b/i,
+        /\b(no thanks|not interested|don't call|stop calling)\b/i,
+      ];
+      customerEnded = custEndSignals.some((r) => r.test(custTail));
+    }
 
     // ── Agent responds ──
     const agentReply = await callAI({
@@ -351,8 +356,9 @@ async function runConversation(
     agentMessages.push({ role: "assistant", content: cleanAgent });
     customerMessages.push({ role: "user", content: cleanAgent });
 
-    // End if either party wrapped up
-    const agentEnded = /\b(goodbye|bye|have a (great|good)|thank you for your time|enjoy your|take care)\b/i.test(cleanAgent);
+    // End if either party wrapped up — check tail of message only, with tighter patterns
+    const agentTail = cleanAgent.slice(-80);
+    const agentEnded = turn >= MIN_TURNS && /\b(goodbye|bye bye|thank you for your time|take care|have a (great|good) (day|evening|night|one))\b/i.test(agentTail);
 
     if (customerEnded || agentEnded) {
       if (agentEnded && !customerEnded) {
