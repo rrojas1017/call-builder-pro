@@ -167,11 +167,19 @@ RULES:
 
   // Inject business rules as high-priority instructions
   if (spec.business_rules && typeof spec.business_rules === "object" && Object.keys(spec.business_rules).length > 0) {
-    const brText = typeof spec.business_rules === "string"
-      ? spec.business_rules
-      : Object.entries(spec.business_rules)
-          .map(([key, val]) => `- ${key}: ${val}`)
-          .join("\n");
+    const br = spec.business_rules as any;
+    let brText: string;
+    if (Array.isArray(br.rules)) {
+      brText = br.rules.map((r: string, i: number) => `${i + 1}. ${r}`).join("\n");
+    } else if (typeof br.text === "string") {
+      brText = br.text;
+    } else if (typeof spec.business_rules === "string") {
+      brText = spec.business_rules;
+    } else {
+      brText = Object.entries(spec.business_rules)
+        .map(([key, val]) => `- ${key}: ${val}`)
+        .join("\n");
+    }
     prompt += `\n\nBUSINESS RULES (MUST follow strictly — these override any default behavior):\n${brText}`;
   }
 
