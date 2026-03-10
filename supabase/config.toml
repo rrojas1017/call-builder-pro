@@ -131,3 +131,6 @@ verify_jwt = false
 
 [functions.verify-feedback]
 verify_jwt = false
+
+[functions.check-spec-conflicts]
+verify_jwt = false

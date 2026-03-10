@@ -169,6 +169,9 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
                 },
               });
               if (applyResult?.success) fixesApplied++;
+              else if (applyResult?.held_for_review) {
+                console.log(`[SimTraining] Change held for review: ${rec.field} — ${applyResult.conflict?.description}`);
+              }
             } catch {
               // Non-critical — continue
             }
