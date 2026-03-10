@@ -41,6 +41,8 @@ interface TestContact {
   created_at?: string;
   test_run_id?: string;
   retell_call_id?: string | null;
+  source?: "test_call" | "simulation";
+  call_id?: string;
 }
 
 interface TrendPoint {
