@@ -106,9 +106,10 @@ async function handleTurn(body: any) {
 
   const reply = await callAI({
     provider: "gemini",
+    model: "google/gemini-2.5-flash",
     messages,
     temperature: role === "customer" ? 0.8 : 0.6,
-    max_tokens: 1024,
+    max_tokens: 2048,
   });
 
   let text = reply.content?.trim() || "(silence)";
