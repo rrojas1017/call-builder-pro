@@ -832,6 +832,7 @@ export default function EditAgentPage() {
             {parsingRules ? "Parsing..." : "Upload Doc"}
           </Button>
         </div>
+      </div>
 
       {/* Compliance */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
