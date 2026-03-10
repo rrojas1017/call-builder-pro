@@ -1,23 +1,48 @@
 
 
-## Issue: User Feedback Prompt Not Appearing After Calls
+# Simplify the Agent Creation Wizard
 
-After reviewing the code, the feedback input section exists in the `ResultCard` component (lines 1019-1082) and should display when `contact.status === "completed"`. The logic and code are intact.
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-### Likely Cause
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-The `TestContact` interface (lines 25-40) does **not** include `user_feedback` as a declared field. While the data is loaded from the database (line 257) and accessed via `(contact as any).user_feedback` (line 783), this is fragile. More importantly, for contacts loaded from history with status `"cancelled"`, the feedback section is hidden because the condition on line 858 strictly checks `contact.status === "completed"`.
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-However, the more likely issue is a rendering/visibility problem — the feedback section may be scrolled out of view below the improvements list, or there could be a state issue where `savedFeedback` and `editingFeedback` are in a state that hides both the input and the saved display.
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-### Plan
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-**File: `src/pages/UniversityPage.tsx`**
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-1. Add `user_feedback?: string | null` to the `TestContact` interface so it's properly typed
-2. Update the feedback visibility conditions to also include `"cancelled"` status (both are terminal states from history)
-3. Remove the `(contact as any)` cast on line 783 and use `contact.user_feedback` directly
-4. Ensure the feedback section is always visible for any terminal-status contact (completed or cancelled) by changing `contact.status === "completed"` to a check like `["completed", "cancelled"].includes(contact.status)` on lines 858-859 and 905
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-These are small targeted changes within the existing `ResultCard` component.
+## Plan
+
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
+
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+
+### Files Changed
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 

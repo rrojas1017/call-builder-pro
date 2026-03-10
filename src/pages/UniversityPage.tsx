@@ -34,6 +34,7 @@ interface TestContact {
   error: string | null;
   extracted_data: any;
   recording_url?: string | null;
+  user_feedback?: string | null;
   created_at?: string;
   test_run_id?: string;
   retell_call_id?: string | null;
@@ -780,7 +781,7 @@ function ResultCard({
 
   // Load existing feedback when contact changes
   useEffect(() => {
-    const existing = (contact as any).user_feedback || null;
+    const existing = contact.user_feedback || null;
     setSavedFeedback(existing);
     setFeedbackText(existing || "");
     setEditingFeedback(false);
@@ -855,8 +856,9 @@ function ResultCard({
     }
   }, [feedbackToast]);
 
-  const showFeedbackInput = contact.status === "completed" && (!savedFeedback || editingFeedback);
-  const showSavedFeedback = contact.status === "completed" && savedFeedback && !editingFeedback;
+  const isTerminal = ["completed", "cancelled"].includes(contact.status);
+  const showFeedbackInput = isTerminal && (!savedFeedback || editingFeedback);
+  const showSavedFeedback = isTerminal && savedFeedback && !editingFeedback;
 
   return (
     <div className="gradient-border glass-card rounded-xl p-6 space-y-4">
@@ -902,7 +904,7 @@ function ResultCard({
         <RecordingPlayer url={contact.recording_url} />
       )}
 
-      {contact.status === "completed" && !contact.evaluation && (
+      {isTerminal && !contact.evaluation && (
         <GradingProgress hasTranscript={!!contact.transcript} />
       )}
 
