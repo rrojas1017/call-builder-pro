@@ -341,6 +341,7 @@ function UnifiedCategoryCard({
                           recommendation={r.text}
                           category={cat}
                           applied={appliedSet.has(r.text)}
+                          syncedToRetell={syncedSet.has(r.text)}
                           onApplied={onApplied}
                         />
                       )}
