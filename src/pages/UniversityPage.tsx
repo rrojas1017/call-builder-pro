@@ -762,6 +762,11 @@ export default function UniversityPage() {
                           : "—"}
                       </TableCell>
                       <TableCell>
+                        <Badge variant={item.source === "simulation" ? "secondary" : "outline"} className="text-xs">
+                          {item.source === "simulation" ? "Simulation" : "Phone Test"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
                         <Badge variant="outline" className="text-xs">
                           {item.outcome || item.status}
                         </Badge>
