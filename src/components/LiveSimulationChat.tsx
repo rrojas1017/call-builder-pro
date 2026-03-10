@@ -21,6 +21,7 @@ interface ChatMessage {
 
 export default function LiveSimulationChat({ projectId, difficulty: externalDifficulty, onClose }: LiveSimulationChatProps) {
   const { toast } = useToast();
+  const { activeOrgId } = useOrgContext();
   const chatEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isNearBottom = useRef(true);
