@@ -366,7 +366,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
       {/* Training results */}
       {roundResults.length > 0 && (
-        <div ref={resultRef} className="surface-elevated rounded-xl p-6 space-y-4">
+        <div ref={resultRef} className="gradient-border glass-card rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-primary" />
