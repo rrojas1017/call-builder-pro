@@ -197,32 +197,50 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
       toast({ title: "Not enough data", description: "Need at least a few exchanges to evaluate.", variant: "destructive" });
       return;
     }
+    if (!activeOrgId) {
+      toast({ title: "Missing organization", description: "Could not determine your organization.", variant: "destructive" });
+      return;
+    }
 
     setLearning(true);
     try {
-      // Build transcript from messages
+      // 1. Build transcript from the actual observed conversation
       const transcript = messages
         .map((m) => `${m.speaker === "agent" ? "Agent" : "User"}: ${m.content}`)
         .join("\n");
 
-      // Save as simulated call via simulate-call edge function (it saves + evaluates)
-      const { data, error } = await supabase.functions.invoke("simulate-call", {
-        body: {
+      // 2. Save this transcript as a call record
+      const { data: callRow, error: insertErr } = await supabase
+        .from("calls")
+        .insert({
+          org_id: activeOrgId,
           project_id: projectId,
-          customer_difficulty: difficulty,
-          max_turns: 12,
-        },
+          transcript,
+          voice_provider: "simulated",
+          direction: "outbound",
+          outcome: "simulated",
+          duration_seconds: Math.round((messages[messages.length - 1].timestamp - messages[0].timestamp) / 1000),
+        })
+        .select("id")
+        .single();
+
+      if (insertErr) throw insertErr;
+
+      // 3. Evaluate THAT conversation
+      const { data: evalData, error: evalErr } = await supabase.functions.invoke("evaluate-call", {
+        body: { call_id: callRow.id },
       });
 
-      if (error) throw error;
+      if (evalErr) throw evalErr;
 
-      const evaluation = data?.evaluation;
+      const evaluation = evalData?.evaluation ?? evalData;
       const score = evaluation?.overall_score ?? null;
       let fixesApplied = 0;
 
-      // Apply critical/important recommendations
-      if (evaluation?.recommended_improvements?.length > 0) {
-        const criticalRecs = evaluation.recommended_improvements.filter(
+      // 4. Apply critical/important recommendations
+      const recs = evaluation?.recommended_improvements ?? evaluation?.recommended_fixes ?? [];
+      if (recs.length > 0) {
+        const criticalRecs = recs.filter(
           (r: any) => r.severity === "critical" || r.severity === "important"
         );
 
