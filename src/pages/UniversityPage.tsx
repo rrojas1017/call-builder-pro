@@ -911,7 +911,19 @@ function ResultCard({
           body: { project_id: projectId, recommendation: feedbackText.trim(), category: "user_feedback" },
         }).then(({ data }) => {
           if (data?.success) {
-            feedbackToast({ title: "Agent updated", description: data.reason || "Your feedback was applied to the agent's configuration." });
+            const fieldInfo = data.field ? ` Updated: ${data.field}` : "";
+            const syncInfo = data.synced_to_retell ? " • Synced to live agent" : "";
+            feedbackToast({
+              title: "✅ Agent updated",
+              description: (data.reason || "Your feedback was applied.") + fieldInfo + syncInfo,
+            });
+            // Store for verification
+            setLastAppliedFeedback({
+              text: feedbackText.trim(),
+              field: data.field || undefined,
+              patch: data.patch || undefined,
+              synced: !!data.synced_to_retell,
+            });
           }
         }).catch(() => {});
       }
