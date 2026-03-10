@@ -1,48 +1,47 @@
 
 
-# Simplify the Agent Creation Wizard
+## Why the Agent Says "I am not a licensed agent"
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+### Root Cause
+The `business_rules` field from the agent spec is **never injected into the prompt**. The `buildTaskPrompt` function (both `src/lib/buildTaskPrompt.ts` and `supabase/functions/_shared/buildTaskPrompt.ts`) reads `disclosure_text`, `must_collect_fields`, `qualification_rules`, `disqualification_rules`, `humanization_notes`, etc. — but completely skips `business_rules`.
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+So the user's instruction — *"Do not state that you are not a licensed insurer or that calls are being recorded unless it is explicitly in the script"* — is stored in the database but never reaches the AI model.
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+The AI model then defaults to its own safety behavior: when it sees health insurance / ACA / FPL context in the qualification rules, it proactively adds a disclaimer like "I am not a licensed agent."
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+### Secondary Issue: Unwanted Email Collection
+The prompt builder auto-injects an email collection question (line 180 of the shared version) for all English agents, even though this agent's business rules explicitly say not to ask for email.
 
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+### Fix
 
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+**Files: `supabase/functions/_shared/buildTaskPrompt.ts` and `src/lib/buildTaskPrompt.ts`**
 
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
+1. Add `business_rules` to the `AgentSpec` interface
+2. After the RULES section in the prompt, inject a `BUSINESS RULES` block that serializes the business_rules content into the prompt — flattening the JSON object into readable instructions
+3. If business_rules contains a "do not ask for email" instruction, skip the automatic email injection
 
-## Plan
+### Implementation Detail
 
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+```text
+// In buildTaskPrompt, after the RULES block:
 
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+if (spec.business_rules) {
+  // Flatten the business_rules object into readable text
+  const rulesText = typeof spec.business_rules === "string"
+    ? spec.business_rules
+    : Object.entries(spec.business_rules)
+        .map(([key, val]) => `${key}: ${val}`)
+        .join("\n");
+  prompt += `\n\nBUSINESS RULES (MUST follow strictly):\n${rulesText}`;
+}
 
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
+// Guard email injection: skip if business_rules mention "no email" / "don't ask for email"
+const rulesStr = JSON.stringify(spec.business_rules || {}).toLowerCase();
+const forbidsEmail = rulesStr.includes("not ask for email") || rulesStr.includes("no email") || rulesStr.includes("don't ask for email");
+if (isEnglish && fields.length > 0 && !forbidsEmail && !fields.some(f => f.toLowerCase().includes('email'))) {
+  fields.push("...");
+}
+```
 
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
-
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
-
-### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
-
-No database or edge function changes needed.
+Both files (`src/lib/buildTaskPrompt.ts` and `supabase/functions/_shared/buildTaskPrompt.ts`) need the same changes to stay in sync.
 
