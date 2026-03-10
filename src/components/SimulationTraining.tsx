@@ -217,22 +217,6 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
     toast({ title: "Cancelling...", description: "Will stop after the current call finishes." });
   };
 
-  const handleSingleSimulation = async () => {
-    setSingleRunning(true);
-    setSingleResult(null);
-    try {
-      const data = await runSingleSimulation();
-      setSingleResult(data);
-      toast({
-        title: "Simulation complete",
-        description: data.evaluation ? `Score: ${data.evaluation.overall_score}/10` : "Conversation generated",
-      });
-    } catch (err: any) {
-      toast({ title: "Simulation failed", description: err.message, variant: "destructive" });
-    } finally {
-      setSingleRunning(false);
-    }
-  };
 
   const getScoreColor = (score: number | null) => {
     if (score == null) return "text-muted-foreground";
