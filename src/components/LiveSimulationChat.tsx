@@ -490,7 +490,7 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
             </span>
             <div className="flex items-center gap-2">
               {feedbackApplied.length > 0 && (
-                <Badge variant="outline" className="text-xs border-green-500/30 text-green-600">
+                <Badge variant="outline" className="text-xs border-primary/30 text-primary">
                   <CheckCircle className="h-3 w-3 mr-0.5" />
                   {feedbackApplied.length} applied
                 </Badge>
