@@ -39,6 +39,20 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
   const agentSystemRef = useRef("");
   const customerSystemRef = useRef("");
 
+  // Retry helper: tries once, waits 2s, retries once, returns null on failure
+  const invokeWithRetry = async (fnName: string, body: Record<string, any>) => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const { data, error } = await supabase.functions.invoke(fnName, { body });
+        if (error) throw error;
+        return data;
+      } catch {
+        if (attempt === 0) await pause(2000);
+      }
+    }
+    return null;
+  };
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, currentSpeaker]);
@@ -80,26 +94,25 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
       const chatHistory: ChatMessage[] = [firstMessage];
 
       const maxTurns = 12;
+      let connectionLost = false;
+
       for (let turn = 0; turn < maxTurns; turn++) {
         if (stoppedRef.current) break;
 
         // Customer turn
         setCurrentSpeaker("customer");
         await pause(800);
-
         if (stoppedRef.current) break;
 
-        const { data: custData, error: custErr } = await supabase.functions.invoke("simulate-turn", {
-          body: {
-            action: "turn",
-            role: "customer",
-            agent_system: agentSystemRef.current,
-            customer_system: customerSystemRef.current,
-            history: chatHistory.map((m) => ({ speaker: m.speaker, content: m.content })),
-          },
+        const custData = await invokeWithRetry("simulate-turn", {
+          action: "turn",
+          role: "customer",
+          agent_system: agentSystemRef.current,
+          customer_system: customerSystemRef.current,
+          history: chatHistory.map((m) => ({ speaker: m.speaker, content: m.content })),
         });
 
-        if (custErr) throw custErr;
+        if (!custData) { connectionLost = true; break; }
         if (stoppedRef.current) break;
 
         const custMessage: ChatMessage = {
@@ -118,20 +131,17 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
         // Agent turn
         setCurrentSpeaker("agent");
         await pause(600);
-
         if (stoppedRef.current) break;
 
-        const { data: agentData, error: agentErr } = await supabase.functions.invoke("simulate-turn", {
-          body: {
-            action: "turn",
-            role: "agent",
-            agent_system: agentSystemRef.current,
-            customer_system: customerSystemRef.current,
-            history: chatHistory.map((m) => ({ speaker: m.speaker, content: m.content })),
-          },
+        const agentData = await invokeWithRetry("simulate-turn", {
+          action: "turn",
+          role: "agent",
+          agent_system: agentSystemRef.current,
+          customer_system: customerSystemRef.current,
+          history: chatHistory.map((m) => ({ speaker: m.speaker, content: m.content })),
         });
 
-        if (agentErr) throw agentErr;
+        if (!agentData) { connectionLost = true; break; }
         if (stoppedRef.current) break;
 
         const agentMessage: ChatMessage = {
@@ -148,7 +158,11 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
       }
 
       setCurrentSpeaker(null);
-      toast({ title: "Simulation complete", description: `${chatHistory.length} messages exchanged` });
+      if (connectionLost) {
+        toast({ title: "Simulation ended early", description: "Connection issue — you can still Save & Learn from the partial conversation." });
+      } else {
+        toast({ title: "Simulation complete", description: `${chatHistory.length} messages exchanged` });
+      }
     } catch (err: any) {
       toast({ title: "Simulation error", description: err.message, variant: "destructive" });
     } finally {
