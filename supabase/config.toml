@@ -125,3 +125,6 @@ verify_jwt = false
 
 [functions.simulate-turn]
 verify_jwt = false
+
+[functions.parse-business-rules]
+verify_jwt = false

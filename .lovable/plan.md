@@ -1,30 +1,48 @@
 
 
-# Upload Business Rules from Word Document
+# Simplify the Agent Creation Wizard
 
-## Change
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-Add a "Upload from Document" button to the Business Rules section that accepts `.docx`/`.txt` files, sends the content to an edge function that uses AI to extract individual rules, and populates the list UI.
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-### Frontend: `src/pages/EditAgentPage.tsx`
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-- Add a hidden file input (`accept=".docx,.txt,.doc,.pdf"`) and an "Upload Document" button (with `Upload` icon) next to the "Add" button
-- Add `parsingRules` loading state
-- On file select: upload to `agent_knowledge_sources` storage bucket, then invoke a new edge function `parse-business-rules`
-- On response: append the returned rules array to existing `businessRules` state
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-### New Edge Function: `supabase/functions/parse-business-rules/index.ts`
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-- Accepts `{ file_path }` or `{ text }` in the body
-- Downloads file from storage if `file_path` provided
-- For `.txt`/`.md`: reads as plain text
-- For `.docx`: extracts raw text (best-effort using the file's text content)
-- Sends text to Gemini Flash with a prompt: "Extract individual business rules from this document. Each rule should be a single, actionable directive. Return a JSON array of strings."
-- Returns `{ rules: string[] }`
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
+
+## Plan
+
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
+
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
 ### Files Changed
-| File | Change |
-|------|--------|
-| `src/pages/EditAgentPage.tsx` | Add upload button, file input, loading state, invoke edge function, merge rules |
-| `supabase/functions/parse-business-rules/index.ts` | New edge function — extract rules from uploaded document via AI |
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radio, User, MessageSquare, Shield, Hash, Clock, Sliders, Globe, Plus, GripVertical, ScrollText } from "lucide-react";
+import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radio, User, MessageSquare, Shield, Hash, Clock, Sliders, Globe, Plus, GripVertical, ScrollText, Upload } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -100,6 +100,7 @@ export default function EditAgentPage() {
   const [businessRules, setBusinessRules] = useState<string[]>([]);
   const [newBusinessRule, setNewBusinessRule] = useState("");
   const [brDraggedIndex, setBrDraggedIndex] = useState<number | null>(null);
+  const [parsingRules, setParsingRules] = useState(false);
   const [brDragOverIndex, setBrDragOverIndex] = useState<number | null>(null);
   const [consentRequired, setConsentRequired] = useState(true);
   const [disclosureRequired, setDisclosureRequired] = useState(true);
@@ -783,6 +784,53 @@ export default function EditAgentPage() {
           }} disabled={!newBusinessRule.trim()}>
             <Plus className="h-3.5 w-3.5 mr-1" /> Add
           </Button>
+          <input
+            type="file"
+            id="br-file-upload"
+            accept=".docx,.doc,.txt,.pdf,.md"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              e.target.value = "";
+              setParsingRules(true);
+              try {
+                const filePath = `business-rules/${id}/${Date.now()}-${file.name}`;
+                const { error: uploadErr } = await supabase.storage
+                  .from("agent_knowledge_sources")
+                  .upload(filePath, file);
+                if (uploadErr) throw uploadErr;
+
+                const { data, error: fnErr } = await supabase.functions.invoke("parse-business-rules", {
+                  body: { file_path: filePath },
+                });
+                if (fnErr) throw fnErr;
+                if (data?.error) throw new Error(data.error);
+
+                const newRules = (data.rules || []).filter((r: string) => r.trim() && !businessRules.includes(r));
+                if (newRules.length > 0) {
+                  setBusinessRules(prev => [...prev, ...newRules]);
+                  toast({ title: `Imported ${newRules.length} rules from document` });
+                } else {
+                  toast({ title: "No new rules found in document", variant: "destructive" });
+                }
+              } catch (err: any) {
+                console.error("Rule upload error:", err);
+                toast({ title: "Failed to parse document", description: err.message, variant: "destructive" });
+              } finally {
+                setParsingRules(false);
+              }
+            }}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => document.getElementById("br-file-upload")?.click()}
+            disabled={parsingRules}
+          >
+            {parsingRules ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1" />}
+            {parsingRules ? "Parsing..." : "Upload Doc"}
+          </Button>
         </div>
       </div>
 
@@ -1070,7 +1118,6 @@ export default function EditAgentPage() {
           placeholder="e.g. Hi, this is Sarah calling about your health coverage inquiry. Please call us back at 555-123-4567 at your convenience. Thank you!"
         />
       </div>
-
 
       {/* Save */}
       <Button onClick={handleSave} disabled={saving || !name.trim()} className="w-full" size="lg">
