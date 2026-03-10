@@ -246,7 +246,7 @@ export default function AgentsPage() {
                     <span className="text-xs text-muted-foreground ml-auto">{new Date(agent.created_at).toLocaleDateString()}</span>
                   </div>
                   {agent.description && <p className="text-sm text-muted-foreground line-clamp-2">{agent.description}</p>}
-                  <div className="pt-1"><AgentActions agent={agent} onDelete={setDeletingId} /></div>
+                  <div className="pt-1"><AgentActions agent={agent} onDelete={setDeletingId} onClone={cloneAgent} cloningId={cloningId} /></div>
                 </Link>
               );
             })}
