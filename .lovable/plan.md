@@ -1,48 +1,42 @@
 
 
-# Simplify the Agent Creation Wizard
+# Add Customer Interruptions to Live Simulations
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+## Problem
+Currently, the simulation is perfectly turn-based — agent speaks, customer speaks, agent speaks. Real phone conversations have interruptions, talking over each other, and cut-off sentences. The customer AI never interrupts.
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+## Approach
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+Two changes needed:
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+### 1. Customer system prompt — instruct interruptions (`simulate-turn/index.ts`)
 
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+Update `buildCustomerPrompt` to add interruption behavior rules, scaled by difficulty:
 
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+- **Easy**: Rarely interrupts (maybe once)
+- **Medium**: Occasionally interrupts mid-sentence — "wait, hold on—", "sorry but—", cuts agent off to ask a question
+- **Hard**: Frequently interrupts, talks over agent, cuts them off, says "yeah yeah I know" before agent finishes
 
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
+Add to the RULES section:
+```
+- INTERRUPTIONS: Sometimes cut the agent off mid-thought. Start your reply with "—" or "wait—" or "hold on—" to signal you're interrupting. On [difficulty], do this [frequency].
+- When you interrupt, you can: redirect the conversation, ask an unrelated question, express impatience, or jump ahead.
+```
 
-## Plan
+### 2. Frontend — simulate interruption mid-message (`LiveSimulationChat.tsx`)
 
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+Add a random chance (based on difficulty) that the customer "interrupts" the agent. When this triggers:
 
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+1. After the agent's turn starts, randomly decide to interrupt (easy: 10%, medium: 25%, hard: 40%)
+2. If interrupting: truncate the agent's message at a natural breakpoint (sentence boundary or mid-sentence with "—") before displaying it
+3. Immediately fire the customer turn with the truncated agent message in history
+4. This creates the visual effect of the customer cutting the agent off
 
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
-
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
-
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+In the turn loop (lines 163-220), add interruption logic:
+- After getting agent response, roll a random chance
+- If interrupt triggers: slice agent content at ~40-70% length, append "—", display truncated version, then immediately proceed to customer turn with a flag in the history indicating the agent was cut off
 
 ### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
-
-No database or edge function changes needed.
+- `supabase/functions/simulate-turn/index.ts` — update `buildCustomerPrompt` with interruption instructions
+- `src/components/LiveSimulationChat.tsx` — add interruption probability + truncation logic in the turn loop
 
