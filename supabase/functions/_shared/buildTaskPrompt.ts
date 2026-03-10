@@ -177,7 +177,10 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
   // Only inject email collection for English agents (not Spanish/other languages)
   const lang = (spec.language || "en").toLowerCase();
   const isEnglish = lang === "en" || lang === "en-us";
-  if (isEnglish && fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('email'))) {
+  // Guard email injection: skip if business_rules forbid it
+  const rulesStr = JSON.stringify(spec.business_rules || {}).toLowerCase();
+  const forbidsEmail = rulesStr.includes("not ask for email") || rulesStr.includes("no email") || rulesStr.includes("don't ask for email") || rulesStr.includes("do not collect email");
+  if (isEnglish && !forbidsEmail && fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('email'))) {
     fields.push("Before I connect you, what's the best email address to send your plan details and next steps to?");
   }
 
