@@ -55,9 +55,17 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
     return null;
   };
 
+  const handleScroll = () => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    isNearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
+
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, currentSpeaker]);
+    if (isNearBottom.current) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
 
   const startSimulation = async () => {
     setRunning(true);
