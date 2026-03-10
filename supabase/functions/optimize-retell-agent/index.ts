@@ -1,11 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callAI } from "../_shared/ai-client.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { corsHeaders, requireAuth, AuthError, unauthorizedResponse } from "../_shared/auth.ts";
 
 const RETELL_BASE = "https://api.retellai.com";
 
@@ -76,6 +72,13 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
+    let auth;
+    try { auth = await requireAuth(req); } catch (e) {
+      if (e instanceof AuthError) return unauthorizedResponse(e.message);
+      throw e;
+    }
+    console.log(`[optimize-retell-agent] Authenticated user=${auth.userId} org=${auth.orgId}`);
+
     const { project_id, apply } = await req.json();
     if (!project_id) throw new Error("project_id is required");
 
@@ -86,7 +89,6 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Load agent spec, project info, and knowledge base
     const [specResult, projectResult, knowledgeResult] = await Promise.all([
       supabase.from("agent_specs").select("*").eq("project_id", project_id).single(),
       supabase.from("agent_projects").select("name, description").eq("id", project_id).single(),
@@ -99,7 +101,6 @@ serve(async (req) => {
 
     if (!spec) throw new Error("No agent spec found for this project");
 
-    // Fetch current Retell agent config if we have an agent ID
     let retellConfig: any = null;
     let retellLlmConfig: any = null;
     if (spec.retell_agent_id) {
@@ -109,7 +110,6 @@ serve(async (req) => {
         });
         if (agentRes.ok) {
           retellConfig = await agentRes.json();
-          // Fetch LLM config too
           const llmId = retellConfig?.response_engine?.llm_id;
           if (llmId) {
             const llmRes = await fetch(`${RETELL_BASE}/get-retell-llm/${llmId}`, {
@@ -123,7 +123,6 @@ serve(async (req) => {
       }
     }
 
-    // Extract key terms from knowledge base for boosted_keywords
     const keyTerms = knowledge
       .filter(k => k.category === "product_details" || k.category === "industry_insight")
       .map(k => k.content)
@@ -220,17 +219,14 @@ Analyze the gap between current config and best practices. Return optimization r
       result = { recommendations: [], overall_score: 0, summary: aiResponse.content || "No recommendations generated" };
     }
 
-    // Filter out skip-listed params from recommendations
     if (result.recommendations) {
       result.recommendations = result.recommendations.filter((r: any) => !SKIP_PARAMS.has(r.retell_param));
     }
 
-    // Auto-apply if requested
     if (apply && result.recommendations?.length > 0) {
       const autoRecs = result.recommendations.filter((r: any) => r.auto_apply);
 
       if (spec.retell_agent_id) {
-        // Apply to live Retell agent
         const agentPatch: Record<string, unknown> = {};
         const llmPatch: Record<string, unknown> = {};
 
@@ -242,17 +238,14 @@ Analyze the gap between current config and best practices. Return optimization r
           let parsedValue: unknown;
           try { parsedValue = JSON.parse(value); } catch { parsedValue = value; }
 
-          // Validate and fix general_tools transfer_call entries
           if (param === "general_tools" && Array.isArray(parsedValue)) {
             parsedValue = (parsedValue as any[]).map((tool: any) => {
               if (tool.type === "transfer_call") {
-                // Force correct transfer_destination format
                 tool.transfer_destination = {
                   type: "predefined",
                   number: spec.transfer_phone_number || tool.transfer_destination?.number || "",
                   ignore_e164_validation: false,
                 };
-                // Force required transfer_option
                 tool.transfer_option = tool.transfer_option || {
                   type: "cold_transfer",
                   show_transferee_as_caller: false,
@@ -304,7 +297,6 @@ Analyze the gap between current config and best practices. Return optimization r
           }
         }
       } else {
-        // No Retell agent provisioned — save optimizations to local agent_specs
         const PARAM_TO_SPEC: Record<string, { col: string; transform?: (v: any) => any }> = {
           interruption_sensitivity: { col: "interruption_threshold", transform: (v: number) => Math.round(Number(v) * 100) },
           voice_speed: { col: "speaking_speed", transform: (v: any) => Number(v) },

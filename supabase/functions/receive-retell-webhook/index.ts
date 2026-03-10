@@ -1,19 +1,31 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// ===== WEBHOOK SIGNATURE VERIFICATION =====
+async function verifyRetellSignature(rawBody: string, signatureHeader: string | null): Promise<boolean> {
+  const webhookSecret = Deno.env.get("RETELL_WEBHOOK_SECRET");
+  if (!webhookSecret) {
+    console.warn("[SECURITY] RETELL_WEBHOOK_SECRET not configured — skipping signature check");
+    return true;
+  }
+  if (!signatureHeader) {
+    console.error("[SECURITY] No x-retell-signature header present");
+    return false;
+  }
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", encoder.encode(webhookSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
+  const expectedHex = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return expectedHex === signatureHeader;
+}
 
 // ===== INBOUND DETECTION HELPER =====
 async function resolveInboundMetadata(supabase: any, callData: any) {
-  // Check to_number against inbound_numbers table
   const toNumber = callData.to_number || callData.to;
   if (!toNumber) return null;
 
   const cleaned = toNumber.replace(/\D/g, "");
-  // Try exact match and cleaned variants
   const { data: inboundNum } = await supabase
     .from("inbound_numbers")
     .select("id, org_id, project_id, phone_number")
@@ -144,7 +156,17 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const body = await req.json();
+    const rawBody = await req.text();
+    const signatureHeader = req.headers.get("x-retell-signature");
+    const isValid = await verifyRetellSignature(rawBody, signatureHeader);
+    if (!isValid) {
+      console.error("[SECURITY] Webhook signature verification FAILED");
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    console.log("[SECURITY] Webhook signature verified");
+    const body = JSON.parse(rawBody);
     console.log("[receive-retell-webhook] Payload:", JSON.stringify(body).slice(0, 1000));
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -160,7 +182,6 @@ serve(async (req) => {
       const retellCallId = callData.call_id;
 
       if (retellCallId && metadata.org_id && metadata.project_id) {
-        // Outbound call with metadata
         await supabase.from("calls").upsert({
           org_id: metadata.org_id,
           project_id: metadata.project_id,
@@ -174,7 +195,6 @@ serve(async (req) => {
           version: metadata.version || 1,
         }, { onConflict: "retell_call_id" });
       } else if (retellCallId) {
-        // Possibly inbound — try to resolve
         const inbound = await resolveInboundMetadata(supabase, callData);
         if (inbound && inbound.project_id) {
           await supabase.from("calls").upsert({
@@ -235,7 +255,7 @@ serve(async (req) => {
           ...metadata,
           org_id: inbound.org_id,
           project_id: inbound.project_id,
-          phone: inbound.caller_phone, // caller's phone for CRM
+          phone: inbound.caller_phone,
         };
         inboundNumberId = inbound.inbound_number_id;
         direction = "inbound";
@@ -243,7 +263,6 @@ serve(async (req) => {
       }
     }
 
-    // If we still can't identify the org, we can't process
     if (!metadata.org_id || !metadata.project_id) {
       console.log(`[receive-retell-webhook] No org/project for call ${retellCallId}, skipping`);
       return new Response(JSON.stringify({ success: true, message: "Unattributed call, skipped" }), {
@@ -257,7 +276,6 @@ serve(async (req) => {
       ? Math.round((callData.end_timestamp - callData.start_timestamp) / 1000)
       : null;
 
-    // Map disconnect reason to status
     const disconnectReason = callData.disconnect_reason || callData.call_status || "";
     let contactStatus = "completed";
     if (disconnectReason === "no_answer" || disconnectReason === "dial_no_answer") contactStatus = "no_answer";
@@ -269,7 +287,6 @@ serve(async (req) => {
     else if (disconnectReason === "call_me_later" || disconnectReason === "callback") contactStatus = "call_me_later";
     else if (disconnectReason === "not_available") contactStatus = "not_available";
 
-    // Answering machine detection
     const answeredBy = callData.answered_by || null;
     const hasRealConversation = transcript && transcript.includes("user:") && transcript.length > 200;
     if ((answeredBy === "voicemail" || answeredBy === "machine") && !hasRealConversation) {
@@ -279,7 +296,6 @@ serve(async (req) => {
       contactStatus = "voicemail";
     }
 
-    // Extract analysis data
     let outcome = contactStatus;
     let extractedData: any = null;
     const summary = callData.call_analysis || null;
@@ -352,7 +368,6 @@ serve(async (req) => {
         }).catch((e) => console.error("Error triggering run-test-run:", e));
       }
 
-      // Track cost for test lab calls
       if (metadata.org_id && retellCallId) {
         const phoneLabel = metadata.phone || "test";
         await trackCallCost(supabase, metadata.org_id, retellCallId, duration, phoneLabel);
@@ -397,7 +412,6 @@ serve(async (req) => {
       await trackCallCost(supabase, metadata.org_id, retellCallId, duration, phoneLabel);
     }
 
-    // Update contact status (outbound campaign calls)
     if (metadata.contact_id) {
       const { data: currentContact } = await supabase
         .from("contacts")
@@ -411,7 +425,6 @@ serve(async (req) => {
         .eq("id", metadata.contact_id);
     }
 
-    // Trigger evaluate-call
     if (upsertedCall?.id && transcript) {
       fetch(`${supabaseUrl}/functions/v1/evaluate-call`, {
         method: "POST",
@@ -420,7 +433,6 @@ serve(async (req) => {
       }).catch((e) => console.error("Error triggering evaluate-call:", e));
     }
 
-    // Trigger tick-campaign (outbound only)
     if (metadata.campaign_id) {
       console.log(`[receive-retell-webhook] Re-triggering tick-campaign for campaign=${metadata.campaign_id}`);
       fetch(`${supabaseUrl}/functions/v1/tick-campaign`, {
@@ -431,7 +443,6 @@ serve(async (req) => {
         .catch((e) => console.error("[receive-retell-webhook] Error triggering tick:", e));
     }
 
-    // CRM upsert (skip test campaigns)
     if (metadata.org_id && metadata.phone) {
       let skipCrm = false;
       if (metadata.campaign_id) {

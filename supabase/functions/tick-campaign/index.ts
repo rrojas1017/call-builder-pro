@@ -1,11 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { buildTaskPrompt, replaceTemplateVars, resolveBeginMessage } from "../_shared/buildTaskPrompt.ts";
+import { corsHeaders } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// NOTE: Pre-flight logic (agent sync, knowledge summarization, prompt injection) now runs ONCE in start-campaign
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -122,164 +119,6 @@ serve(async (req) => {
       });
     }
 
-    // Summarize agent knowledge via AI
-    let knowledgeBriefing = "";
-    try {
-      const { data: summaryData, error: summaryErr } = await supabase.functions.invoke("summarize-agent-knowledge", {
-        body: { project_id: campaign.project_id },
-      });
-      if (summaryErr) {
-        console.error("Knowledge summarization error:", summaryErr);
-      } else if (summaryData?.briefing) {
-        knowledgeBriefing = summaryData.briefing;
-        console.log(`Campaign knowledge briefing: ${summaryData.entries_count} entries → ${knowledgeBriefing.length} chars`);
-      }
-    } catch (sumErr: any) {
-      console.error("Failed to invoke summarize-agent-knowledge:", sumErr.message);
-    }
-
-    // Load global human behaviors (limit 10)
-    const { data: globalBehaviors } = await supabase
-      .from("global_human_behaviors").select("content")
-      .order("created_at", { ascending: false }).limit(10);
-
-    const globalTechniques = (globalBehaviors || []).map((g: any) => g.content as string);
-
-    // Merge global behaviors into spec's humanization_notes (deduped)
-    if (globalTechniques.length > 0) {
-      const currentNotes: string[] = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
-      const existingLower = new Set(currentNotes.map((n: string) => n.toLowerCase().trim()));
-      const newGlobal = globalTechniques.filter((t: string) => !existingLower.has(t.toLowerCase().trim()));
-      spec.humanization_notes = [...currentNotes, ...newGlobal];
-    }
-
-    // Inject HIPAA compliance guardrails when enabled
-    const hipaaAppendix = campaign.hipaa_enabled ? `\n\n=== HIPAA COMPLIANCE RULES ===
-- This call is recorded. You MUST disclose this at the start: "This call may be recorded for quality and compliance purposes."
-- NEVER read back full SSN, date of birth, or policy/member ID numbers. Only confirm last 4 digits.
-- Do NOT repeat or store specific medical diagnoses, conditions, or medication names in conversation summaries.
-- You MUST obtain explicit verbal consent before collecting any health-related information.
-- If leaving a voicemail: leave ONLY a callback number and a generic message. Do NOT include any health information, names of conditions, or reason for calling.
-- Minimize collection of Protected Health Information (PHI) to only what is strictly necessary for the conversation objective.` : "";
-
-    // --- Pre-flight: fetch agent, extract llm_id, fix transfer flags ---
-    let agentLlmId: string | null = null;
-    try {
-      const agentCheckRes = await fetch(`https://api.retellai.com/get-agent/${retellAgentId}`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${RETELL_API_KEY}` },
-      });
-      const agentCheckData = await agentCheckRes.json();
-      agentLlmId = agentCheckData.response_engine?.llm_id || null;
-
-      if (agentCheckRes.ok && agentCheckData.is_transfer_agent) {
-        await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
-          body: JSON.stringify({ is_transfer_agent: false }),
-        });
-        if (agentLlmId) {
-          await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
-            body: JSON.stringify({ is_transfer_llm: false }),
-          });
-        }
-        console.log(`Auto-fixed transfer flags on agent ${retellAgentId}`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-
-      // Sync agent-level settings from spec (voice, name, ambient sound)
-      const agentSyncPatch: Record<string, unknown> = {};
-      if (spec.voice_id) agentSyncPatch.voice_id = spec.voice_id;
-      if (spec.persona_name) agentSyncPatch.agent_name = spec.persona_name;
-      const ambientSound = spec.background_track || null;
-      if (ambientSound) agentSyncPatch.ambient_sound = ambientSound;
-
-      if (Object.keys(agentSyncPatch).length > 0) {
-        const syncRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
-          body: JSON.stringify(agentSyncPatch),
-        });
-        if (syncRes.ok) {
-          console.log(`Synced agent settings (voice_id, agent_name, ambient_sound) on ${retellAgentId}`);
-        } else {
-          console.error("Failed to sync agent settings:", await syncRes.text());
-        }
-      }
-
-      // Sync voice_id from spec
-      if (spec.voice_id) {
-        const voiceRes = await fetch(`https://api.retellai.com/update-agent/${retellAgentId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
-          body: JSON.stringify({ voice_id: spec.voice_id }),
-        });
-        if (voiceRes.ok) {
-          console.log(`Synced voice_id to "${spec.voice_id}" on agent ${retellAgentId}`);
-        } else {
-          console.error("Failed to sync voice_id:", await voiceRes.text());
-        }
-      }
-    } catch (preflight: any) {
-      console.error("Transfer agent pre-flight check failed:", preflight.message);
-    }
-
-    // --- Inject task prompt into Retell LLM ---
-    if (agentLlmId) {
-      let taskPrompt = buildTaskPrompt(spec, [], knowledgeBriefing, "") + hipaaAppendix;
-      if (taskPrompt.length > 28000) taskPrompt = taskPrompt.substring(0, 28000) + "\n\n[Trimmed for length]";
-      // Resolve begin_message: strip {{first_name}} since it's a static LLM field
-      const agentName = spec.persona_name || campaign.agent_projects?.name || "Agent";
-      const resolvedOpening = spec.opening_line
-        ? resolveBeginMessage(spec.opening_line, agentName)
-        : null;
-
-      // Build general_tools from spec
-      const generalTools: any[] = [
-        { type: "end_call", name: "end_call", description: "End the call when conversation is complete." }
-      ];
-      if (spec.transfer_required && spec.transfer_phone_number) {
-        generalTools.push({
-          type: "transfer_call",
-          name: "transfer_to_agent",
-          description: "Transfer the call to a live agent when the lead is qualified and ready.",
-          transfer_destination: {
-            type: "predefined",
-            number: spec.transfer_phone_number,
-            ignore_e164_validation: false,
-          },
-          transfer_option: {
-            type: "cold_transfer",
-            show_transferee_as_caller: false,
-          },
-        });
-      }
-
-      const llmPatchBody: any = { general_prompt: taskPrompt, general_tools: generalTools };
-      if (resolvedOpening) {
-        llmPatchBody.begin_message = resolvedOpening;
-      }
-
-      try {
-        const llmPromptRes = await fetch(`https://api.retellai.com/update-retell-llm/${agentLlmId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
-          body: JSON.stringify(llmPatchBody),
-        });
-        if (llmPromptRes.ok) {
-          console.log(`Injected campaign prompt into LLM ${agentLlmId} (${taskPrompt.length} chars, begin_message=${resolvedOpening ? 'set' : 'unchanged'})`);
-        } else {
-          console.error("Failed to update LLM prompt:", await llmPromptRes.text());
-        }
-      } catch (promptErr: any) {
-        console.error("LLM prompt injection failed:", promptErr.message);
-      }
-    } else {
-      console.warn("No llm_id found on Retell agent – cannot inject task prompt");
-    }
-
     // Determine from_number for batch call
     let fromNumber = spec.from_number || null;
     console.log(`[tick-campaign] spec.from_number=${fromNumber}`);
@@ -291,7 +130,6 @@ serve(async (req) => {
     }
 
     console.log(`[tick-campaign] Selected from_number: ${fromNumber}`);
-    // Guard: Retell requires from_number
     if (!fromNumber) {
       return new Response(JSON.stringify({
         error: "No outbound number available. Please add a trusted phone number in Settings > Phone Numbers, or set a From Number on your agent.",
