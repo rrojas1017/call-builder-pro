@@ -237,7 +237,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
   const completedCalls = ((currentRound - 1) * callsPerRound) + currentCall;
   const progressPct = running ? Math.min((completedCalls / totalCalls) * 100, 100) : 0;
 
-  const isDisabled = disabled || running || singleRunning;
+  const isDisabled = disabled || running;
 
   return (
     <div className="space-y-4">
