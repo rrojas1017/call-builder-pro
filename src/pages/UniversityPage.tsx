@@ -34,6 +34,7 @@ interface TestContact {
   error: string | null;
   extracted_data: any;
   recording_url?: string | null;
+  user_feedback?: string | null;
   created_at?: string;
   test_run_id?: string;
   retell_call_id?: string | null;
