@@ -1,48 +1,48 @@
 
 
-# Simplify the Agent Creation Wizard
+# Is the AI Learning from Training? — Findings & Fix
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+## Current State: Partially Working
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+The learning pipeline **is wired up end-to-end**, but has one critical bug that undermines the "Live Practice" flow:
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+### What Works
+- **Auto-Training pipeline** (`auto-train`): Runs simulate → evaluate → auto-apply fixes loop correctly. Each round runs new simulations, evaluates them, and applies critical/important recommendations back to the agent spec.
+- **Evaluation pipeline** (`evaluate-call`): Correctly scores calls, auto-applies humanness suggestions, pronunciation fixes, and recommended improvements via `apply-improvement` with version tracking.
+- **Success learning** (`learn-from-success`): Triggers every 5th qualified call, extracts winning patterns, saves to `agent_knowledge`.
+- **Score snapshots**: Tracked per version in `score_snapshots` table for trend visibility.
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+### What's Broken: "Save & Learn" Discards the Actual Conversation
 
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+When a user watches a Live Simulation and clicks **"Save & Learn"**, the code at line 207 calls `simulate-call` — which **runs an entirely new AI-vs-AI conversation** instead of evaluating the one the user just observed. The conversation they watched is thrown away; the evaluation and learning happen on a conversation they never saw.
 
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+## Fix
 
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
+### `src/components/LiveSimulationChat.tsx` — `handleSaveAndLearn`
 
-## Plan
+Instead of calling `simulate-call` (which generates a new conversation), the function should:
 
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+1. **Build the transcript** from the existing `messages` array (already done on line 202-204).
+2. **Save the transcript as a call record** by inserting directly into the `calls` table via Supabase client.
+3. **Call `evaluate-call`** with that call ID to score and auto-apply improvements.
 
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+This way the actual conversation the user watched is what gets evaluated and learned from.
 
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
+```text
+Current flow:
+  User watches simulation → clicks Save & Learn → NEW simulation runs → that gets evaluated
+  (user's conversation is discarded)
 
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+Fixed flow:
+  User watches simulation → clicks Save & Learn → THAT conversation is saved → evaluated → fixes applied
+```
 
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+### Implementation Details
+- Replace the `supabase.functions.invoke("simulate-call")` call with:
+  1. Insert the transcript into `calls` table (org_id from context, project_id, voice_provider="simulated", transcript from messages)
+  2. Call `supabase.functions.invoke("evaluate-call", { body: { call_id } })`
+  3. Apply critical recommendations from the evaluation result (existing logic on lines 222-241 stays the same)
 
-### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
-
-No database or edge function changes needed.
+### Scope
+One file change: `src/components/LiveSimulationChat.tsx` — rewrite `handleSaveAndLearn` (~30 lines).
 
