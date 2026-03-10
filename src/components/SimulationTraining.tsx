@@ -443,7 +443,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
 function SingleResultCard({ result, getScoreColor }: { result: CallResult; getScoreColor: (s: number | null) => string }) {
   return (
-    <div className="surface-elevated rounded-xl p-6 space-y-4">
+    <div className="glass-card rounded-xl p-6 space-y-4">
       <div className="flex items-center gap-2">
         <MessageSquare className="h-4 w-4 text-primary" />
         <span className="text-sm font-semibold text-foreground">Single Simulation Result</span>
