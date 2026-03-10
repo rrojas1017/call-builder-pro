@@ -17,7 +17,7 @@ const NUM_FIELDS = ["temperature", "interruption_threshold", "speaking_speed"];
 const ARRAY_FIELDS = ["must_collect_fields", "humanization_notes", "research_sources"];
 const ALL_KNOWN = [...TEXT_FIELDS, ...JSON_FIELDS, ...BOOL_FIELDS, ...NUM_FIELDS];
 
-// ── Array helpers (from apply-improvement) ──
+// ── Array helpers ──
 
 function coerceToArray(value: any): string[] {
   if (Array.isArray(value)) return value;
@@ -42,7 +42,7 @@ function mergeArrays(existing: string[], incoming: string[]): string[] {
   return merged;
 }
 
-// ── Domain guard (from apply-improvement) ──
+// ── Domain guard ──
 
 const DOMAIN_KEYWORDS: Record<string, string[]> = {
   travel: ["hotel", "flight", "resort", "vacation", "itinerary"],
@@ -109,6 +109,98 @@ function buildPatch(spec: any, field: string, suggestedValue: any): Record<strin
   return patch;
 }
 
+// ── Conflict detection helper ──
+
+async function detectConflicts(spec: any, fieldBeingChanged: string, currentFieldValue: any, proposedValue: any, category: string, recommendation: string): Promise<{
+  has_conflict: boolean;
+  conflict_type?: string;
+  conflict_description?: string;
+  affected_fields?: string[];
+  impact_summary?: string;
+  severity?: string;
+}> {
+  try {
+    const currentConfig = {
+      business_rules: spec.business_rules,
+      qualification_rules: spec.qualification_rules,
+      must_collect_fields: spec.must_collect_fields,
+      tone_style: spec.tone_style,
+      opening_line: spec.opening_line,
+      language: spec.language,
+    };
+
+    const aiResponse = await callAI({
+      provider: "gemini",
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        {
+          role: "system",
+          content: `You are a config conflict detector for an AI phone agent. Detect contradictions between a proposed change and the current config. Only flag real conflicts.`,
+        },
+        {
+          role: "user",
+          content: `Current config: ${JSON.stringify(currentConfig)}\n\nProposed: Set "${fieldBeingChanged}" from "${JSON.stringify(currentFieldValue)?.substring(0, 300)}" to "${JSON.stringify(proposedValue)?.substring(0, 300)}"\nSource: ${category}\nContext: ${recommendation.substring(0, 200)}`,
+        },
+      ],
+      tools: [{
+        type: "function",
+        function: {
+          name: "report_conflict",
+          description: "Report whether this change conflicts with existing config",
+          parameters: {
+            type: "object",
+            properties: {
+              has_conflict: { type: "boolean" },
+              conflict_type: { type: "string", enum: ["contradiction", "overwrite", "ambiguity", "scope_expansion"] },
+              conflict_description: { type: "string" },
+              affected_fields: { type: "array", items: { type: "string" } },
+              impact_summary: { type: "string" },
+              severity: { type: "string", enum: ["blocking", "warning", "info"] },
+            },
+            required: ["has_conflict", "impact_summary"],
+          },
+        },
+      }],
+      tool_choice: { type: "function", function: { name: "report_conflict" } },
+      temperature: 0.1,
+      max_tokens: 512,
+    });
+
+    return (aiResponse.tool_calls?.[0]?.arguments as any) || { has_conflict: false, impact_summary: "Check unavailable" };
+  } catch (err) {
+    console.error("Conflict detection failed:", err);
+    return { has_conflict: false, impact_summary: "Conflict check unavailable" };
+  }
+}
+
+// ── Log change helper ──
+
+async function logChange(supabase: any, params: {
+  project_id: string;
+  org_id: string;
+  field_changed: string;
+  old_value: any;
+  new_value: any;
+  change_type: string;
+  source: string;
+  source_category?: string;
+  source_detail?: string;
+  conflict_detected?: boolean;
+  conflict_description?: string;
+  was_auto_applied?: boolean;
+  was_user_approved?: boolean;
+}) {
+  try {
+    await supabase.from("spec_change_log").insert({
+      ...params,
+      old_value: typeof params.old_value === "string" ? params.old_value?.substring(0, 1000) : JSON.stringify(params.old_value)?.substring(0, 1000),
+      new_value: typeof params.new_value === "string" ? params.new_value?.substring(0, 1000) : JSON.stringify(params.new_value)?.substring(0, 1000),
+    });
+  } catch (err) {
+    console.error("Failed to log change:", err);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -117,16 +209,11 @@ serve(async (req) => {
     if (!project_id || !recommendation) throw new Error("project_id and recommendation required");
 
     // ── SAFE LEARNING GATE ──
-    // Block auto-applies that originate from live call evaluations.
     const BLOCKED_CATEGORIES = ["live_call_evaluation", "live_call_auto"];
     if (BLOCKED_CATEGORIES.includes(category)) {
-      console.warn(`[apply-audit-recommendation] BLOCKED: category="${category}" — live calls cannot modify agent spec`);
+      console.warn(`[apply-audit-recommendation] BLOCKED: category="${category}"`);
       return new Response(
-        JSON.stringify({
-          success: false,
-          blocked: true,
-          reason: "Live call evaluations cannot automatically modify agent behavior. Use simulation training or manual feedback instead."
-        }),
+        JSON.stringify({ success: false, blocked: true, reason: "Live call evaluations cannot automatically modify agent behavior." }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -143,27 +230,25 @@ serve(async (req) => {
       .single();
     if (specErr) throw specErr;
 
-    // Build a summary of the current spec for the AI
+    // Get org_id for logging
+    const { data: project } = await supabase
+      .from("agent_projects")
+      .select("org_id")
+      .eq("id", project_id)
+      .single();
+    const org_id = project?.org_id || "";
+
+    // Build spec summary for AI
     const specSummary = {
-      use_case: spec.use_case,
-      tone_style: spec.tone_style,
-      opening_line: spec.opening_line,
-      temperature: spec.temperature,
-      interruption_threshold: spec.interruption_threshold,
-      speaking_speed: spec.speaking_speed,
-      consent_required: spec.consent_required,
-      disclosure_required: spec.disclosure_required,
-      transfer_required: spec.transfer_required,
-      sms_enabled: spec.sms_enabled,
-      must_collect_fields: spec.must_collect_fields,
-      humanization_notes: spec.humanization_notes,
-      business_rules: spec.business_rules,
-      qualification_rules: spec.qualification_rules,
-      disqualification_rules: spec.disqualification_rules,
-      escalation_rules: spec.escalation_rules,
-      success_definition: spec.success_definition,
-      disclosure_text: spec.disclosure_text,
-      version: spec.version,
+      use_case: spec.use_case, tone_style: spec.tone_style, opening_line: spec.opening_line,
+      temperature: spec.temperature, interruption_threshold: spec.interruption_threshold,
+      speaking_speed: spec.speaking_speed, consent_required: spec.consent_required,
+      disclosure_required: spec.disclosure_required, transfer_required: spec.transfer_required,
+      sms_enabled: spec.sms_enabled, must_collect_fields: spec.must_collect_fields,
+      humanization_notes: spec.humanization_notes, business_rules: spec.business_rules,
+      qualification_rules: spec.qualification_rules, disqualification_rules: spec.disqualification_rules,
+      escalation_rules: spec.escalation_rules, success_definition: spec.success_definition,
+      disclosure_text: spec.disclosure_text, version: spec.version,
     };
 
     const allFieldsList = ALL_KNOWN.join(", ");
@@ -175,68 +260,33 @@ serve(async (req) => {
       messages: [
         {
           role: "system",
-          content: `You are an expert AI agent configuration specialist. Your job is to translate a natural-language audit recommendation into a concrete configuration change.
-
-The agent spec has these fields: ${allFieldsList}
-
-Current spec: ${JSON.stringify(specSummary)}
-
-Rules:
-- If the recommendation maps to a specific spec field change, use action "patch_spec" and provide the field name and new value.
-- If the recommendation is about adding knowledge/information the agent should know, use action "add_knowledge".
-- If the recommendation requires manual human intervention (e.g., "hire more agents", "review legal compliance"), use action "manual".
-- For array fields (must_collect_fields, humanization_notes, research_sources), provide the new items as a JSON array of strings.
-- For JSON object fields (business_rules, qualification_rules, etc.), provide the complete updated object.
-- Be precise with field names — they must exactly match one of the known fields.`,
+          content: `You are an expert AI agent configuration specialist. Map a natural-language audit recommendation into a concrete configuration change.\n\nFields: ${allFieldsList}\n\nCurrent spec: ${JSON.stringify(specSummary)}\n\nRules:\n- patch_spec: map to a specific field change\n- add_knowledge: for knowledge/information\n- manual: for human intervention\n- Array fields: provide JSON array of strings\n- JSON fields: provide complete updated object\n- Field names must exactly match known fields.`,
         },
         {
           role: "user",
           content: `Audit category: ${category || "general"}\n\nRecommendation: "${recommendation}"\n\nMap this to a concrete change.`,
         },
       ],
-      tools: [
-        {
-          type: "function",
-          function: {
-            name: "map_recommendation",
-            description: "Map an audit recommendation to a concrete agent configuration change",
-            parameters: {
-              type: "object",
-              properties: {
-                action: {
-                  type: "string",
-                  enum: ["patch_spec", "add_knowledge", "manual"],
-                  description: "The type of action to take",
-                },
-                field: {
-                  type: "string",
-                  description: "The spec field to update (for patch_spec action)",
-                },
-                suggested_value: {
-                  description: "The new value for the field. Use appropriate types: string for text, number for numeric, boolean for flags, array/object for JSON fields.",
-                },
-                reason: {
-                  type: "string",
-                  description: "Brief explanation of what this change does",
-                },
-                knowledge_content: {
-                  type: "string",
-                  description: "Content to add to agent knowledge (for add_knowledge action)",
-                },
-                knowledge_category: {
-                  type: "string",
-                  description: "Category for knowledge entry (for add_knowledge action)",
-                },
-                manual_note: {
-                  type: "string",
-                  description: "Explanation of why manual intervention is needed (for manual action)",
-                },
-              },
-              required: ["action", "reason"],
+      tools: [{
+        type: "function",
+        function: {
+          name: "map_recommendation",
+          description: "Map an audit recommendation to a concrete agent configuration change",
+          parameters: {
+            type: "object",
+            properties: {
+              action: { type: "string", enum: ["patch_spec", "add_knowledge", "manual"] },
+              field: { type: "string" },
+              suggested_value: { description: "The new value" },
+              reason: { type: "string" },
+              knowledge_content: { type: "string" },
+              knowledge_category: { type: "string" },
+              manual_note: { type: "string" },
             },
+            required: ["action", "reason"],
           },
         },
-      ],
+      }],
       tool_choice: { type: "function", function: { name: "map_recommendation" } },
       temperature: 0.2,
       max_tokens: 2048,
@@ -249,40 +299,35 @@ Rules:
     }
 
     const mapping = aiResponse.tool_calls[0].arguments as {
-      action: string;
-      field?: string;
-      suggested_value?: any;
-      reason?: string;
-      knowledge_content?: string;
-      knowledge_category?: string;
-      manual_note?: string;
+      action: string; field?: string; suggested_value?: any; reason?: string;
+      knowledge_content?: string; knowledge_category?: string; manual_note?: string;
     };
 
     // ── Handle manual action ──
     if (mapping.action === "manual") {
       return new Response(JSON.stringify({
-        success: false,
-        manual: true,
+        success: false, manual: true,
         note: mapping.manual_note || mapping.reason || "This recommendation requires manual review",
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // ── Handle add_knowledge ──
     if (mapping.action === "add_knowledge") {
       const { error: kErr } = await supabase.from("agent_knowledge").insert({
-        project_id,
-        content: mapping.knowledge_content || recommendation,
-        category: mapping.knowledge_category || "audit_recommendation",
-        source_type: "audit",
+        project_id, content: mapping.knowledge_content || recommendation,
+        category: mapping.knowledge_category || "audit_recommendation", source_type: "audit",
       });
       if (kErr) throw kErr;
-      return new Response(JSON.stringify({
-        success: true,
-        action: "add_knowledge",
-        reason: mapping.reason,
-      }), {
+
+      await logChange(supabase, {
+        project_id, org_id, field_changed: "agent_knowledge",
+        old_value: null, new_value: mapping.knowledge_content || recommendation,
+        change_type: "add_knowledge", source: category || "unknown",
+        source_detail: recommendation.substring(0, 500),
+        was_auto_applied: true, was_user_approved: category === "user_feedback",
+      });
+
+      return new Response(JSON.stringify({ success: true, action: "add_knowledge", reason: mapping.reason }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -290,15 +335,13 @@ Rules:
     // ── Handle patch_spec ──
     if (!mapping.field || mapping.suggested_value === undefined) {
       return new Response(JSON.stringify({
-        success: false,
-        manual: true,
-        note: "AI mapped to patch_spec but didn't provide field/value",
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+        success: false, manual: true, note: "AI mapped to patch_spec but didn't provide field/value",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const patch = buildPatch(spec, mapping.field, mapping.suggested_value);
+    const fieldBeingChanged = mapping.field;
+    const currentFieldValue = spec[fieldBeingChanged] ?? null;
 
     // Domain guard
     const domainIssue = checkDomainMismatch(spec.use_case || "", patch);
@@ -308,12 +351,55 @@ Rules:
       });
     }
 
-    // Version bump
+    // ── CONFLICT DETECTION ──
+    const conflictResult = await detectConflicts(
+      spec, fieldBeingChanged, currentFieldValue, mapping.suggested_value, category || "unknown", recommendation
+    );
+
+    if (conflictResult.has_conflict && conflictResult.severity === "blocking") {
+      // Insert pending change for human review
+      await supabase.from("pending_spec_changes").insert({
+        project_id, org_id,
+        field_to_change: fieldBeingChanged,
+        current_value: typeof currentFieldValue === "string" ? currentFieldValue : JSON.stringify(currentFieldValue),
+        proposed_value: typeof mapping.suggested_value === "string" ? mapping.suggested_value : JSON.stringify(mapping.suggested_value),
+        change_type: "patch", source: category || "unknown",
+        source_category: category, source_detail: recommendation.substring(0, 500),
+        conflict_type: conflictResult.conflict_type || "contradiction",
+        conflict_description: conflictResult.conflict_description || "Conflict detected",
+        affected_fields: conflictResult.affected_fields || [],
+        impact_summary: conflictResult.impact_summary,
+        status: "pending",
+      });
+
+      await logChange(supabase, {
+        project_id, org_id, field_changed: fieldBeingChanged,
+        old_value: currentFieldValue, new_value: mapping.suggested_value,
+        change_type: "patch", source: category || "unknown",
+        source_detail: recommendation.substring(0, 500),
+        conflict_detected: true, conflict_description: conflictResult.conflict_description,
+        was_auto_applied: false, was_user_approved: false,
+      });
+
+      return new Response(JSON.stringify({
+        success: false, held_for_review: true,
+        conflict: {
+          type: conflictResult.conflict_type,
+          description: conflictResult.conflict_description,
+          impact: conflictResult.impact_summary,
+          affected_fields: conflictResult.affected_fields,
+        },
+        message: "This change conflicts with existing rules and has been held for your review.",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const hasWarning = conflictResult.has_conflict && conflictResult.severity === "warning";
+
+    // ── APPLY PATCH ──
     const fromVersion = spec.version;
     const toVersion = fromVersion + 1;
     patch.version = toVersion;
 
-    // Apply
     const { error: updateErr } = await supabase
       .from("agent_specs")
       .update(patch)
@@ -322,24 +408,29 @@ Rules:
 
     // Record improvement
     await supabase.from("improvements").insert({
-      project_id,
-      from_version: fromVersion,
-      to_version: toVersion,
+      project_id, from_version: fromVersion, to_version: toVersion,
       change_summary: mapping.reason || `Applied audit recommendation: ${recommendation.slice(0, 100)}`,
-      patch,
-      source_recommendation: recommendation,
+      patch, source_recommendation: recommendation,
     });
 
-    // ── Resync Retell agent so changes take effect on next call ──
+    // Log the change
+    await logChange(supabase, {
+      project_id, org_id, field_changed: fieldBeingChanged,
+      old_value: currentFieldValue, new_value: mapping.suggested_value,
+      change_type: "patch", source: category || "unknown",
+      source_category: category, source_detail: recommendation.substring(0, 500),
+      conflict_detected: hasWarning, conflict_description: hasWarning ? conflictResult.conflict_description : undefined,
+      was_auto_applied: true,
+      was_user_approved: ["user_feedback", "call_review_feedback", "manual_edit"].includes(category),
+    });
+
+    // ── Resync Retell agent ──
     let syncedToRetell = false;
     if (spec.retell_agent_id) {
       try {
         const retellKey = Deno.env.get("RETELL_API_KEY");
         if (retellKey) {
-          // Merge patch into spec for prompt rebuild
           const updatedSpec = { ...spec, ...patch };
-          
-          // Fetch knowledge briefing
           const { data: kEntries } = await supabase
             .from("agent_knowledge")
             .select("content, category")
@@ -347,13 +438,11 @@ Rules:
             .order("usage_count", { ascending: false })
             .limit(20);
           const knowledgeBriefing = (kEntries || []).map((e: any) => e.content).join("\n\n");
-          
           const newPrompt = buildTaskPrompt(updatedSpec, [], knowledgeBriefing, "");
           const trimmedPrompt = newPrompt.length > 28000
             ? newPrompt.substring(0, 28000) + "\n\n[Trimmed for length]"
             : newPrompt;
 
-          // Get the agent's LLM ID from Retell
           const agentRes = await fetch(`https://api.retellai.com/get-agent/${spec.retell_agent_id}`, {
             headers: { Authorization: `Bearer ${retellKey}` },
           });
@@ -381,22 +470,16 @@ Rules:
     }
 
     return new Response(JSON.stringify({
-      success: true,
-      action: "patch_spec",
-      field: mapping.field,
-      from_version: fromVersion,
-      to_version: toVersion,
-      reason: mapping.reason,
-      patch,
-      synced_to_retell: syncedToRetell,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+      success: true, action: "patch_spec", field: mapping.field,
+      from_version: fromVersion, to_version: toVersion,
+      reason: mapping.reason, patch, synced_to_retell: syncedToRetell,
+      impact_summary: conflictResult.impact_summary,
+      conflict_warning: hasWarning ? conflictResult.conflict_description : undefined,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {
     console.error("apply-audit-recommendation error:", err);
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
