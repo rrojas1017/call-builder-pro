@@ -7,10 +7,9 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  Loader2, Play, Bot, BrainCircuit, ChevronDown, CheckCircle, XCircle,
-  ArrowUp, ArrowDown, Minus, RotateCcw, Zap, Trophy, MessageSquare, FileText, StopCircle, Eye,
+  Loader2, BrainCircuit, ChevronDown, CheckCircle,
+  ArrowUp, ArrowDown, Minus, Zap, Trophy, StopCircle, Eye,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import LiveSimulationChat from "@/components/LiveSimulationChat";
@@ -76,8 +75,6 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
   const [expandedRound, setExpandedRound] = useState<number | null>(null);
   const [finalScore, setFinalScore] = useState<number | null>(null);
 
-  const [singleResult, setSingleResult] = useState<CallResult | null>(null);
-  const [singleRunning, setSingleRunning] = useState(false);
 
   const cancelRef = useRef(false);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -219,22 +216,6 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
     toast({ title: "Cancelling...", description: "Will stop after the current call finishes." });
   };
 
-  const handleSingleSimulation = async () => {
-    setSingleRunning(true);
-    setSingleResult(null);
-    try {
-      const data = await runSingleSimulation();
-      setSingleResult(data);
-      toast({
-        title: "Simulation complete",
-        description: data.evaluation ? `Score: ${data.evaluation.overall_score}/10` : "Conversation generated",
-      });
-    } catch (err: any) {
-      toast({ title: "Simulation failed", description: err.message, variant: "destructive" });
-    } finally {
-      setSingleRunning(false);
-    }
-  };
 
   const getScoreColor = (score: number | null) => {
     if (score == null) return "text-muted-foreground";
@@ -255,7 +236,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
   const completedCalls = ((currentRound - 1) * callsPerRound) + currentCall;
   const progressPct = running ? Math.min((completedCalls / totalCalls) * 100, 100) : 0;
 
-  const isDisabled = disabled || running || singleRunning;
+  const isDisabled = disabled || running;
 
   return (
     <div className="space-y-4">
@@ -289,10 +270,10 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="w-full bg-muted/50 p-1 rounded-lg">
-            <TabsTrigger value="training" className="flex-1 gap-1.5 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm" disabled={running || singleRunning}>
+            <TabsTrigger value="training" className="flex-1 gap-1.5 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm" disabled={running}>
               <Trophy className="h-3.5 w-3.5" /> Training
             </TabsTrigger>
-            <TabsTrigger value="live" className="flex-1 gap-1.5 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm" disabled={running || singleRunning}>
+            <TabsTrigger value="live" className="flex-1 gap-1.5 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm" disabled={running}>
               <Eye className="h-3.5 w-3.5" /> Live Practice
             </TabsTrigger>
           </TabsList>
@@ -326,9 +307,6 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
                   <BrainCircuit className="mr-2 h-4 w-4" /> Start {maxRounds}-Round Training
                 </Button>
               )}
-              <Button variant="outline" onClick={handleSingleSimulation} disabled={isDisabled || !projectId} className="shrink-0">
-                {singleRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <><MessageSquare className="mr-2 h-4 w-4" /> Test 1 Call</>}
-              </Button>
             </div>
 
             {running && (
@@ -348,9 +326,6 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
       </div>
 
       {/* Single simulation result */}
-      {singleResult && (
-        <SingleResultCard result={singleResult} getScoreColor={getScoreColor} />
-      )}
 
       {/* Training results */}
       {roundResults.length > 0 && (
@@ -429,66 +404,3 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
   );
 }
 
-function SingleResultCard({ result, getScoreColor }: { result: CallResult; getScoreColor: (s: number | null) => string }) {
-  return (
-    <div className="glass-card rounded-xl p-6 space-y-4">
-      <div className="flex items-center gap-2">
-        <MessageSquare className="h-4 w-4 text-primary" />
-        <span className="text-sm font-semibold text-foreground">Single Simulation Result</span>
-        {result.difficulty && <Badge variant="outline" className="text-xs">{result.difficulty}</Badge>}
-      </div>
-
-      {result.evaluation && (
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: "Overall", score: result.evaluation.overall_score },
-            { label: "Humanness", score: result.evaluation.humanness_score },
-            { label: "Naturalness", score: result.evaluation.naturalness_score },
-          ].map(({ label, score }) => (
-            <div key={label} className="text-center rounded-lg border border-border/50 bg-gradient-to-br from-muted/40 to-muted/20 p-3">
-              <p className="text-xs text-muted-foreground">{label}</p>
-              <p className={`text-2xl font-bold ${getScoreColor(score ?? null)}`}>{score ?? "—"}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {result.evaluation?.issues_detected && result.evaluation.issues_detected.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-foreground">Issues Detected:</p>
-          <ul className="space-y-1">
-            {result.evaluation.issues_detected.map((issue, i) => (
-              <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <XCircle className="h-3 w-3 text-destructive mt-0.5 shrink-0" />
-                {issue}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {result.transcript && (
-        <Collapsible>
-          <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-primary hover:underline">
-            <FileText className="h-3 w-3" /> View Transcript <ChevronDown className="h-3 w-3" />
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="mt-2 rounded-lg border border-border bg-muted/30 p-3 space-y-1.5 max-h-64 overflow-y-auto text-xs">
-              {result.transcript.split("\n").map((line, i) => {
-                const isAgent = line.startsWith("Agent:");
-                const isUser = line.startsWith("User:");
-                return (
-                  <p key={i} className={isAgent ? "text-primary" : isUser ? "text-orange-400" : "text-muted-foreground"}>
-                    {isAgent && <span className="font-semibold">Agent: </span>}
-                    {isUser && <span className="font-semibold">Customer: </span>}
-                    {line.replace(/^(Agent|User):\s*/, "")}
-                  </p>
-                );
-              })}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-    </div>
-  );
-}
