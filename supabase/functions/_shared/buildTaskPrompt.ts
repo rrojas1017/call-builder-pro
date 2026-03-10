@@ -214,7 +214,9 @@ RULES:
 - If the caller gives a detailed answer or shares something personal, react to it briefly before continuing — do not immediately jump to the next field.
 - ONE QUESTION PER TURN: Never ask more than one question in a single response. Ask one thing, then STOP and wait for the caller to answer before continuing.`;
 
-  // Inject business rules as high-priority instructions
+  // Build business rules text (injected at end of prompt for highest priority)
+  let businessRulesBlock = "";
+  let businessRulesCoverFpl = false;
   if (spec.business_rules && typeof spec.business_rules === "object" && Object.keys(spec.business_rules).length > 0) {
     const br = spec.business_rules as any;
     let brText: string;
@@ -229,7 +231,9 @@ RULES:
         .map(([key, val]) => `- ${key}: ${val}`)
         .join("\n");
     }
-    prompt += `\n\nBUSINESS RULES (MUST follow strictly — these override any default behavior):\n${brText}`;
+    businessRulesBlock = brText;
+    const brLower = brText.toLowerCase();
+    businessRulesCoverFpl = brLower.includes("fpl") || brLower.includes("federal poverty");
   }
 
   if (resolvedOpeningLine) {
