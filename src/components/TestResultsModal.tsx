@@ -5,9 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2, GraduationCap, Download, Mic, MicOff, MessageSquarePlus, Pencil, Send } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2, GraduationCap, Download, Mic, MicOff, MessageSquarePlus, Pencil, Send, BookmarkPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { downloadRecordingMp3 } from "@/lib/recordingDownload";
+import { detectBusinessRuleIntent } from "@/lib/detectBusinessRuleIntent";
+import { addBusinessRule } from "@/lib/addBusinessRule";
 
 interface TestContact {
   id: string;
