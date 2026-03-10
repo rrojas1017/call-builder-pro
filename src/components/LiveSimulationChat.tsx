@@ -39,6 +39,20 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
   const agentSystemRef = useRef("");
   const customerSystemRef = useRef("");
 
+  // Retry helper: tries once, waits 2s, retries once, returns null on failure
+  const invokeWithRetry = async (fnName: string, body: Record<string, any>) => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const { data, error } = await supabase.functions.invoke(fnName, { body });
+        if (error) throw error;
+        return data;
+      } catch {
+        if (attempt === 0) await pause(2000);
+      }
+    }
+    return null;
+  };
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, currentSpeaker]);
