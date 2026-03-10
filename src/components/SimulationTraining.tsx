@@ -56,6 +56,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
   const [mode, setMode] = useState<"simulate" | "live" | "hybrid">("simulate");
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard" | "mixed">("medium");
+  const [activeTab, setActiveTab] = useState("training");
   const [maxRounds, setMaxRounds] = useState(3);
   const [callsPerRound, setCallsPerRound] = useState(3);
 
