@@ -116,3 +116,6 @@ verify_jwt = false
 
 [functions.auto-train]
 verify_jwt = false
+
+[functions.simulate-call]
+verify_jwt = false
