@@ -257,6 +257,137 @@ function LearningProgressBar({ entries, projectId }: { entries: KnowledgeEntry[]
   );
 }
 
+// ─── Pending Research Requests ─────────────────────────────────
+interface ResearchRequest {
+  id: string;
+  project_id: string;
+  org_id: string;
+  status: string;
+  trigger_reason: string | null;
+  proposed_queries: { query: string; category: string }[] | null;
+  humanness_score: number | null;
+  knowledge_gaps: string[] | null;
+  created_at: string;
+}
+
+function PendingResearchRequests({ projectId }: { projectId: string }) {
+  const { toast } = useToast();
+  const [requests, setRequests] = useState<ResearchRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
+  const fetchRequests = async () => {
+    const { data } = await supabase
+      .from("research_requests")
+      .select("*")
+      .eq("project_id", projectId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+    setRequests((data || []) as unknown as ResearchRequest[]);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchRequests(); }, [projectId]);
+
+  const handleApprove = async (req: ResearchRequest) => {
+    setProcessingId(req.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase
+        .from("research_requests")
+        .update({ status: "approved", approved_by: user?.id, approved_at: new Date().toISOString() })
+        .eq("id", req.id);
+
+      const { error } = await supabase.functions.invoke("research-and-improve", {
+        body: { project_id: projectId, mode: "execute", request_id: req.id },
+      });
+
+      if (error) throw error;
+      toast({ title: "Research completed", description: "New knowledge entries have been added." });
+      setRequests(prev => prev.filter(r => r.id !== req.id));
+    } catch (e: any) {
+      console.error("Failed to execute research:", e);
+      toast({ title: "Error", description: e.message || "Failed to execute research", variant: "destructive" });
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleReject = async (id: string) => {
+    await supabase.from("research_requests").update({ status: "rejected" }).eq("id", id);
+    setRequests(prev => prev.filter(r => r.id !== id));
+    toast({ title: "Research request rejected" });
+  };
+
+  if (loading || requests.length === 0) return null;
+
+  return (
+    <div className="space-y-3 mb-6">
+      <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+        <Zap className="h-4 w-4 text-amber-500" />
+        Pending Research Requests ({requests.length})
+      </h3>
+      {requests.map(req => (
+        <Card key={req.id} className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">Auto-Research Requested</p>
+                <p className="text-xs text-muted-foreground">{req.trigger_reason}</p>
+              </div>
+              <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-400 border-amber-500/20 shrink-0">
+                Pending Approval
+              </Badge>
+            </div>
+
+            {req.proposed_queries && req.proposed_queries.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Proposed searches:</p>
+                <ul className="text-xs text-foreground space-y-0.5">
+                  {req.proposed_queries.map((q, i) => (
+                    <li key={i} className="flex items-center gap-1.5">
+                      <span className="text-muted-foreground">•</span> {q.query}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {req.knowledge_gaps && req.knowledge_gaps.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {req.knowledge_gaps.map((gap, i) => (
+                  <Badge key={i} variant="secondary" className="text-[10px]">{gap}</Badge>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                onClick={() => handleApprove(req)}
+                disabled={processingId === req.id}
+                className="gap-1"
+              >
+                {processingId === req.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+                Approve & Run
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleReject(req.id)}
+                disabled={processingId === req.id}
+                className="gap-1 text-destructive hover:text-destructive"
+              >
+                <XCircle className="h-3 w-3" /> Reject
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 // ─── API Sources Tab ──────────────────────────────────────────
 function ApiSourcesTab({ projectId }: { projectId: string }) {
   const { activeOrgId } = useOrgContext();
