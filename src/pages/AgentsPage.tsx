@@ -277,7 +277,7 @@ export default function AgentsPage() {
                       <TableCell className="font-medium text-foreground">{agent.name}</TableCell>
                       <TableCell><AgentBadges agent={agent} /></TableCell>
                       <TableCell className="text-muted-foreground text-sm">{new Date(agent.created_at).toLocaleDateString()}</TableCell>
-                      <TableCell className="text-right"><AgentActions agent={agent} onDelete={setDeletingId} /></TableCell>
+                      <TableCell className="text-right"><AgentActions agent={agent} onDelete={setDeletingId} onClone={cloneAgent} cloningId={cloningId} /></TableCell>
                     </TableRow>
                   );
                 })}
