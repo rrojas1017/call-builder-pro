@@ -260,7 +260,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
   return (
     <div className="space-y-4">
       {/* Header + Tabs */}
-      <div className="surface-elevated rounded-xl p-6 space-y-5">
+      <div className="gradient-border glass-card rounded-xl p-6 space-y-5">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <BrainCircuit className="h-5 w-5 text-primary" />
