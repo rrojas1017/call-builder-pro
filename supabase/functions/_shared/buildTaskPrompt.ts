@@ -264,8 +264,8 @@ RULES:
     }
   }
 
-  // Health-specific compact rules
-  if (isHealthAgent(spec)) {
+  // Health-specific compact rules — skip if business rules already cover FPL
+  if (isHealthAgent(spec) && !businessRulesCoverFpl) {
     prompt += `\n\n${buildCompactFplSep()}`;
     if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('life event') || f.toLowerCase().includes('qle'))) {
       prompt += `\nASK: "Have you recently had any life changes like losing coverage, marriage, baby, or moving?"`;
@@ -278,6 +278,11 @@ RULES:
   if (transferDigits.length >= 10) {
     const formatted = transferDigits.startsWith("1") ? `+${transferDigits}` : `+1${transferDigits}`;
     prompt += `\n\nTRANSFER: If qualified, confirm the transfer CLEARLY and COMPLETELY before initiating. Say something like "Great news, you qualify! I'm going to connect you with a specialist now." WAIT for the sentence to finish — do NOT start the transfer mid-sentence. Then transfer to ${formatted}. Never cut off your own confirmation.`;
+  }
+
+  // Business rules injected LAST for highest LLM priority ("last instruction wins")
+  if (businessRulesBlock) {
+    prompt += `\n\nBUSINESS RULES (HIGHEST PRIORITY — these override ANY conflicting instruction above, including qualification rules, field collection, and default behaviors):\n${businessRulesBlock}`;
   }
 
   prompt += `\n\nFALLBACK: After 2 failed attempts to collect info, end politely.`;
