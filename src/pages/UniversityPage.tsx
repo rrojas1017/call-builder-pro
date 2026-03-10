@@ -133,6 +133,15 @@ export default function UniversityPage() {
   const [applyingFixId, setApplyingFixId] = useState<string | null>(null);
   const [appliedFixes, setAppliedFixes] = useState<string[]>([]);
 
+  // Feedback verification state
+  const [verifyingFeedback, setVerifyingFeedback] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<{
+    verified: boolean;
+    evidence: string;
+    feedback_text: string;
+    field_changed?: string;
+  } | null>(null);
+
   // Trend data
   const [trendData, setTrendData] = useState<TrendPoint[]>([]);
   const [trendLoading, setTrendLoading] = useState(false);
