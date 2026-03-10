@@ -366,10 +366,9 @@ ${call.transcript}`;
                 continue;
               }
 
-              // For pronunciation_guide, merge into existing array
+              // For pronunciation_guide, route through apply-improvement for version tracking
               if (fb.target_field === "pronunciation_guide") {
                 const currentGuide: any[] = Array.isArray(spec.pronunciation_guide) ? spec.pronunciation_guide : [];
-                // Try to parse suggested_change as JSON, otherwise create entry
                 let newEntry: any;
                 try {
                   newEntry = JSON.parse(fb.suggested_change);
@@ -377,9 +376,30 @@ ${call.transcript}`;
                   newEntry = { word: fb.suggested_change, pronunciation: fb.suggested_change };
                 }
                 const merged = [...currentGuide, newEntry];
-                await supabase.from("agent_specs").update({ pronunciation_guide: merged }).eq("id", spec.id);
-                applied.push({ ...fb, auto_applied: true });
-                console.log(`Verbal training: updated pronunciation_guide`);
+                const pronResp = await fetch(`${supabaseUrl}/functions/v1/apply-improvement`, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${supabaseKey}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    project_id: call.project_id,
+                    improvement: {
+                      field: "pronunciation_guide",
+                      suggested_value: merged,
+                      reason: `[VERBAL-TRAINING] ${fb.instruction || "Updated pronunciation guide"}`,
+                      original_key: `verbal::pronunciation_guide::${fb.suggested_change}`.slice(0, 200),
+                      replace_mode: true,
+                    },
+                  }),
+                });
+                if (pronResp.ok) {
+                  applied.push({ ...fb, auto_applied: true });
+                  console.log(`Verbal training: updated pronunciation_guide via apply-improvement`);
+                } else {
+                  applied.push({ ...fb, auto_applied: false });
+                  console.error(`Verbal training: failed pronunciation_guide:`, await pronResp.text());
+                }
                 continue;
               }
 
