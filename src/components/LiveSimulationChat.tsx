@@ -303,7 +303,7 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
       </div>
 
       {/* Chat area */}
-      <div className="p-4 h-[420px] overflow-y-auto space-y-3 bg-background/50">
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="p-4 h-[420px] overflow-y-auto space-y-3 bg-background/50">
         {messages.length === 0 && !running && (
           <div className="flex flex-col items-center justify-center h-full text-center gap-3">
             <Eye className="h-10 w-10 text-muted-foreground/40" />
