@@ -327,9 +327,6 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
       </div>
 
       {/* Single simulation result */}
-      {singleResult && (
-        <SingleResultCard result={singleResult} getScoreColor={getScoreColor} />
-      )}
 
       {/* Training results */}
       {roundResults.length > 0 && (
