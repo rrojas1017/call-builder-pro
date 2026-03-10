@@ -6,8 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Play, Square, Bot, User, Eye, RotateCcw, GraduationCap, Zap, MessageCircle, Send, CheckCircle } from "lucide-react";
+import { Loader2, Play, Square, Bot, User, Eye, RotateCcw, GraduationCap, Zap, MessageCircle, Send, CheckCircle, BookmarkPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { detectBusinessRuleIntent } from "@/lib/detectBusinessRuleIntent";
+import { addBusinessRule } from "@/lib/addBusinessRule";
 
 interface LiveSimulationChatProps {
   projectId: string;
