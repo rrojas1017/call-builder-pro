@@ -97,7 +97,10 @@ export default function EditAgentPage() {
   const [successDefinition, setSuccessDefinition] = useState("");
   const [qualificationRules, setQualificationRules] = useState("");
   const [disqualificationRules, setDisqualificationRules] = useState("");
-  const [businessRules, setBusinessRules] = useState("");
+  const [businessRules, setBusinessRules] = useState<string[]>([]);
+  const [newBusinessRule, setNewBusinessRule] = useState("");
+  const [brDraggedIndex, setBrDraggedIndex] = useState<number | null>(null);
+  const [brDragOverIndex, setBrDragOverIndex] = useState<number | null>(null);
   const [consentRequired, setConsentRequired] = useState(true);
   const [disclosureRequired, setDisclosureRequired] = useState(true);
   const [disclosureText, setDisclosureText] = useState("");
