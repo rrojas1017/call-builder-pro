@@ -55,7 +55,9 @@ serve(async (req) => {
       .limit(30);
 
     // Build the agent's actual prompt (same one used for real calls)
-    const agentPrompt = buildTaskPrompt(spec, knowledge || [], undefined, "Maria Garcia");
+    const callerNames = ["Maria Garcia", "James Wilson", "Sarah Johnson", "Carlos Martinez", "Jennifer Thompson", "David Brown", "Lisa Anderson", "Michael Davis", "Patricia Rodriguez", "Robert Taylor", "Amanda Mitchell", "Jose Hernandez"];
+    const callerName = callerNames[Math.floor(Math.random() * callerNames.length)];
+    const agentPrompt = buildTaskPrompt(spec, knowledge || [], undefined, callerName);
 
     // Build the agent's opening line
     const openingLine = spec.opening_line

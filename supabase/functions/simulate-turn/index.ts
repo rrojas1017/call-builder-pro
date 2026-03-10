@@ -54,7 +54,8 @@ async function handleInit(body: any) {
     .order("created_at", { ascending: false })
     .limit(30);
 
-  const callerName = customer_name || "Maria Garcia";
+  const names = ["Maria Garcia", "James Wilson", "Sarah Johnson", "Carlos Martinez", "Jennifer Thompson", "David Brown", "Lisa Anderson", "Michael Davis", "Patricia Rodriguez", "Robert Taylor", "Amanda Mitchell", "Jose Hernandez"];
+  const callerName = customer_name || names[Math.floor(Math.random() * names.length)];
   const agentSystem = buildTaskPrompt(spec, knowledge || [], undefined, callerName);
 
   const openingLine = spec.opening_line
