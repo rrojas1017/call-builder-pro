@@ -1,31 +1,48 @@
 
 
-## Analysis: Save & Learn Already Applies Improvements
+# Simplify the Agent Creation Wizard
 
-The existing `handleSaveAndLearn` in `LiveSimulationChat.tsx` (lines 333-353) **already does exactly what you described**:
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-1. Calls `evaluate-call` and gets the evaluation response
-2. Extracts `recommended_improvements` (or `recommended_fixes`)
-3. Filters for `critical` and `important` severity
-4. Loops through and calls `apply-audit-recommendation` for each
-5. Tracks applied count and shows a toast with the score and fix count
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-**One minor improvement worth making**: The `category` field currently passes the recommendation's severity (`"critical"` or `"important"`) instead of `"save_and_learn"`. Changing this to `"save_and_learn"` would:
-- Make it consistent with the Safe Learning Gates plan (where category is used to gate live-call-originated changes)
-- Make audit trail clearer about where the change originated
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-### Change
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-**`src/components/LiveSimulationChat.tsx`** — Line 344: Change `category: rec.severity` to `category: "save_and_learn"`
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-That's it — a one-line change. The rest of the pipeline is already wired up correctly.
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-### If the agent still isn't learning
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-The issue may not be in this file. More likely causes:
-- `apply-audit-recommendation` is failing silently (the catch on line 349 swallows errors)
-- The recommendation text format doesn't match what the AI mapper expects
-- The Retell resync (added in the previous fix) isn't completing
+## Plan
 
-We could add `console.warn` logging to the catch block to surface failures, which would help diagnose if improvements are being attempted but failing.
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
+
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+
+### Files Changed
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 
