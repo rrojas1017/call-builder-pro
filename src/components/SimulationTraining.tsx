@@ -287,7 +287,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
           </Select>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="w-full">
             <TabsTrigger value="training" className="flex-1 gap-1.5" disabled={running || singleRunning}>
               <Trophy className="h-3.5 w-3.5" /> Training
