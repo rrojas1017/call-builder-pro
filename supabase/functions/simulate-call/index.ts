@@ -356,8 +356,9 @@ async function runConversation(
     agentMessages.push({ role: "assistant", content: cleanAgent });
     customerMessages.push({ role: "user", content: cleanAgent });
 
-    // End if either party wrapped up
-    const agentEnded = /\b(goodbye|bye|have a (great|good)|thank you for your time|enjoy your|take care)\b/i.test(cleanAgent);
+    // End if either party wrapped up — check tail of message only, with tighter patterns
+    const agentTail = cleanAgent.slice(-80);
+    const agentEnded = turn >= MIN_TURNS && /\b(goodbye|bye bye|thank you for your time|take care|have a (great|good) (day|evening|night|one))\b/i.test(agentTail);
 
     if (customerEnded || agentEnded) {
       if (agentEnded && !customerEnded) {
