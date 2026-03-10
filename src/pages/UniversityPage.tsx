@@ -592,12 +592,10 @@ export default function UniversityPage() {
 
       {/* AI Simulation Training */}
       {agentId && (
-        <SimulationTrainingPanel
-          agentId={agentId}
+        <SimulationTraining
+          projectId={agentId}
           disabled={running}
-          onComplete={() => {
-            loadHistory();
-          }}
+          onComplete={() => loadHistory()}
         />
       )}
 
