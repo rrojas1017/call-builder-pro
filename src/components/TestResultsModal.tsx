@@ -659,10 +659,42 @@ function UserFeedbackSection({ contactId, projectId, existingFeedback, onFeedbac
       </p>
       <Textarea
         value={feedback}
-        onChange={(e) => setFeedback(e.target.value)}
-        placeholder="e.g., 'The agent was too pushy about scheduling', 'Great job handling the objection about pricing'..."
+        onChange={(e) => {
+          setFeedback(e.target.value);
+          const detection = detectBusinessRuleIntent(e.target.value);
+          setDetectedRule(detection.isBusinessRule ? detection.ruleText : null);
+        }}
+        placeholder="e.g., 'The agent was too pushy about scheduling', or say 'Add this as a business rule: always verify zip code'..."
         className="min-h-[60px] text-xs"
       />
+      {detectedRule && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+          <p className="text-xs font-medium text-primary flex items-center gap-1">
+            <BookmarkPlus className="h-3.5 w-3.5" /> Business rule detected
+          </p>
+          <p className="text-xs text-foreground">"{detectedRule}"</p>
+          <Button
+            size="sm"
+            className="h-7 text-xs"
+            disabled={savingRule}
+            onClick={async () => {
+              setSavingRule(true);
+              const result = await addBusinessRule(projectId, detectedRule);
+              setSavingRule(false);
+              if (result.success) {
+                toast({ title: "Business rule added!", description: `Saved to agent's business rules.` });
+                setDetectedRule(null);
+                setFeedback("");
+              } else {
+                toast({ title: "Failed to add rule", description: result.error, variant: "destructive" });
+              }
+            }}
+          >
+            {savingRule ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <BookmarkPlus className="mr-1 h-3 w-3" />}
+            Save as Business Rule
+          </Button>
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <Button
           onClick={handleSave}
