@@ -209,7 +209,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
   return (
     <div className="space-y-4">
-      {/* Config */}
+      {/* Header + Tabs */}
       <div className="surface-elevated rounded-xl p-6 space-y-5">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -220,76 +220,94 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            Your agent practices against AI customers. Each call is simulated and scored individually with live progress.
+            Your agent practices against AI customers. Choose Training for scored rounds or Live Practice to watch in real-time.
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label className="text-xs">Training Mode</Label>
-            <Select value={mode} onValueChange={(v) => setMode(v as any)} disabled={isDisabled}>
-              <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="simulate"><span className="flex items-center gap-1.5"><Bot className="h-3.5 w-3.5" /> Simulate Only</span></SelectItem>
-                <SelectItem value="hybrid"><span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Hybrid</span></SelectItem>
-                <SelectItem value="live"><span className="flex items-center gap-1.5"><Play className="h-3.5 w-3.5" /> Live Calls Only</span></SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Customer Difficulty</Label>
-            <Select value={difficulty} onValueChange={(v) => setDifficulty(v as any)} disabled={isDisabled}>
-              <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="easy">Easy — Cooperative</SelectItem>
-                <SelectItem value="medium">Medium — Realistic</SelectItem>
-                <SelectItem value="hard">Hard — Challenging</SelectItem>
-                <SelectItem value="mixed">Mixed — Rotates</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="w-full">
+            <TabsTrigger value="training" className="flex-1 gap-1.5" disabled={running || singleRunning}>
+              <Trophy className="h-3.5 w-3.5" /> Training
+            </TabsTrigger>
+            <TabsTrigger value="live" className="flex-1 gap-1.5" disabled={running || singleRunning}>
+              <Eye className="h-3.5 w-3.5" /> Live Practice
+            </TabsTrigger>
+          </TabsList>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs">Rounds</Label>
-              <span className="text-xs font-medium text-muted-foreground">{maxRounds}</span>
+          <TabsContent value="training" className="space-y-4 mt-4">
+            {/* Shared difficulty + training mode */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Training Mode</Label>
+                <Select value={mode} onValueChange={(v) => setMode(v as any)} disabled={isDisabled}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="simulate"><span className="flex items-center gap-1.5"><Bot className="h-3.5 w-3.5" /> Simulate Only</span></SelectItem>
+                    <SelectItem value="hybrid"><span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Hybrid</span></SelectItem>
+                    <SelectItem value="live"><span className="flex items-center gap-1.5"><Play className="h-3.5 w-3.5" /> Live Calls Only</span></SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Customer Difficulty</Label>
+                <Select value={difficulty} onValueChange={(v) => setDifficulty(v as any)} disabled={isDisabled}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="easy">Easy — Cooperative</SelectItem>
+                    <SelectItem value="medium">Medium — Realistic</SelectItem>
+                    <SelectItem value="hard">Hard — Challenging</SelectItem>
+                    <SelectItem value="mixed">Mixed — Rotates</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <Slider value={[maxRounds]} onValueChange={([v]) => setMaxRounds(v)} min={1} max={10} step={1} disabled={isDisabled} />
-          </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs">Calls per Round</Label>
-              <span className="text-xs font-medium text-muted-foreground">{callsPerRound}</span>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Rounds</Label>
+                  <span className="text-xs font-medium text-muted-foreground">{maxRounds}</span>
+                </div>
+                <Slider value={[maxRounds]} onValueChange={([v]) => setMaxRounds(v)} min={1} max={10} step={1} disabled={isDisabled} />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Calls per Round</Label>
+                  <span className="text-xs font-medium text-muted-foreground">{callsPerRound}</span>
+                </div>
+                <Slider value={[callsPerRound]} onValueChange={([v]) => setCallsPerRound(v)} min={1} max={10} step={1} disabled={isDisabled} />
+              </div>
             </div>
-            <Slider value={[callsPerRound]} onValueChange={([v]) => setCallsPerRound(v)} min={1} max={10} step={1} disabled={isDisabled} />
-          </div>
-        </div>
 
-        <div className="flex gap-2">
-          {running ? (
-            <Button variant="destructive" onClick={handleCancel} className="flex-1">
-              <StopCircle className="mr-2 h-4 w-4" /> Cancel Training
-            </Button>
-          ) : (
-            <Button onClick={handleStartTraining} disabled={isDisabled || !projectId} className="flex-1">
-              <BrainCircuit className="mr-2 h-4 w-4" /> Start {maxRounds}-Round Training
-            </Button>
-          )}
-          <Button variant="outline" onClick={handleSingleSimulation} disabled={isDisabled || !projectId} className="shrink-0">
-            {singleRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <><MessageSquare className="mr-2 h-4 w-4" /> Test 1 Call</>}
-          </Button>
-        </div>
+            <div className="flex gap-2">
+              {running ? (
+                <Button variant="destructive" onClick={handleCancel} className="flex-1">
+                  <StopCircle className="mr-2 h-4 w-4" /> Cancel Training
+                </Button>
+              ) : (
+                <Button onClick={handleStartTraining} disabled={isDisabled || !projectId} className="flex-1">
+                  <BrainCircuit className="mr-2 h-4 w-4" /> Start {maxRounds}-Round Training
+                </Button>
+              )}
+              <Button variant="outline" onClick={handleSingleSimulation} disabled={isDisabled || !projectId} className="shrink-0">
+                {singleRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <><MessageSquare className="mr-2 h-4 w-4" /> Test 1 Call</>}
+              </Button>
+            </div>
 
-        {running && (
-          <div className="space-y-2">
-            <Progress value={progressPct} className="h-2" />
-            <p className="text-xs text-muted-foreground animate-pulse">
-              Round {currentRound}/{maxRounds} — Call {currentCall}/{callsPerRound}...
-            </p>
-          </div>
-        )}
+            {running && (
+              <div className="space-y-2">
+                <Progress value={progressPct} className="h-2" />
+                <p className="text-xs text-muted-foreground animate-pulse">
+                  Round {currentRound}/{maxRounds} — Call {currentCall}/{callsPerRound}...
+                </p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="live" className="mt-4">
+            <LiveSimulationChat projectId={projectId} difficulty={difficulty} />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Single simulation result */}
