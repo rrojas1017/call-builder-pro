@@ -159,7 +159,9 @@ RULES:
 - Be natural: "yeah", "uh-huh", "well...", "let me think..."
 - Only share info when asked — don't volunteer everything
 - Speak in ${language === "es" ? "Spanish" : "English"}
-- React naturally to awkward agent behavior`;
+- React naturally to awkward agent behavior
+- ${interruptions}
+- If the agent's last message ends with "—" (was cut off), respond as if you interrupted them mid-sentence`;
 }
 
 function generateCustomerData(useCase: string): string {
