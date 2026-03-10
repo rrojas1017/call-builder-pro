@@ -345,7 +345,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
             {running && (
               <div className="space-y-2">
-                <Progress value={progressPct} className="h-2" />
+                <Progress value={progressPct} className={`h-2 ${running ? "shimmer-bar" : ""}`} />
                 <p className="text-xs text-muted-foreground animate-pulse">
                   Round {currentRound}/{maxRounds} — Call {currentCall}/{callsPerRound}...
                 </p>
