@@ -1082,8 +1082,12 @@ function ResultCard({
           </p>
           <Textarea
             value={feedbackText}
-            onChange={(e) => setFeedbackText(e.target.value)}
-            placeholder="e.g., 'The agent was too pushy about scheduling', 'Great job handling the objection about pricing'..."
+            onChange={(e) => {
+              setFeedbackText(e.target.value);
+              const detection = detectBusinessRuleIntent(e.target.value);
+              setDetectedRule(detection.isBusinessRule ? detection.ruleText : null);
+            }}
+            placeholder="e.g., 'The agent was too pushy about scheduling', or say 'Add this as a business rule: always ask for zip code first'..."
             className="min-h-[60px] text-xs"
           />
           <div className="flex items-center gap-2">
