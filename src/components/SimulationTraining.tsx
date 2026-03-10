@@ -63,7 +63,7 @@ async function extractEdgeFunctionError(err: any): Promise<string> {
 export default function SimulationTraining({ projectId, disabled, onComplete }: SimulationTrainingProps) {
   const { toast } = useToast();
 
-  const [mode, setMode] = useState<"simulate" | "live" | "hybrid">("simulate");
+  const mode = "simulate";
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard" | "mixed">("medium");
   const [activeTab, setActiveTab] = useState("training");
   const [maxRounds, setMaxRounds] = useState(3);
