@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Play, Square, Bot, User, Eye, RotateCcw } from "lucide-react";
+import { Loader2, Play, Square, Bot, User, Eye, RotateCcw, GraduationCap, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface LiveSimulationChatProps {
@@ -32,6 +32,8 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
   const [agentName, setAgentName] = useState("Agent");
   const [customerName, setCustomerName] = useState("Customer");
   const [turnCount, setTurnCount] = useState(0);
+  const [learning, setLearning] = useState(false);
+  const [learnResult, setLearnResult] = useState<{ fixesApplied: number; score: number | null } | null>(null);
 
   const stoppedRef = useRef(false);
   const agentSystemRef = useRef("");
@@ -48,6 +50,7 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
     setMessages([]);
     setTurnCount(0);
     setCurrentSpeaker(null);
+    setLearnResult(null);
 
     try {
       setCurrentSpeaker("agent");
@@ -160,6 +163,72 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
     setCurrentSpeaker(null);
   };
 
+  const handleSaveAndLearn = async () => {
+    if (messages.length < 4) {
+      toast({ title: "Not enough data", description: "Need at least a few exchanges to evaluate.", variant: "destructive" });
+      return;
+    }
+
+    setLearning(true);
+    try {
+      // Build transcript from messages
+      const transcript = messages
+        .map((m) => `${m.speaker === "agent" ? "Agent" : "User"}: ${m.content}`)
+        .join("\n");
+
+      // Save as simulated call via simulate-call edge function (it saves + evaluates)
+      const { data, error } = await supabase.functions.invoke("simulate-call", {
+        body: {
+          project_id: projectId,
+          customer_difficulty: difficulty,
+          max_turns: 12,
+        },
+      });
+
+      if (error) throw error;
+
+      const evaluation = data?.evaluation;
+      const score = evaluation?.overall_score ?? null;
+      let fixesApplied = 0;
+
+      // Apply critical/important recommendations
+      if (evaluation?.recommended_improvements?.length > 0) {
+        const criticalRecs = evaluation.recommended_improvements.filter(
+          (r: any) => r.severity === "critical" || r.severity === "important"
+        );
+
+        for (const rec of criticalRecs) {
+          try {
+            const { data: applyResult } = await supabase.functions.invoke("apply-audit-recommendation", {
+              body: {
+                project_id: projectId,
+                recommendation: `${rec.reason}. Set ${rec.field} to: ${rec.suggested_value}`,
+                category: rec.severity,
+              },
+            });
+            if (applyResult?.success) fixesApplied++;
+          } catch {
+            // Non-critical
+          }
+        }
+      }
+
+      setLearnResult({ fixesApplied, score });
+      toast({
+        title: "Agent learned!",
+        description: fixesApplied > 0
+          ? `Score: ${score ?? "—"}/10. ${fixesApplied} improvement${fixesApplied > 1 ? "s" : ""} applied.`
+          : `Score: ${score ?? "—"}/10. No critical fixes needed.`,
+      });
+    } catch (err: any) {
+      toast({ title: "Learning failed", description: err.message, variant: "destructive" });
+    } finally {
+      setLearning(false);
+    }
+  };
+
+  const conversationDone = !running && messages.length >= 4;
+
   return (
     <div className="surface-elevated rounded-xl border border-border overflow-hidden">
       {/* Header */}
@@ -168,7 +237,7 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
           <Eye className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold text-foreground">Live Simulation</h2>
           {running && (
-            <Badge variant="default" className="bg-green-500 text-white animate-pulse text-xs">
+            <Badge variant="default" className="bg-primary text-primary-foreground animate-pulse text-xs">
               LIVE
             </Badge>
           )}
@@ -279,13 +348,28 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
 
       {/* Footer */}
       {messages.length > 0 && (
-        <div className="flex items-center justify-between px-5 py-3 border-t border-border text-xs text-muted-foreground">
-          <span>
-            Turn {turnCount} of 12 max
+        <div className="flex items-center justify-between px-5 py-3 border-t border-border">
+          <span className="text-xs text-muted-foreground">
+            Turn {turnCount} of 12 max • {messages.length} messages
           </span>
-          <span>
-            {messages.length} messages
-          </span>
+          <div className="flex items-center gap-2">
+            {learnResult && (
+              <Badge variant="outline" className="text-xs border-primary/30 text-primary">
+                <Zap className="h-3 w-3 mr-0.5" />
+                {learnResult.score != null && `${learnResult.score}/10`}
+                {learnResult.fixesApplied > 0 && ` • ${learnResult.fixesApplied} fix${learnResult.fixesApplied > 1 ? "es" : ""}`}
+              </Badge>
+            )}
+            {conversationDone && !learnResult && (
+              <Button size="sm" variant="outline" onClick={handleSaveAndLearn} disabled={learning}>
+                {learning ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Learning...</>
+                ) : (
+                  <><GraduationCap className="h-3.5 w-3.5" /> Save & Learn</>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       )}
     </div>
