@@ -376,6 +376,7 @@ export default function TrainingAuditPage() {
   const [pastAudits, setPastAudits] = useState<AuditRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [appliedRecs, setAppliedRecs] = useState<Set<string>>(new Set());
+  const [syncedRecs, setSyncedRecs] = useState<Set<string>>(new Set());
   const [manualRecs, setManualRecs] = useState<Set<string>>(new Set());
   const [applyingAll, setApplyingAll] = useState(false);
   const [applyAllProgress, setApplyAllProgress] = useState<{ current: number; total: number } | null>(null);
