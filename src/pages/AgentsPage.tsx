@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "react-router-dom";
-import { Plus, Loader2, FlaskConical, BookOpen, Pencil, Phone, PhoneIncoming, PhoneForwarded, Trash2, GraduationCap, RefreshCw, LayoutGrid, List } from "lucide-react";
+import { Plus, Loader2, FlaskConical, BookOpen, Pencil, Phone, PhoneIncoming, PhoneForwarded, Trash2, GraduationCap, RefreshCw, LayoutGrid, List, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -50,7 +50,7 @@ function AgentBadges({ agent }: { agent: Agent }) {
   );
 }
 
-function AgentActions({ agent, onDelete }: { agent: Agent; onDelete: (id: string) => void }) {
+function AgentActions({ agent, onDelete, onClone, cloningId }: { agent: Agent; onDelete: (id: string) => void; onClone: (agent: Agent) => void; cloningId: string | null }) {
   return (
     <div className="flex items-center gap-3">
       <Link to={`/agents/${agent.id}/edit`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
@@ -62,6 +62,9 @@ function AgentActions({ agent, onDelete }: { agent: Agent; onDelete: (id: string
       <Link to={`/agents/${agent.id}/knowledge`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
         <BookOpen className="h-3 w-3" /> Knowledge
       </Link>
+      <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClone(agent); }} disabled={cloningId === agent.id} className="inline-flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50">
+        {cloningId === agent.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Copy className="h-3 w-3" />} Clone
+      </button>
       <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(agent.id); }} className="inline-flex items-center gap-1 text-xs text-destructive hover:underline">
         <Trash2 className="h-3 w-3" /> Delete
       </button>
@@ -77,6 +80,7 @@ export default function AgentsPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [viewMode, setViewMode] = useState<"card" | "list">("card");
+  const [cloningId, setCloningId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const loadAgents = async () => {
@@ -112,6 +116,60 @@ export default function AgentsPage() {
   };
 
   const unprovisionedCount = agents.filter(a => !a.has_retell_id).length;
+
+  const cloneAgent = async (agent: Agent) => {
+    setCloningId(agent.id);
+    try {
+      // 1. Fetch source spec
+      const { data: spec, error: specErr } = await supabase
+        .from("agent_specs")
+        .select("*")
+        .eq("project_id", agent.id)
+        .single();
+      if (specErr) throw specErr;
+
+      // 2. Fetch source project for org_id
+      const { data: project, error: projErr } = await supabase
+        .from("agent_projects")
+        .select("org_id, description, source_text")
+        .eq("id", agent.id)
+        .single();
+      if (projErr) throw projErr;
+
+      // 3. Create new agent_project
+      const { data: newProject, error: newProjErr } = await supabase
+        .from("agent_projects")
+        .insert({ name: `${agent.name} (Copy)`, org_id: project.org_id, description: project.description, source_text: project.source_text })
+        .select("id")
+        .single();
+      if (newProjErr) throw newProjErr;
+
+      // 4. Clone spec (exclude id, retell_agent_id, reset version)
+      const { id: _sid, project_id: _pid, retell_agent_id: _rid, ...specFields } = spec;
+      const { error: specInsertErr } = await supabase
+        .from("agent_specs")
+        .insert({ ...specFields, project_id: newProject.id, retell_agent_id: null, version: 1 });
+      if (specInsertErr) throw specInsertErr;
+
+      // 5. Clone knowledge entries
+      const { data: knowledge } = await supabase
+        .from("agent_knowledge")
+        .select("category, content, source_type, source_url, file_name")
+        .eq("project_id", agent.id);
+      if (knowledge && knowledge.length > 0) {
+        await supabase.from("agent_knowledge").insert(
+          knowledge.map(k => ({ ...k, project_id: newProject.id }))
+        );
+      }
+
+      toast({ title: "Agent cloned", description: `"${agent.name} (Copy)" created successfully.` });
+      await loadAgents();
+    } catch (e: any) {
+      toast({ title: "Clone failed", description: e.message, variant: "destructive" });
+    } finally {
+      setCloningId(null);
+    }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -188,7 +246,7 @@ export default function AgentsPage() {
                     <span className="text-xs text-muted-foreground ml-auto">{new Date(agent.created_at).toLocaleDateString()}</span>
                   </div>
                   {agent.description && <p className="text-sm text-muted-foreground line-clamp-2">{agent.description}</p>}
-                  <div className="pt-1"><AgentActions agent={agent} onDelete={setDeletingId} /></div>
+                  <div className="pt-1"><AgentActions agent={agent} onDelete={setDeletingId} onClone={cloneAgent} cloningId={cloningId} /></div>
                 </Link>
               );
             })}
@@ -219,7 +277,7 @@ export default function AgentsPage() {
                       <TableCell className="font-medium text-foreground">{agent.name}</TableCell>
                       <TableCell><AgentBadges agent={agent} /></TableCell>
                       <TableCell className="text-muted-foreground text-sm">{new Date(agent.created_at).toLocaleDateString()}</TableCell>
-                      <TableCell className="text-right"><AgentActions agent={agent} onDelete={setDeletingId} /></TableCell>
+                      <TableCell className="text-right"><AgentActions agent={agent} onDelete={setDeletingId} onClone={cloneAgent} cloningId={cloningId} /></TableCell>
                     </TableRow>
                   );
                 })}
