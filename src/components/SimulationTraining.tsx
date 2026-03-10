@@ -457,7 +457,7 @@ function SingleResultCard({ result, getScoreColor }: { result: CallResult; getSc
             { label: "Humanness", score: result.evaluation.humanness_score },
             { label: "Naturalness", score: result.evaluation.naturalness_score },
           ].map(({ label, score }) => (
-            <div key={label} className="text-center rounded-lg border border-border p-3">
+            <div key={label} className="text-center rounded-lg border border-border/50 bg-gradient-to-br from-muted/40 to-muted/20 p-3">
               <p className="text-xs text-muted-foreground">{label}</p>
               <p className={`text-2xl font-bold ${getScoreColor(score ?? null)}`}>{score ?? "—"}</p>
             </div>

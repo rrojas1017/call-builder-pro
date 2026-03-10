@@ -1111,9 +1111,9 @@ function ScoreCard({ label, score }: { label: string; score?: number }) {
   if (score == null) return null;
   const color = score >= 70 ? "text-green-400" : score >= 40 ? "text-yellow-400" : "text-destructive";
   return (
-    <div className="rounded-lg bg-muted/30 border border-border p-2 text-center">
+    <div className="rounded-lg bg-gradient-to-br from-muted/40 to-muted/20 border border-border/50 p-2 text-center">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`text-lg font-bold ${color}`}>{score}</p>
+      <p className={`text-lg font-bold font-mono tabular-nums ${color}`}>{score}</p>
     </div>
   );
 }
