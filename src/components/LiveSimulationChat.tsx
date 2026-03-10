@@ -112,10 +112,24 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
 
       if (error) throw error;
 
+      if (data?.held_for_review) {
+        toast({
+          title: "⚠️ Change held for review",
+          description: data.conflict?.description || "This feedback conflicts with existing rules. Review it in your agent's change log.",
+          variant: "destructive",
+          duration: 8000,
+        });
+        setFeedbackText("");
+        setGeneralFeedback("");
+        setFeedbackMessageIndex(null);
+        return;
+      }
+
       const fieldInfo = data?.field ? ` Updated: ${data.field}` : "";
       const syncInfo = data?.synced_to_retell ? " • Synced to live agent" : "";
+      const impactNote = data?.impact_summary ? ` — ${data.impact_summary}` : "";
       const desc = data?.action === "patch_spec"
-        ? `${data?.field || "agent config"}${syncInfo}`
+        ? `${data?.field || "agent config"}${syncInfo}${impactNote}`
         : data?.action === "add_knowledge"
         ? "Added to agent knowledge"
         : "Noted for manual review";

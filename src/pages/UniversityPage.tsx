@@ -14,6 +14,8 @@ import { Progress } from "@/components/ui/progress";
 import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen, ArrowUp, ArrowDown, Minus, History, StopCircle, GraduationCap, RotateCcw, Clock, Trophy, TrendingUp, Zap } from "lucide-react";
 import LiveCallMonitor from "@/components/LiveCallMonitor";
 import SimulationTraining from "@/components/SimulationTraining";
+import PendingChangesReview from "@/components/PendingChangesReview";
+import SpecChangeLog from "@/components/SpecChangeLog";
 import { detectBusinessRuleIntent } from "@/lib/detectBusinessRuleIntent";
 import { addBusinessRule } from "@/lib/addBusinessRule";
 
@@ -660,6 +662,11 @@ export default function UniversityPage() {
         />
       )}
 
+      {/* Pending Changes Review */}
+      {agentId && (
+        <PendingChangesReview projectId={agentId} onChangeApplied={() => loadHistory()} />
+      )}
+
       {/* AI Simulation Training — collapsible */}
       {agentId && (
         <Collapsible>
@@ -677,6 +684,24 @@ export default function UniversityPage() {
               disabled={running}
               onComplete={() => loadHistory()}
             />
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+
+      {/* Change Log — collapsible */}
+      {agentId && (
+        <Collapsible>
+          <CollapsibleTrigger className="w-full gradient-border glass-card rounded-xl px-5 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors group">
+            <div className="flex items-center gap-2">
+              <History className="h-5 w-5 text-primary" />
+              <span className="text-sm font-semibold text-foreground">Agent Change Log</span>
+            </div>
+            <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2">
+            <div className="glass-card rounded-xl p-5">
+              <SpecChangeLog projectId={agentId} />
+            </div>
           </CollapsibleContent>
         </Collapsible>
       )}
@@ -917,14 +942,21 @@ function ResultCard({
         supabase.functions.invoke("apply-audit-recommendation", {
           body: { project_id: projectId, recommendation: feedbackText.trim(), category: "user_feedback" },
         }).then(({ data }) => {
-          if (data?.success) {
+          if (data?.held_for_review) {
+            feedbackToast({
+              title: "⚠️ Change held for review",
+              description: data.conflict?.description || "This feedback conflicts with existing rules.",
+              variant: "destructive",
+              duration: 8000,
+            });
+          } else if (data?.success) {
             const fieldInfo = data.field ? ` Updated: ${data.field}` : "";
             const syncInfo = data.synced_to_retell ? " • Synced to live agent" : "";
+            const impactNote = data.impact_summary ? ` — ${data.impact_summary}` : "";
             feedbackToast({
               title: "✅ Agent updated",
-              description: (data.reason || "Your feedback was applied.") + fieldInfo + syncInfo,
+              description: (data.reason || "Your feedback was applied.") + fieldInfo + syncInfo + impactNote,
             });
-            // Store for verification
             setLastAppliedFeedback({
               text: feedbackText.trim(),
               field: data.field || undefined,
