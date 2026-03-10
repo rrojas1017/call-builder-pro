@@ -4,14 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Loader2, Play, Bot, BrainCircuit, ChevronDown, CheckCircle, XCircle,
-  ArrowUp, ArrowDown, Minus, RotateCcw, Zap, Trophy, MessageSquare, FileText, StopCircle,
+  ArrowUp, ArrowDown, Minus, RotateCcw, Zap, Trophy, MessageSquare, FileText, StopCircle, Eye,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import LiveSimulationChat from "@/components/LiveSimulationChat";
 
 interface SimulationTrainingProps {
   projectId: string;
