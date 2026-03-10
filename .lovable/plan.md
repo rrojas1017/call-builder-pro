@@ -1,20 +1,18 @@
 
 
-## Analysis: Save & Learn Already Applies Improvements
+## Remove Live Call Mode from AI Simulation Training
 
-After reviewing the current code in `src/components/LiveSimulationChat.tsx` (lines 291-367), the `handleSaveAndLearn` function **already implements the exact behavior you described**:
+The AI Simulation Training component currently offers three training modes: "Simulate Only", "Hybrid", and "Live Calls Only". Since live call testing already exists separately on the University page, having it here creates confusion.
 
-1. **Line 303-305**: Builds transcript from messages
-2. **Line 307-321**: Inserts into `calls` table
-3. **Line 323-327**: Calls `evaluate-call` with the call ID
-4. **Line 329-330**: Extracts score from evaluation
-5. **Line 333-337**: Filters `recommended_improvements` for `critical` and `important` severity
-6. **Line 339-352**: Loops through and sends each to `apply-audit-recommendation`
-7. **Line 355-361**: Sets `learnResult` and shows toast with score + fix count
+### Changes
 
-This was added in a previous update. The agent **does** learn from watched conversations — critical and important fixes are auto-applied via the same `apply-audit-recommendation` pipeline used by the training loop and user feedback.
+**File: `src/components/SimulationTraining.tsx`**
 
-**No code changes are needed.** If improvements aren't being applied in practice, the issue would be upstream — either the evaluation isn't returning `recommended_improvements` with the expected structure, or `apply-audit-recommendation` isn't matching them to spec fields. That would require debugging the edge function responses rather than a frontend change.
+1. **Remove the mode selector entirely** — Lock mode to `"simulate"` and remove the `<Select>` dropdown (lines ~303-311) that lets users choose between simulate/hybrid/live. The state initialization already defaults to `"simulate"`, so just remove the UI control and the `hybrid`/`live` options.
 
-Would you like me to investigate whether the edge functions are returning the expected data structure instead?
+2. **Remove the two `<SelectItem>` entries** for "Hybrid" and "Live Calls Only" (lines 308-309), and remove the surrounding `<Select>` wrapper since "Simulate Only" is the only option left — no dropdown needed.
+
+3. **Update description text** (line 273): Change from mentioning "Live Practice" distinction to just describing AI-vs-AI training rounds.
+
+The "Live Practice" tab (the real-time chat tab at line 295-297) is a different feature — it's AI-vs-AI simulation watched in real-time, not actual phone calls. That tab should remain. Only the mode dropdown offering "Live Calls Only" and "Hybrid" (which use real phone numbers via Retell) needs to be removed.
 
