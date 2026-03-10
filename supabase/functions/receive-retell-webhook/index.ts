@@ -4,20 +4,48 @@ import { corsHeaders } from "../_shared/auth.ts";
 
 // ===== WEBHOOK SIGNATURE VERIFICATION =====
 async function verifyRetellSignature(rawBody: string, signatureHeader: string | null): Promise<boolean> {
-  const webhookSecret = Deno.env.get("RETELL_WEBHOOK_SECRET");
-  if (!webhookSecret) {
-    console.warn("[SECURITY] RETELL_WEBHOOK_SECRET not configured — skipping signature check");
+  const apiKey = Deno.env.get("RETELL_API_KEY");
+  if (!apiKey) {
+    console.warn("[SECURITY] RETELL_API_KEY not configured — skipping signature check");
     return true;
   }
   if (!signatureHeader) {
     console.error("[SECURITY] No x-retell-signature header present");
     return false;
   }
+
+  // Retell signature format: "v=<timestamp>,d=<digest>"
+  const parts = signatureHeader.split(",");
+  const timestampPart = parts.find(p => p.startsWith("v="));
+  const digestPart = parts.find(p => p.startsWith("d="));
+
+  if (!timestampPart || !digestPart) {
+    console.error("[SECURITY] Invalid x-retell-signature format:", signatureHeader);
+    return false;
+  }
+
+  const timestamp = timestampPart.slice(2);
+  const expectedDigest = digestPart.slice(2);
+
+  // Replay protection: reject if older than 5 minutes
+  const currentTime = Math.floor(Date.now() / 1000);
+  const timeDiff = currentTime - parseInt(timestamp, 10);
+  if (timeDiff > 300) {
+    console.error("[SECURITY] Webhook signature timestamp too old:", timeDiff, "seconds");
+    return false;
+  }
+
+  // HMAC-SHA256 over (rawBody + timestamp) using RETELL_API_KEY
   const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey("raw", encoder.encode(webhookSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
-  const expectedHex = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
-  return expectedHex === signatureHeader;
+  const key = await crypto.subtle.importKey("raw", encoder.encode(apiKey), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody + timestamp));
+  const computedHex = Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
+
+  const isValid = computedHex === expectedDigest;
+  if (!isValid) {
+    console.error("[SECURITY] Digest mismatch. computed:", computedHex.slice(0, 16) + "...", "expected:", expectedDigest.slice(0, 16) + "...");
+  }
+  return isValid;
 }
 
 // ===== INBOUND DETECTION HELPER =====
