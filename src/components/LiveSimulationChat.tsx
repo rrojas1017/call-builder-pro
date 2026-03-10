@@ -3,8 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useOrgContext } from "@/hooks/useOrgContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Play, Square, Bot, User, Eye, RotateCcw, GraduationCap, Zap } from "lucide-react";
+import { Loader2, Play, Square, Bot, User, Eye, RotateCcw, GraduationCap, Zap, MessageCircle, Send, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface LiveSimulationChatProps {
@@ -39,11 +41,17 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
   const [learning, setLearning] = useState(false);
   const [learnResult, setLearnResult] = useState<{ fixesApplied: number; score: number | null } | null>(null);
 
+  // Feedback state
+  const [feedbackMessageIndex, setFeedbackMessageIndex] = useState<number | null>(null);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [generalFeedback, setGeneralFeedback] = useState("");
+  const [applyingFeedback, setApplyingFeedback] = useState(false);
+  const [feedbackApplied, setFeedbackApplied] = useState<string[]>([]);
+
   const stoppedRef = useRef(false);
   const agentSystemRef = useRef("");
   const customerSystemRef = useRef("");
 
-  // Retry helper: tries once, waits 2s, retries once, returns null on failure
   const invokeWithRetry = async (fnName: string, body: Record<string, any>) => {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -72,6 +80,45 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
     }
   }, [messages]);
 
+  const handleSubmitFeedback = async (feedback: string, contextMessage?: ChatMessage) => {
+    if (!feedback.trim() || applyingFeedback) return;
+    setApplyingFeedback(true);
+
+    try {
+      let recommendation = feedback.trim();
+      if (contextMessage) {
+        const speaker = contextMessage.speaker === "agent" ? agentName : customerName;
+        recommendation = `During a simulated call, the ${speaker} said: "${contextMessage.content.substring(0, 150)}". User feedback: ${feedback.trim()}`;
+      }
+
+      const { data, error } = await supabase.functions.invoke("apply-audit-recommendation", {
+        body: {
+          project_id: projectId,
+          recommendation,
+          category: "user_feedback",
+        },
+      });
+
+      if (error) throw error;
+
+      const desc = data?.action === "patch_spec"
+        ? `Updated: ${data?.field || "agent config"}`
+        : data?.action === "add_knowledge"
+        ? "Added to agent knowledge"
+        : "Noted for manual review";
+
+      setFeedbackApplied((prev) => [...prev, feedback.trim()]);
+      toast({ title: "Feedback applied!", description: desc });
+      setFeedbackText("");
+      setGeneralFeedback("");
+      setFeedbackMessageIndex(null);
+    } catch (err: any) {
+      toast({ title: "Failed to apply feedback", description: err.message, variant: "destructive" });
+    } finally {
+      setApplyingFeedback(false);
+    }
+  };
+
   const startSimulation = async () => {
     setRunning(true);
     setStopped(false);
@@ -80,6 +127,8 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
     setTurnCount(0);
     setCurrentSpeaker(null);
     setLearnResult(null);
+    setFeedbackMessageIndex(null);
+    setFeedbackApplied([]);
 
     try {
       setCurrentSpeaker("agent");
@@ -114,7 +163,6 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
       for (let turn = 0; turn < maxTurns; turn++) {
         if (stoppedRef.current) break;
 
-        // Customer turn
         setCurrentSpeaker("customer");
         await pause(800);
         if (stoppedRef.current) break;
@@ -143,7 +191,6 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
           break;
         }
 
-        // Agent turn
         setCurrentSpeaker("agent");
         await pause(600);
         if (stoppedRef.current) break;
@@ -204,12 +251,10 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
 
     setLearning(true);
     try {
-      // 1. Build transcript from the actual observed conversation
       const transcript = messages
         .map((m) => `${m.speaker === "agent" ? "Agent" : "User"}: ${m.content}`)
         .join("\n");
 
-      // 2. Save this transcript as a call record
       const { data: callRow, error: insertErr } = await supabase
         .from("calls")
         .insert({
@@ -226,7 +271,6 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
 
       if (insertErr) throw insertErr;
 
-      // 3. Evaluate THAT conversation
       const { data: evalData, error: evalErr } = await supabase.functions.invoke("evaluate-call", {
         body: { call_id: callRow.id },
       });
@@ -237,7 +281,6 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
       const score = evaluation?.overall_score ?? null;
       let fixesApplied = 0;
 
-      // 4. Apply critical/important recommendations
       const recs = evaluation?.recommended_improvements ?? evaluation?.recommended_fixes ?? [];
       if (recs.length > 0) {
         const criticalRecs = recs.filter(
@@ -340,26 +383,71 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
         )}
 
         {messages.map((msg, i) => (
-          <div key={i} className={`flex ${msg.speaker === "customer" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[75%] ${msg.speaker === "agent" ? "order-1" : "order-1"}`}>
-              <div className="flex items-center gap-1.5 mb-1">
-                {msg.speaker === "agent" ? (
-                  <Bot className="h-3.5 w-3.5 text-primary" />
-                ) : (
-                  <User className="h-3.5 w-3.5 text-muted-foreground" />
-                )}
-                <span className="text-xs font-medium text-muted-foreground">
-                  {msg.speaker === "agent" ? agentName : customerName}
-                </span>
+          <div key={i} className="space-y-1">
+            <div className={`flex ${msg.speaker === "customer" ? "justify-end" : "justify-start"}`}>
+              <div
+                onClick={() => {
+                  if (!running) {
+                    setFeedbackMessageIndex(feedbackMessageIndex === i ? null : i);
+                    setFeedbackText("");
+                  }
+                }}
+                className={`max-w-[80%] rounded-xl px-3.5 py-2.5 cursor-pointer transition-all ${
+                  msg.speaker === "agent"
+                    ? "bg-primary/10 border border-primary/20 hover:border-primary/40 rounded-tl-sm"
+                    : "bg-muted border border-border hover:border-muted-foreground/30 rounded-tr-sm"
+                } ${feedbackMessageIndex === i ? "ring-2 ring-primary/30" : ""}`}
+              >
+                <div className="flex items-center gap-1.5 mb-1">
+                  {msg.speaker === "agent" ? (
+                    <Bot className="h-3.5 w-3.5 text-primary" />
+                  ) : (
+                    <User className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {msg.speaker === "agent" ? agentName : customerName}
+                  </span>
+                  {!running && (
+                    <MessageCircle className="h-3 w-3 text-muted-foreground/40 ml-auto" />
+                  )}
+                </div>
+                <p className="text-sm text-foreground">{msg.content}</p>
               </div>
-              <p className={`text-sm rounded-xl px-3.5 py-2.5 ${
-                msg.speaker === "agent"
-                  ? "bg-primary/10 text-foreground rounded-tl-sm"
-                  : "bg-muted text-foreground rounded-tr-sm"
-              }`}>
-                {msg.content}
-              </p>
             </div>
+
+            {/* Inline feedback input */}
+            {feedbackMessageIndex === i && (
+              <div className={`flex ${msg.speaker === "customer" ? "justify-end" : "justify-start"}`}>
+                <div className="max-w-[80%] flex gap-1.5 items-center">
+                  <Input
+                    placeholder="Give feedback on this message..."
+                    className="h-8 text-xs"
+                    value={feedbackText}
+                    onChange={(e) => setFeedbackText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && feedbackText.trim()) {
+                        handleSubmitFeedback(feedbackText, msg);
+                      }
+                    }}
+                    disabled={applyingFeedback}
+                    autoFocus
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => handleSubmitFeedback(feedbackText, msg)}
+                    disabled={!feedbackText.trim() || applyingFeedback}
+                  >
+                    {applyingFeedback ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
 
@@ -395,28 +483,74 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
 
       {/* Footer */}
       {messages.length > 0 && (
-        <div className="flex items-center justify-between px-5 py-3 border-t border-border">
-          <span className="text-xs text-muted-foreground">
-            Turn {turnCount} of 12 max • {messages.length} messages
-          </span>
-          <div className="flex items-center gap-2">
-            {learnResult && (
-              <Badge variant="outline" className="text-xs border-primary/30 text-primary">
-                <Zap className="h-3 w-3 mr-0.5" />
-                {learnResult.score != null && `${learnResult.score}/10`}
-                {learnResult.fixesApplied > 0 && ` • ${learnResult.fixesApplied} fix${learnResult.fixesApplied > 1 ? "es" : ""}`}
-              </Badge>
-            )}
-            {conversationDone && !learnResult && (
-              <Button size="sm" variant="outline" onClick={handleSaveAndLearn} disabled={learning}>
-                {learning ? (
-                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Learning...</>
-                ) : (
-                  <><GraduationCap className="h-3.5 w-3.5" /> Save & Learn</>
-                )}
-              </Button>
-            )}
+        <div className="border-t border-border">
+          <div className="flex items-center justify-between px-5 py-3">
+            <span className="text-xs text-muted-foreground">
+              Turn {turnCount} of 12 max • {messages.length} messages
+            </span>
+            <div className="flex items-center gap-2">
+              {feedbackApplied.length > 0 && (
+                <Badge variant="outline" className="text-xs border-primary/30 text-primary">
+                  <CheckCircle className="h-3 w-3 mr-0.5" />
+                  {feedbackApplied.length} applied
+                </Badge>
+              )}
+              {learnResult && (
+                <Badge variant="outline" className="text-xs border-primary/30 text-primary">
+                  <Zap className="h-3 w-3 mr-0.5" />
+                  {learnResult.score != null && `${learnResult.score}/10`}
+                  {learnResult.fixesApplied > 0 && ` • ${learnResult.fixesApplied} fix${learnResult.fixesApplied > 1 ? "es" : ""}`}
+                </Badge>
+              )}
+              {conversationDone && !learnResult && (
+                <Button size="sm" variant="outline" onClick={handleSaveAndLearn} disabled={learning}>
+                  {learning ? (
+                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Learning...</>
+                  ) : (
+                    <><GraduationCap className="h-3.5 w-3.5" /> Save & Learn</>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
+
+          {/* General feedback box */}
+          {messages.length > 2 && (
+            <div className="px-5 pb-4 pt-1">
+              <div className="flex items-center gap-2 mb-2">
+                <MessageCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">Coach Your Agent</span>
+              </div>
+              <div className="flex gap-2">
+                <Textarea
+                  placeholder="e.g. &quot;Stop using filler words&quot; or &quot;Ask for zip code before income&quot;"
+                  className="text-xs min-h-0 resize-none"
+                  value={generalFeedback}
+                  onChange={(e) => setGeneralFeedback(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && generalFeedback.trim()) {
+                      e.preventDefault();
+                      handleSubmitFeedback(generalFeedback);
+                    }
+                  }}
+                  disabled={applyingFeedback}
+                  rows={1}
+                />
+                <Button
+                  size="sm"
+                  className="h-8 px-3 self-end"
+                  onClick={() => handleSubmitFeedback(generalFeedback)}
+                  disabled={!generalFeedback.trim() || applyingFeedback}
+                >
+                  {applyingFeedback ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Send className="h-3 w-3" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
