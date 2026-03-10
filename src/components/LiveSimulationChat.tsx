@@ -112,14 +112,27 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
 
       if (error) throw error;
 
+      const fieldInfo = data?.field ? ` Updated: ${data.field}` : "";
+      const syncInfo = data?.synced_to_retell ? " • Synced to live agent" : "";
       const desc = data?.action === "patch_spec"
-        ? `Updated: ${data?.field || "agent config"}`
+        ? `${data?.field || "agent config"}${syncInfo}`
         : data?.action === "add_knowledge"
         ? "Added to agent knowledge"
         : "Noted for manual review";
 
       setFeedbackApplied((prev) => [...prev, feedback.trim()]);
-      toast({ title: "Feedback applied!", description: desc });
+      toast({ title: "✅ Feedback applied!", description: desc });
+
+      // Store for verification
+      if (data?.action === "patch_spec") {
+        setLastAppliedFeedback({
+          text: feedback.trim(),
+          field: data?.field,
+          synced: !!data?.synced_to_retell,
+        });
+        setVerificationResult(null);
+      }
+
       setFeedbackText("");
       setGeneralFeedback("");
       setFeedbackMessageIndex(null);
