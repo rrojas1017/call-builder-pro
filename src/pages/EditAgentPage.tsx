@@ -721,6 +721,23 @@ export default function EditAgentPage() {
         </div>
       </div>
 
+      {/* Business Rules */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <ScrollText className="h-4 w-4 text-primary" /> Business Rules <SectionHelp section="advanced" />
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Define specific rules your agent must follow. These are treated as high-priority directives that override default behavior.
+          Use plain language — e.g., conditional responses based on FPL percentage, Medicaid denial handling, etc.
+        </p>
+        <Textarea
+          value={businessRules}
+          onChange={(e) => setBusinessRules(e.target.value)}
+          rows={8}
+          placeholder="e.g. Once you have the household size and estimated income, reference the 2026 FPL chart to determine their FPL percentage. If between 100-400% FPL, inform them they qualify for a subsidy..."
+        />
+      </div>
+
       {/* Compliance */}
       <div className="surface-elevated rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-foreground flex items-center gap-2">
