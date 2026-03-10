@@ -590,6 +590,17 @@ export default function UniversityPage() {
         />
       )}
 
+      {/* AI Simulation Training */}
+      {agentId && (
+        <SimulationTrainingPanel
+          agentId={agentId}
+          disabled={running}
+          onComplete={() => {
+            loadHistory();
+          }}
+        />
+      )}
+
       {/* Humanness Trend Chart */}
       {hasTrendData ? (
         <div className="surface-elevated rounded-xl p-6 space-y-3">
