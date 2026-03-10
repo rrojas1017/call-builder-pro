@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radio, User, MessageSquare, Shield, Hash, Clock, Sliders, Globe, Plus, GripVertical } from "lucide-react";
+import { Loader2, Save, ArrowLeft, Phone, Mic, Volume2, Sparkles, Check, X, Radio, User, MessageSquare, Shield, Hash, Clock, Sliders, Globe, Plus, GripVertical, ScrollText } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -97,6 +97,7 @@ export default function EditAgentPage() {
   const [successDefinition, setSuccessDefinition] = useState("");
   const [qualificationRules, setQualificationRules] = useState("");
   const [disqualificationRules, setDisqualificationRules] = useState("");
+  const [businessRules, setBusinessRules] = useState("");
   const [consentRequired, setConsentRequired] = useState(true);
   const [disclosureRequired, setDisclosureRequired] = useState(true);
   const [disclosureText, setDisclosureText] = useState("");
@@ -173,6 +174,16 @@ export default function EditAgentPage() {
         const dr = spec.disqualification_rules as any;
         const drStr = dr?.description || (dr && typeof dr === "object" ? JSON.stringify(dr, null, 2) : "");
         setDisqualificationRules(drStr === "{}" || drStr === "null" ? "" : drStr);
+
+        const br = spec.business_rules as any;
+        if (br && typeof br === "object" && br.text) {
+          setBusinessRules(br.text);
+        } else if (br && typeof br === "string") {
+          setBusinessRules(br);
+        } else if (br && typeof br === "object") {
+          const brStr = JSON.stringify(br, null, 2);
+          setBusinessRules(brStr === "{}" || brStr === "null" ? "" : brStr);
+        }
 
         const bh = spec.business_hours as any;
         if (bh && typeof bh === "object") {
@@ -306,6 +317,7 @@ export default function EditAgentPage() {
           temperature,
           interruption_threshold: interruptionThreshold,
           business_hours: businessHours,
+          business_rules: businessRules.trim() ? { text: businessRules.trim() } : null,
           sms_enabled: smsEnabled,
           sms_mode: smsMode,
           sms_script: smsScript || null,
@@ -707,6 +719,23 @@ export default function EditAgentPage() {
             placeholder="e.g. Already has employer coverage, over 65 (Medicare eligible), currently on Medicaid"
           />
         </div>
+      </div>
+
+      {/* Business Rules */}
+      <div className="surface-elevated rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <ScrollText className="h-4 w-4 text-primary" /> Business Rules <SectionHelp section="advanced" />
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Define specific rules your agent must follow. These are treated as high-priority directives that override default behavior.
+          Use plain language — e.g., conditional responses based on FPL percentage, Medicaid denial handling, etc.
+        </p>
+        <Textarea
+          value={businessRules}
+          onChange={(e) => setBusinessRules(e.target.value)}
+          rows={8}
+          placeholder="e.g. Once you have the household size and estimated income, reference the 2026 FPL chart to determine their FPL percentage. If between 100-400% FPL, inform them they qualify for a subsidy..."
+        />
       </div>
 
       {/* Compliance */}
