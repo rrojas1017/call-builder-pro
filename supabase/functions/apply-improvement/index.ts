@@ -264,6 +264,7 @@ serve(async (req) => {
     if (updateErr) throw updateErr;
 
     // Record improvement
+    let auditWarning: string | null = null;
     const { error: impErr } = await supabase.from("improvements").insert({
       project_id,
       from_version: fromVersion,
@@ -272,7 +273,10 @@ serve(async (req) => {
       patch,
       source_recommendation: improvement.original_key || null,
     });
-    if (impErr) console.error("Error recording improvement:", impErr);
+    if (impErr) {
+      console.error("Error recording improvement:", impErr);
+      auditWarning = `Spec was updated but audit trail insert failed: ${impErr.message}`;
+    }
 
     return new Response(JSON.stringify({
       success: true,
@@ -281,6 +285,7 @@ serve(async (req) => {
       change_summary: improvement.reason,
       patch,
       ...(caution ? { caution } : {}),
+      ...(auditWarning ? { audit_warning: auditWarning } : {}),
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

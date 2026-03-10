@@ -326,6 +326,15 @@ export default function EditAgentPage() {
                 agent_name: personaName || name,
                 voice_id: selectedVoice || undefined,
                 language: langMap[language] || "en-US",
+                opening_line: finalOpeningLine || undefined,
+                temperature,
+                transfer_required: transferEnabled,
+                transfer_phone_number: formattedPhone || undefined,
+                speaking_speed: speakingSpeed,
+                interruption_threshold: interruptionThreshold,
+                voicemail_message: voicemailMessage.trim() || undefined,
+                pronunciation_guide: undefined, // synced via spec, not needed here
+                ambient_sound: ambientSound === "none" ? undefined : ambientSound,
               },
             },
           });

@@ -366,10 +366,9 @@ ${call.transcript}`;
                 continue;
               }
 
-              // For pronunciation_guide, merge into existing array
+              // For pronunciation_guide, route through apply-improvement for version tracking
               if (fb.target_field === "pronunciation_guide") {
                 const currentGuide: any[] = Array.isArray(spec.pronunciation_guide) ? spec.pronunciation_guide : [];
-                // Try to parse suggested_change as JSON, otherwise create entry
                 let newEntry: any;
                 try {
                   newEntry = JSON.parse(fb.suggested_change);
@@ -377,9 +376,30 @@ ${call.transcript}`;
                   newEntry = { word: fb.suggested_change, pronunciation: fb.suggested_change };
                 }
                 const merged = [...currentGuide, newEntry];
-                await supabase.from("agent_specs").update({ pronunciation_guide: merged }).eq("id", spec.id);
-                applied.push({ ...fb, auto_applied: true });
-                console.log(`Verbal training: updated pronunciation_guide`);
+                const pronResp = await fetch(`${supabaseUrl}/functions/v1/apply-improvement`, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${supabaseKey}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    project_id: call.project_id,
+                    improvement: {
+                      field: "pronunciation_guide",
+                      suggested_value: merged,
+                      reason: `[VERBAL-TRAINING] ${fb.instruction || "Updated pronunciation guide"}`,
+                      original_key: `verbal::pronunciation_guide::${fb.suggested_change}`.slice(0, 200),
+                      replace_mode: true,
+                    },
+                  }),
+                });
+                if (pronResp.ok) {
+                  applied.push({ ...fb, auto_applied: true });
+                  console.log(`Verbal training: updated pronunciation_guide via apply-improvement`);
+                } else {
+                  applied.push({ ...fb, auto_applied: false });
+                  console.error(`Verbal training: failed pronunciation_guide:`, await pronResp.text());
+                }
                 continue;
               }
 
@@ -624,7 +644,7 @@ ${call.transcript}`;
       console.error("Failed to compute voice recommendation:", e);
     }
 
-    // Auto-apply humanness learnings
+    // Auto-apply humanness learnings via apply-improvement (proper versioning)
     if (evaluation.humanness_suggestions?.length > 0) {
       try {
         const currentNotes: string[] = Array.isArray(spec.humanization_notes) ? spec.humanization_notes : [];
@@ -633,8 +653,29 @@ ${call.transcript}`;
         );
         if (newSuggestions.length > 0) {
           const merged = [...currentNotes, ...newSuggestions].slice(-20);
-          await supabase.from("agent_specs").update({ humanization_notes: merged }).eq("id", spec.id);
-          console.log(`Auto-applied ${newSuggestions.length} humanness suggestions`);
+          // Route through apply-improvement for proper version tracking
+          const applyResp = await fetch(`${supabaseUrl}/functions/v1/apply-improvement`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${supabaseKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              project_id: call.project_id,
+              improvement: {
+                field: "humanization_notes",
+                suggested_value: merged,
+                reason: `[AUTO-HUMANNESS] Applied ${newSuggestions.length} humanness suggestions`,
+                original_key: `humanness::batch::${Date.now()}`,
+                replace_mode: true,
+              },
+            }),
+          });
+          if (applyResp.ok) {
+            console.log(`Auto-applied ${newSuggestions.length} humanness suggestions via apply-improvement`);
+          } else {
+            console.error("Failed to apply humanness via apply-improvement:", await applyResp.text());
+          }
         }
 
         // Also save to global_human_behaviors for cross-agent learning
@@ -777,13 +818,36 @@ ${call.transcript}`;
     }
 
     // Trigger auto-research when gaps are significant
+    // Research cooldown: only trigger if not researched recently for this version
     const shouldResearch =
       (evaluation.humanness_score != null && evaluation.humanness_score < 80) ||
-      (evaluation.issues_detected?.length >= 2) ||
-      (evaluation.humanness_suggestions?.length >= 2) ||
-      (evaluation.knowledge_gaps?.length >= 1);
+      (evaluation.issues_detected?.length >= 3) ||
+      (evaluation.knowledge_gaps?.length >= 2);
 
     if (shouldResearch) {
+      // Check cooldown: skip if researched in last 5 calls for this project
+      let skipResearch = false;
+      try {
+        const { data: recentKnowledge } = await supabase
+          .from("agent_knowledge")
+          .select("created_at")
+          .eq("project_id", call.project_id)
+          .eq("source_type", "auto_research")
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (recentKnowledge?.length > 0) {
+          const lastResearch = new Date(recentKnowledge[0].created_at);
+          const hoursSince = (Date.now() - lastResearch.getTime()) / (1000 * 60 * 60);
+          if (hoursSince < 2) {
+            skipResearch = true;
+            console.log(`Skipping research — last research was ${Math.round(hoursSince * 60)}min ago (cooldown: 2h)`);
+          }
+        }
+      } catch (e) {
+        console.error("Research cooldown check failed:", e);
+      }
+
+      if (!skipResearch) {
       try {
         console.log("Triggering research-and-improve for project:", call.project_id);
         const researchResp = await fetch(`${supabaseUrl}/functions/v1/research-and-improve`, {
@@ -803,6 +867,7 @@ ${call.transcript}`;
       } catch (e) {
         console.error("Failed to trigger research:", e);
       }
+      } // end !skipResearch
     }
 
     // ── Auto-Graduation Check ──
