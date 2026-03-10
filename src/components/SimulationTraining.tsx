@@ -63,7 +63,7 @@ async function extractEdgeFunctionError(err: any): Promise<string> {
 export default function SimulationTraining({ projectId, disabled, onComplete }: SimulationTrainingProps) {
   const { toast } = useToast();
 
-  const [mode, setMode] = useState<"simulate" | "live" | "hybrid">("simulate");
+  const mode = "simulate";
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard" | "mixed">("medium");
   const [activeTab, setActiveTab] = useState("training");
   const [maxRounds, setMaxRounds] = useState(3);
@@ -270,7 +270,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            Your agent practices against AI customers. Choose Training for scored rounds or Live Practice to watch in real-time.
+            Your agent practices against AI customers. Use Training for scored rounds or Live Practice to watch in real-time.
           </p>
         </div>
 
@@ -298,18 +298,6 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
           </TabsList>
 
           <TabsContent value="training" className="space-y-4 mt-4">
-            {/* Shared difficulty + training mode */}
-            <div className="space-y-1.5">
-              <Label className="text-xs">Training Mode</Label>
-              <Select value={mode} onValueChange={(v) => setMode(v as any)} disabled={isDisabled}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="simulate"><span className="flex items-center gap-1.5"><Bot className="h-3.5 w-3.5" /> Simulate Only</span></SelectItem>
-                  <SelectItem value="hybrid"><span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Hybrid</span></SelectItem>
-                  <SelectItem value="live"><span className="flex items-center gap-1.5"><Play className="h-3.5 w-3.5" /> Live Calls Only</span></SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
