@@ -237,11 +237,29 @@ VOICE TUNING RECOMMENDATIONS:
       max_tokens: 12000,
     });
 
-    const toolResult = aiResponse.tool_calls[0]?.arguments;
-    if (!toolResult) {
+    let evaluation: any = aiResponse.tool_calls[0]?.arguments;
+
+    // Fallback: if AI returned text instead of tool call, try to extract JSON
+    if (!evaluation && aiResponse.content) {
+      console.warn("AI did not use tool call, attempting to extract JSON from text response");
+      try {
+        let text = aiResponse.content;
+        // Strip markdown code fences
+        text = text.replace(/```(?:json)?\s*/gi, "").replace(/```/g, "");
+        // Find JSON object boundaries
+        const start = text.indexOf("{");
+        const end = text.lastIndexOf("}");
+        if (start !== -1 && end > start) {
+          evaluation = JSON.parse(text.substring(start, end + 1));
+        }
+      } catch (parseErr) {
+        console.error("Failed to parse AI text as JSON:", parseErr);
+      }
+    }
+
+    if (!evaluation) {
       throw new Error("AI did not return structured evaluation");
     }
-    let evaluation: any = toolResult;
 
     // Store in calls.evaluation
     await supabase.from("calls").update({ evaluation }).eq("id", call_id);
