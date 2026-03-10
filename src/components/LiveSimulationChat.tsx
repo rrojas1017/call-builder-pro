@@ -180,8 +180,8 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
         </div>
 
         <div className="flex items-center gap-2">
-          {!running && (
-            <Select value={difficulty} onValueChange={setDifficulty}>
+          {!running && showDifficultyPicker && (
+            <Select value={difficulty} onValueChange={setInternalDifficulty}>
               <SelectTrigger className="w-28 h-9">
                 <SelectValue />
               </SelectTrigger>

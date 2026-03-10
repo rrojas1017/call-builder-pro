@@ -600,10 +600,6 @@ export default function UniversityPage() {
         />
       )}
 
-      {/* Live Simulation Chat */}
-      {agentId && (
-        <LiveSimulationChat projectId={agentId} />
-      )}
 
       {/* Humanness Trend Chart */}
       {hasTrendData ? (
