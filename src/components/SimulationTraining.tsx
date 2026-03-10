@@ -270,7 +270,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            Your agent practices against AI customers. Choose Training for scored rounds or Live Practice to watch in real-time.
+            Your agent practices against AI customers. Use Training for scored rounds or Live Practice to watch in real-time.
           </p>
         </div>
 
