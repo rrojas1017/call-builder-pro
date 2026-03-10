@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface LiveSimulationChatProps {
   projectId: string;
+  difficulty?: string;
   onClose?: () => void;
 }
 
