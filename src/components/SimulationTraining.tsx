@@ -274,6 +274,19 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
           </p>
         </div>
 
+        <div className="space-y-1.5">
+          <Label className="text-xs">Customer Difficulty</Label>
+          <Select value={difficulty} onValueChange={(v) => setDifficulty(v as any)} disabled={isDisabled}>
+            <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="easy">Easy — Cooperative</SelectItem>
+              <SelectItem value="medium">Medium — Realistic</SelectItem>
+              <SelectItem value="hard">Hard — Challenging</SelectItem>
+              <SelectItem value="mixed">Mixed — Rotates</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="w-full">
             <TabsTrigger value="training" className="flex-1 gap-1.5" disabled={running || singleRunning}>
