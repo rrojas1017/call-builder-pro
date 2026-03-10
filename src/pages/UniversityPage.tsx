@@ -41,6 +41,8 @@ interface TestContact {
   created_at?: string;
   test_run_id?: string;
   retell_call_id?: string | null;
+  source?: "test_call" | "simulation";
+  call_id?: string;
 }
 
 interface TrendPoint {
@@ -235,7 +237,9 @@ export default function UniversityPage() {
   const loadHistory = useCallback(async () => {
     if (!agentId) return;
     setHistoryLoading(true);
-    const { data } = await supabase
+
+    // 1. Phone test calls from test_run_contacts
+    const { data: testData } = await supabase
       .from("test_run_contacts")
       .select("*, test_runs!inner(project_id)")
       .eq("test_runs.project_id", agentId)
@@ -244,7 +248,7 @@ export default function UniversityPage() {
       .order("created_at", { ascending: false })
       .limit(20);
 
-    const rows = (data || []).map((r: any) => ({
+    const testRows: TestContact[] = (testData || []).map((r: any) => ({
       id: r.id,
       name: r.name,
       phone: r.phone,
@@ -259,10 +263,44 @@ export default function UniversityPage() {
       created_at: r.created_at,
       test_run_id: r.test_run_id,
       user_feedback: r.user_feedback,
+      source: "test_call" as const,
     }));
-    setHistory(rows);
+
+    // 2. Simulated calls from calls table
+    const { data: simData } = await supabase
+      .from("calls")
+      .select("*")
+      .eq("project_id", agentId)
+      .eq("voice_provider", "simulated")
+      .not("evaluation", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    const simRows: TestContact[] = (simData || []).map((r: any) => ({
+      id: r.id,
+      call_id: r.id,
+      name: "Simulation",
+      phone: "—",
+      status: r.outcome ? "completed" : "completed",
+      transcript: r.transcript,
+      evaluation: r.evaluation,
+      duration_seconds: r.duration_seconds,
+      outcome: r.outcome,
+      error: null,
+      extracted_data: r.extracted_data,
+      recording_url: r.recording_url,
+      created_at: r.created_at,
+      source: "simulation" as const,
+    }));
+
+    // Merge and sort by date desc, take top 20
+    const merged = [...testRows, ...simRows]
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+      .slice(0, 20);
+
+    setHistory(merged);
     setHistoryLoading(false);
-    return rows;
+    return merged;
   }, [agentId]);
 
   useEffect(() => {
@@ -291,7 +329,8 @@ export default function UniversityPage() {
     setTrendLoading(true);
 
     const loadTrend = async () => {
-      const { data } = await supabase
+      // Phone test calls
+      const { data: testData } = await supabase
         .from("test_run_contacts")
         .select("evaluation, created_at, test_run_id, test_runs!inner(project_id)")
         .eq("test_runs.project_id", agentId)
@@ -300,7 +339,23 @@ export default function UniversityPage() {
         .order("created_at", { ascending: true })
         .limit(20);
 
-      const points: TrendPoint[] = (data || []).map((row: any, idx: number) => ({
+      // Simulated calls
+      const { data: simData } = await supabase
+        .from("calls")
+        .select("evaluation, created_at")
+        .eq("project_id", agentId)
+        .eq("voice_provider", "simulated")
+        .not("evaluation", "is", null)
+        .order("created_at", { ascending: true })
+        .limit(20);
+
+      const allRows = [
+        ...(testData || []).map((r: any) => ({ evaluation: r.evaluation, created_at: r.created_at })),
+        ...(simData || []).map((r: any) => ({ evaluation: r.evaluation, created_at: r.created_at })),
+      ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+       .slice(0, 20);
+
+      const points: TrendPoint[] = allRows.map((row: any, idx: number) => ({
         label: `Call ${idx + 1}`,
         humanness: row.evaluation?.humanness_score ?? null,
         naturalness: row.evaluation?.naturalness_score ?? null,
@@ -683,6 +738,7 @@ export default function UniversityPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Type</TableHead>
                   <TableHead className="text-xs">Outcome</TableHead>
                   <TableHead className="text-xs text-center">Duration</TableHead>
                   <TableHead className="text-xs text-center">Overall</TableHead>
@@ -704,6 +760,11 @@ export default function UniversityPage() {
                         {item.created_at
                           ? new Date(item.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
                           : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={item.source === "simulation" ? "secondary" : "outline"} className="text-xs">
+                          {item.source === "simulation" ? "Simulation" : "Phone Test"}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-xs">
@@ -801,7 +862,10 @@ function ResultCard({
 
   // Load existing feedback when contact changes
   useEffect(() => {
-    const existing = contact.user_feedback || null;
+    // For simulation calls, feedback is stored in evaluation.user_feedback
+    const existing = contact.source === "simulation"
+      ? (contact.evaluation?.user_feedback || null)
+      : (contact.user_feedback || null);
     setSavedFeedback(existing);
     setFeedbackText(existing || "");
     setEditingFeedback(false);
@@ -812,11 +876,22 @@ function ResultCard({
     if (!feedbackText.trim()) return;
     setSavingFeedback(true);
     try {
-      const { error } = await supabase
-        .from("test_run_contacts")
-        .update({ user_feedback: feedbackText.trim() })
-        .eq("id", contact.id);
-      if (error) throw error;
+      // Save feedback to the appropriate table based on source
+      if (contact.source === "simulation" && contact.call_id) {
+        // For simulation calls, store feedback in the calls table evaluation
+        const existingEval = contact.evaluation || {};
+        const { error } = await supabase
+          .from("calls")
+          .update({ evaluation: { ...existingEval, user_feedback: feedbackText.trim() } })
+          .eq("id", contact.call_id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("test_run_contacts")
+          .update({ user_feedback: feedbackText.trim() })
+          .eq("id", contact.id);
+        if (error) throw error;
+      }
       setSavedFeedback(feedbackText.trim());
       setEditingFeedback(false);
       feedbackToast({ title: "Feedback saved", description: "Applying feedback and re-evaluating..." });
@@ -832,14 +907,16 @@ function ResultCard({
         }).catch(() => {});
       }
 
-      // 2. Re-evaluate the call with the new feedback included
-      supabase.functions.invoke("evaluate-call", {
-        body: { test_run_contact_id: contact.id },
-      }).then(({ data }) => {
-        if (data?.evaluation) {
-          feedbackToast({ title: "Re-evaluation complete", description: "Scores updated with your feedback." });
-        }
-      }).catch(() => {});
+      // 2. Re-evaluate the call with the new feedback included (only for phone test calls)
+      if (contact.source !== "simulation") {
+        supabase.functions.invoke("evaluate-call", {
+          body: { test_run_contact_id: contact.id },
+        }).then(({ data }) => {
+          if (data?.evaluation) {
+            feedbackToast({ title: "Re-evaluation complete", description: "Scores updated with your feedback." });
+          }
+        }).catch(() => {});
+      }
     } catch (err: any) {
       feedbackToast({ title: "Failed to save feedback", description: err.message, variant: "destructive" });
     } finally {

@@ -1,47 +1,48 @@
 
 
-# Unified Training History
+# Simplify the Agent Creation Wizard
 
-## What It Does
-Merges all training call types into a single historical section on the University page. Currently, only phone-based test calls (`test_run_contacts`) appear in the history table. After this change, simulated calls (from both batch Training rounds and Live Practice "Save & Learn") stored in the `calls` table with `voice_provider = 'simulated'` will also appear — giving users a single place to review all training activity and provide feedback.
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-## How It Works
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-### Data Sources
-1. **Phone test calls** — `test_run_contacts` table (existing, already shown)
-2. **Simulated calls** — `calls` table where `voice_provider = 'simulated'` (from `simulate-call` edge function and `LiveSimulationChat` Save & Learn). These already have `evaluation`, `transcript`, `outcome`, `duration_seconds`, etc.
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-### Changes to `src/pages/UniversityPage.tsx`
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-**1. Unified history loader (`loadHistory`)**
-- Keep the existing `test_run_contacts` query
-- Add a second query to `calls` table filtered by `project_id = agentId` and `voice_provider = 'simulated'`, with evaluation not null, limited to 20, ordered by `created_at desc`
-- Map `calls` rows to the same `TestContact` shape, adding a `source: "simulation" | "test_call"` discriminator
-- Merge both arrays, sort by `created_at desc`, take top 20
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-**2. History table UI update**
-- Add a "Type" column showing a badge: "Phone Test" or "Simulation"
-- The existing click-to-view behavior works for both types since `ResultCard` uses the same `TestContact` shape
-- For simulation calls, the feedback save path will write to `calls.evaluation` instead of `test_run_contacts.user_feedback` — add a conditional in `handleSaveFeedback` based on the source field
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-**3. Update `TestContact` interface**
-- Add optional `source?: "test_call" | "simulation"` field
-- Add optional `call_id?: string` for simulation calls (the `calls.id`)
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-**4. Feedback handling for simulation history**
-- When viewing a simulation call from history, the feedback save writes to the `calls` table instead of `test_run_contacts`
-- The "Apply Fix" flow works identically since it only needs `projectId`
+## Plan
 
-**5. Trend data**
-- Also query simulated calls from `calls` table and merge into trend chart data
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
 
-**6. Stats computation**
-- Include simulated call scores in the graduation level calculation
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
+
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
 ### Files Changed
-| File | Change |
-|------|--------|
-| `src/pages/UniversityPage.tsx` | Merge `calls` (simulated) into history, trend, and stats; add Type column; handle feedback for both sources |
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
 
-No database or backend changes needed — the `calls` table already contains all the data with proper RLS policies.
+No database or edge function changes needed.
 
