@@ -217,10 +217,11 @@ serve(async (req) => {
 
     const userMessage = `Here is the complete training pipeline data for the agent "${projectRes.data.name}". Analyze every aspect and provide your structured audit:\n\n${payload}`;
 
-    // ── Step 1: Dual model review in parallel ──
+    // ── Step 1: Dual model review in parallel (both via Lovable AI gateway) ──
     const [claudeResult, gptResult] = await Promise.all([
       callAI({
-        provider: "claude",
+        provider: "gemini",
+        model: "google/gemini-2.5-pro",
         messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: userMessage }],
         tools: [AUDIT_TOOL],
         tool_choice: { type: "function", function: { name: "submit_audit" } },
