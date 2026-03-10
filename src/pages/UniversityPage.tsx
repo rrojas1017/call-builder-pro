@@ -859,7 +859,7 @@ function ResultCard({
   const showSavedFeedback = contact.status === "completed" && savedFeedback && !editingFeedback;
 
   return (
-    <div className="surface-elevated rounded-xl p-6 space-y-4">
+    <div className="gradient-border glass-card rounded-xl p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
           <Phone className="h-4 w-4 text-primary" />
