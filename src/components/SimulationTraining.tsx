@@ -21,6 +21,13 @@ interface SimulationTrainingProps {
   onComplete?: () => void;
 }
 
+interface RecommendedImprovement {
+  field: string;
+  suggested_value: string;
+  reason: string;
+  severity: "critical" | "important" | "minor";
+}
+
 interface CallResult {
   call_id?: string;
   transcript?: string;
@@ -29,6 +36,7 @@ interface CallResult {
     humanness_score?: number;
     naturalness_score?: number;
     issues_detected?: string[];
+    recommended_improvements?: RecommendedImprovement[];
   };
   difficulty?: string;
 }
@@ -39,6 +47,7 @@ interface RoundResult {
   avg_score: number | null;
   previous_score: number | null;
   calls: CallResult[];
+  fixesApplied?: number;
 }
 
 async function extractEdgeFunctionError(err: any): Promise<string> {
@@ -129,12 +138,53 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
         const avgScore = scoreCount > 0 ? Math.round((scoreSum / scoreCount) * 10) / 10 : null;
 
+        // ── Apply critical/important recommendations ──
+        let fixesApplied = 0;
+        if (!cancelRef.current) {
+          const allRecommendations: RecommendedImprovement[] = [];
+          for (const call of calls) {
+            const recs = call.evaluation?.recommended_improvements;
+            if (recs) {
+              for (const rec of recs) {
+                if (rec.severity === "critical" || rec.severity === "important") {
+                  allRecommendations.push(rec);
+                }
+              }
+            }
+          }
+
+          // Deduplicate by field name (take the first recommendation per field)
+          const seenFields = new Set<string>();
+          const uniqueRecs = allRecommendations.filter(rec => {
+            if (seenFields.has(rec.field)) return false;
+            seenFields.add(rec.field);
+            return true;
+          });
+
+          for (const rec of uniqueRecs) {
+            if (cancelRef.current) break;
+            try {
+              const { data: applyResult } = await supabase.functions.invoke("apply-audit-recommendation", {
+                body: {
+                  project_id: projectId,
+                  recommendation: `${rec.reason}. Set ${rec.field} to: ${rec.suggested_value}`,
+                  category: rec.severity,
+                },
+              });
+              if (applyResult?.success) fixesApplied++;
+            } catch {
+              // Non-critical — continue
+            }
+          }
+        }
+
         const roundResult: RoundResult = {
           round,
           status: "completed",
           avg_score: avgScore,
           previous_score: previousScore,
           calls,
+          fixesApplied,
         };
 
         setRoundResults(prev => [...prev, roundResult]);
@@ -344,6 +394,11 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
                       <CheckCircle className="h-4 w-4 text-green-500" />
                       <span className="font-medium text-foreground">Round {round.round}</span>
                       <Badge variant="outline" className="text-xs">{round.calls.length} calls</Badge>
+                      {round.fixesApplied != null && round.fixesApplied > 0 && (
+                        <Badge variant="outline" className="text-xs border-primary/30 text-primary">
+                          <Zap className="h-3 w-3 mr-0.5" /> {round.fixesApplied} fix{round.fixesApplied > 1 ? "es" : ""} applied
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       {round.avg_score != null && (
@@ -376,7 +431,8 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
             <div className="rounded-lg border border-border bg-muted/30 p-3">
               <p className="text-xs text-muted-foreground">
                 Completed {roundResults.length} round{roundResults.length > 1 ? "s" : ""}.
-                {finalScore != null && finalScore >= 9.0 && <span className="text-green-400"> Agent reached excellence (9.0+)!</span>}
+                {(() => { const totalFixes = roundResults.reduce((s, r) => s + (r.fixesApplied || 0), 0); return totalFixes > 0 ? ` ${totalFixes} improvement${totalFixes > 1 ? "s" : ""} applied to agent spec.` : ""; })()}
+                {finalScore != null && finalScore >= 9.0 && <span className="text-primary"> Agent reached excellence (9.0+)!</span>}
               </p>
             </div>
           )}

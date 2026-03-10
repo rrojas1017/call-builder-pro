@@ -1,29 +1,48 @@
 
 
-# Problem: Training Simulations Don't Apply Improvements
+# Simplify the Agent Creation Wizard
 
-## What's Happening
-The training loop in `SimulationTraining.tsx` runs simulations → gets evaluations with scores and recommendations → but **never applies** those recommendations back to the agent spec. The old `auto-train` edge function had an `applyRecommendations` step that called `apply-audit-recommendation` for critical/important fixes, but when we moved to client-side orchestration, that step was lost.
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-So right now: the agent gets scored, but **never learns**.
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-## Fix
-After each training round completes, call `apply-audit-recommendation` for any critical/important recommendations from the evaluations — exactly like `auto-train` did.
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-### Changes to `src/components/SimulationTraining.tsx`
-1. After each round's calls finish and scores are calculated, collect `recommended_improvements` from all evaluations
-2. Filter for `critical` and `important` severity
-3. Call `apply-audit-recommendation` for each one (sequentially to avoid race conditions)
-4. Show applied fixes count in the round results UI (e.g. "2 fixes applied")
-5. Add a "Fixes Applied" indicator per round in the results display
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-### Changes to `src/components/LiveSimulationChat.tsx`
-After the live practice conversation ends, optionally trigger evaluation + improvement application so live practice also contributes to learning. Add a "Save & Learn" button at the end of a conversation that:
-- Saves the transcript as a simulated call via `simulate-call` (or directly to calls table)
-- Triggers evaluation
-- Applies recommendations
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-## Files
-- `src/components/SimulationTraining.tsx` — Add post-round improvement application loop
-- `src/components/LiveSimulationChat.tsx` — Add "Save & Learn" post-conversation action
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
+
+## Plan
+
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
+
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+
+### Files Changed
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 
