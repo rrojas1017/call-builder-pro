@@ -521,7 +521,7 @@ export default function UniversityPage() {
       )}
 
       {/* Form */}
-      <div className="surface-elevated rounded-xl p-6 space-y-4">
+      <div className="glass-card rounded-xl p-6 space-y-4">
         <div className="space-y-2">
           <label className="text-sm font-medium text-foreground">Agent</label>
           <Select value={agentId} onValueChange={setAgentId} disabled={running}>
