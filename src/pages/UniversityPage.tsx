@@ -904,7 +904,7 @@ function ResultCard({
         <RecordingPlayer url={contact.recording_url} />
       )}
 
-      {contact.status === "completed" && !contact.evaluation && (
+      {isTerminal && !contact.evaluation && (
         <GradingProgress hasTranscript={!!contact.transcript} />
       )}
 
