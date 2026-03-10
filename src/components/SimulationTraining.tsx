@@ -21,6 +21,13 @@ interface SimulationTrainingProps {
   onComplete?: () => void;
 }
 
+interface RecommendedImprovement {
+  field: string;
+  suggested_value: string;
+  reason: string;
+  severity: "critical" | "important" | "minor";
+}
+
 interface CallResult {
   call_id?: string;
   transcript?: string;
@@ -29,6 +36,7 @@ interface CallResult {
     humanness_score?: number;
     naturalness_score?: number;
     issues_detected?: string[];
+    recommended_improvements?: RecommendedImprovement[];
   };
   difficulty?: string;
 }
@@ -39,6 +47,7 @@ interface RoundResult {
   avg_score: number | null;
   previous_score: number | null;
   calls: CallResult[];
+  fixesApplied?: number;
 }
 
 async function extractEdgeFunctionError(err: any): Promise<string> {
