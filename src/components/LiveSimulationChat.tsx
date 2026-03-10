@@ -160,6 +160,10 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
       const maxTurns = 12;
       let connectionLost = false;
 
+      // Interruption chance by difficulty
+      const interruptChance: Record<string, number> = { easy: 0.1, medium: 0.25, hard: 0.4 };
+      const chance = interruptChance[difficulty] || 0.25;
+
       for (let turn = 0; turn < maxTurns; turn++) {
         if (stoppedRef.current) break;
 
@@ -206,16 +210,61 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
         if (!agentData) { connectionLost = true; break; }
         if (stoppedRef.current) break;
 
+        let agentContent = agentData.content;
+        let interrupted = false;
+
+        // Roll for customer interruption
+        if (Math.random() < chance && agentContent.length > 40) {
+          interrupted = true;
+          // Truncate at 40-70% of message at a word boundary
+          const cutRatio = 0.4 + Math.random() * 0.3;
+          const cutPoint = Math.floor(agentContent.length * cutRatio);
+          const lastSpace = agentContent.lastIndexOf(" ", cutPoint);
+          const truncAt = lastSpace > 20 ? lastSpace : cutPoint;
+          agentContent = agentContent.slice(0, truncAt).replace(/[,.\s]+$/, "") + "—";
+        }
+
         const agentMessage: ChatMessage = {
           speaker: "agent",
-          content: agentData.content,
+          content: agentContent,
           timestamp: Date.now(),
         };
         chatHistory.push(agentMessage);
         setMessages((prev) => [...prev, agentMessage]);
 
-        if (/\b(goodbye|bye|have a (great|good)|thank you for your time|take care)\b/i.test(agentData.content)) {
+        if (!interrupted && /\b(goodbye|bye|have a (great|good)|thank you for your time|take care)\b/i.test(agentContent)) {
           break;
+        }
+
+        // If interrupted, immediately fire customer turn without waiting
+        if (interrupted) {
+          if (stoppedRef.current) break;
+          setCurrentSpeaker("customer");
+          await pause(300); // Quick interruption pause
+
+          const intData = await invokeWithRetry("simulate-turn", {
+            action: "turn",
+            role: "customer",
+            agent_system: agentSystemRef.current,
+            customer_system: customerSystemRef.current,
+            history: chatHistory.map((m) => ({ speaker: m.speaker, content: m.content })),
+          });
+
+          if (!intData) { connectionLost = true; break; }
+          if (stoppedRef.current) break;
+
+          const intMessage: ChatMessage = {
+            speaker: "customer",
+            content: intData.content,
+            timestamp: Date.now(),
+          };
+          chatHistory.push(intMessage);
+          setMessages((prev) => [...prev, intMessage]);
+          setTurnCount(turn + 1);
+
+          if (/\b(goodbye|bye|not interested|stop calling|hang up)\b/i.test(intData.content)) {
+            break;
+          }
         }
       }
 
