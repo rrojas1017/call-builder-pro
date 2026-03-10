@@ -195,7 +195,8 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
         setMessages((prev) => [...prev, custMessage]);
         setTurnCount(turn + 1);
 
-        if (/\b(goodbye|bye|not interested|stop calling|hang up)\b/i.test(custData.content)) {
+        // Only honor end signals after minimum 4 turns to prevent premature cutoff
+        if (turn >= 4 && /\b(goodbye|bye|not interested|stop calling|hang up)\b/i.test(custData.content)) {
           break;
         }
 
