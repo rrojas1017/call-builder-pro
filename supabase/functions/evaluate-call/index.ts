@@ -11,8 +11,26 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { call_id, test_run_contact_id } = await req.json();
-    if (!call_id) throw new Error("call_id required");
+    let { call_id, test_run_contact_id } = await req.json();
+
+    // Allow triggering re-evaluation by test_run_contact_id alone (e.g. after user feedback)
+    if (!call_id && test_run_contact_id) {
+      const { data: trc, error: trcErr } = await supabase
+        .from("test_run_contacts")
+        .select("retell_call_id")
+        .eq("id", test_run_contact_id)
+        .single();
+      if (trcErr || !trc?.retell_call_id) throw new Error("Could not find call for this test contact");
+      const { data: callRow, error: callLookupErr } = await supabase
+        .from("calls")
+        .select("id")
+        .eq("retell_call_id", trc.retell_call_id)
+        .single();
+      if (callLookupErr || !callRow) throw new Error("No call found matching retell_call_id");
+      call_id = callRow.id;
+    }
+
+    if (!call_id) throw new Error("call_id or test_run_contact_id required");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
