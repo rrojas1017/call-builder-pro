@@ -473,9 +473,10 @@ export default function UniversityPage() {
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">University</h1>
+      <div className="relative rounded-xl p-6 mesh-gradient">
+        <h1 className="text-2xl font-bold text-gradient-primary">University</h1>
         <p className="text-muted-foreground mt-1">Train, test, and graduate your agents — measure humanness and refine performance until they're production-ready.</p>
+        <div className="absolute bottom-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
       </div>
 
       {/* Graduation Badge */}
