@@ -128,3 +128,6 @@ verify_jwt = false
 
 [functions.parse-business-rules]
 verify_jwt = false
+
+[functions.verify-feedback]
+verify_jwt = false
