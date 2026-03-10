@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
-import { Mic, MicOff, Send, MessageSquarePlus, Pencil, BrainCircuit, ChevronDown, Database } from "lucide-react";
+import { Mic, MicOff, Send, MessageSquarePlus, Pencil, BrainCircuit, ChevronDown, Database, BookmarkPlus } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +14,8 @@ import { Progress } from "@/components/ui/progress";
 import { Loader2, Phone, Play, CheckCircle, XCircle, FileText, Lightbulb, BookOpen, ArrowUp, ArrowDown, Minus, History, StopCircle, GraduationCap, RotateCcw, Clock, Trophy, TrendingUp, Zap } from "lucide-react";
 import LiveCallMonitor from "@/components/LiveCallMonitor";
 import SimulationTraining from "@/components/SimulationTraining";
+import { detectBusinessRuleIntent } from "@/lib/detectBusinessRuleIntent";
+import { addBusinessRule } from "@/lib/addBusinessRule";
 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
@@ -791,6 +793,8 @@ function ResultCard({
   const [savedFeedback, setSavedFeedback] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [detectedRule, setDetectedRule] = useState<string | null>(null);
+  const [savingRule, setSavingRule] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const { toast: feedbackToast } = useToast();
@@ -801,6 +805,7 @@ function ResultCard({
     setSavedFeedback(existing);
     setFeedbackText(existing || "");
     setEditingFeedback(false);
+    setDetectedRule(null);
   }, [contact.id]);
 
   const handleSaveFeedback = async () => {
@@ -887,7 +892,13 @@ function ResultCard({
       if (error) throw error;
       const transcribedText = data?.text || data?.transcript || "";
       if (transcribedText) {
-        setFeedbackText(prev => prev ? prev + "\n" + transcribedText : transcribedText);
+        const newText = feedbackText ? feedbackText + "\n" + transcribedText : transcribedText;
+        setFeedbackText(newText);
+        // Check for business rule intent
+        const detection = detectBusinessRuleIntent(newText);
+        if (detection.isBusinessRule) {
+          setDetectedRule(detection.ruleText);
+        }
       } else {
         feedbackToast({ title: "No speech detected", description: "Try recording again with clearer audio.", variant: "destructive" });
       }
@@ -1071,8 +1082,12 @@ function ResultCard({
           </p>
           <Textarea
             value={feedbackText}
-            onChange={(e) => setFeedbackText(e.target.value)}
-            placeholder="e.g., 'The agent was too pushy about scheduling', 'Great job handling the objection about pricing'..."
+            onChange={(e) => {
+              setFeedbackText(e.target.value);
+              const detection = detectBusinessRuleIntent(e.target.value);
+              setDetectedRule(detection.isBusinessRule ? detection.ruleText : null);
+            }}
+            placeholder="e.g., 'The agent was too pushy about scheduling', or say 'Add this as a business rule: always ask for zip code first'..."
             className="min-h-[60px] text-xs"
           />
           <div className="flex items-center gap-2">
@@ -1106,6 +1121,34 @@ function ResultCard({
               </Button>
             )}
           </div>
+          {detectedRule && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+              <p className="text-xs font-medium text-primary flex items-center gap-1">
+                <BookmarkPlus className="h-3.5 w-3.5" /> Business rule detected
+              </p>
+              <p className="text-xs text-foreground">"{detectedRule}"</p>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                disabled={savingRule}
+                onClick={async () => {
+                  setSavingRule(true);
+                  const result = await addBusinessRule(projectId, detectedRule);
+                  setSavingRule(false);
+                  if (result.success) {
+                    feedbackToast({ title: "Business rule added!", description: `"${detectedRule.substring(0, 60)}..." saved to agent's business rules.` });
+                    setDetectedRule(null);
+                    setFeedbackText("");
+                  } else {
+                    feedbackToast({ title: "Failed to add rule", description: result.error, variant: "destructive" });
+                  }
+                }}
+              >
+                {savingRule ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <BookmarkPlus className="mr-1 h-3 w-3" />}
+                Save as Business Rule
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

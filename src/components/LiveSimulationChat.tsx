@@ -6,8 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Play, Square, Bot, User, Eye, RotateCcw, GraduationCap, Zap, MessageCircle, Send, CheckCircle } from "lucide-react";
+import { Loader2, Play, Square, Bot, User, Eye, RotateCcw, GraduationCap, Zap, MessageCircle, Send, CheckCircle, BookmarkPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { detectBusinessRuleIntent } from "@/lib/detectBusinessRuleIntent";
+import { addBusinessRule } from "@/lib/addBusinessRule";
 
 interface LiveSimulationChatProps {
   projectId: string;
@@ -47,6 +49,8 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
   const [generalFeedback, setGeneralFeedback] = useState("");
   const [applyingFeedback, setApplyingFeedback] = useState(false);
   const [feedbackApplied, setFeedbackApplied] = useState<string[]>([]);
+  const [detectedRule, setDetectedRule] = useState<string | null>(null);
+  const [savingRule, setSavingRule] = useState(false);
 
   const stoppedRef = useRef(false);
   const agentSystemRef = useRef("");
@@ -572,13 +576,18 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
               </div>
               <div className="flex gap-2">
                 <Textarea
-                  placeholder="e.g. &quot;Stop using filler words&quot; or &quot;Ask for zip code before income&quot;"
+                  placeholder="e.g. &quot;Stop using filler words&quot; or &quot;Add this as a business rule: always ask for zip code first&quot;"
                   className="text-xs min-h-0 resize-none"
                   value={generalFeedback}
-                  onChange={(e) => setGeneralFeedback(e.target.value)}
+                  onChange={(e) => {
+                    setGeneralFeedback(e.target.value);
+                    const detection = detectBusinessRuleIntent(e.target.value);
+                    setDetectedRule(detection.isBusinessRule ? detection.ruleText : null);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey && generalFeedback.trim()) {
                       e.preventDefault();
+                      if (detectedRule) return; // Let them use the button
                       handleSubmitFeedback(generalFeedback);
                     }
                   }}
@@ -589,7 +598,7 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
                   size="sm"
                   className="h-8 px-3 self-end"
                   onClick={() => handleSubmitFeedback(generalFeedback)}
-                  disabled={!generalFeedback.trim() || applyingFeedback}
+                  disabled={!generalFeedback.trim() || applyingFeedback || !!detectedRule}
                 >
                   {applyingFeedback ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -598,6 +607,34 @@ export default function LiveSimulationChat({ projectId, difficulty: externalDiff
                   )}
                 </Button>
               </div>
+              {detectedRule && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                  <p className="text-xs font-medium text-primary flex items-center gap-1">
+                    <BookmarkPlus className="h-3.5 w-3.5" /> Business rule detected
+                  </p>
+                  <p className="text-xs text-foreground">"{detectedRule}"</p>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={savingRule}
+                    onClick={async () => {
+                      setSavingRule(true);
+                      const result = await addBusinessRule(projectId, detectedRule);
+                      setSavingRule(false);
+                      if (result.success) {
+                        toast({ title: "Business rule added!", description: `Saved to agent's business rules.` });
+                        setDetectedRule(null);
+                        setGeneralFeedback("");
+                      } else {
+                        toast({ title: "Failed to add rule", description: result.error, variant: "destructive" });
+                      }
+                    }}
+                  >
+                    {savingRule ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <BookmarkPlus className="mr-1 h-3 w-3" />}
+                    Save as Business Rule
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -5,9 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2, GraduationCap, Download, Mic, MicOff, MessageSquarePlus, Pencil, Send } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2, GraduationCap, Download, Mic, MicOff, MessageSquarePlus, Pencil, Send, BookmarkPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { downloadRecordingMp3 } from "@/lib/recordingDownload";
+import { detectBusinessRuleIntent } from "@/lib/detectBusinessRuleIntent";
+import { addBusinessRule } from "@/lib/addBusinessRule";
 
 interface TestContact {
   id: string;
@@ -474,6 +476,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
               {selected.status === "completed" && (
                 <UserFeedbackSection
                   contactId={selected.id}
+                  projectId={projectId}
                   existingFeedback={selected.user_feedback || null}
                   onFeedbackSaved={(feedback) => {
                     setContacts(prev => prev.map(c => c.id === selected.id ? { ...c, user_feedback: feedback } : c));
@@ -524,8 +527,9 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
   );
 }
 
-function UserFeedbackSection({ contactId, existingFeedback, onFeedbackSaved }: {
+function UserFeedbackSection({ contactId, projectId, existingFeedback, onFeedbackSaved }: {
   contactId: string;
+  projectId: string;
   existingFeedback: string | null;
   onFeedbackSaved: (feedback: string) => void;
 }) {
@@ -535,6 +539,8 @@ function UserFeedbackSection({ contactId, existingFeedback, onFeedbackSaved }: {
   const [editing, setEditing] = useState(!existingFeedback);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [detectedRule, setDetectedRule] = useState<string | null>(null);
+  const [savingRule, setSavingRule] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
@@ -542,6 +548,7 @@ function UserFeedbackSection({ contactId, existingFeedback, onFeedbackSaved }: {
   useEffect(() => {
     setFeedback(existingFeedback || "");
     setEditing(!existingFeedback);
+    setDetectedRule(null);
   }, [contactId, existingFeedback]);
 
   const handleSave = useCallback(async () => {
@@ -610,7 +617,10 @@ function UserFeedbackSection({ contactId, existingFeedback, onFeedbackSaved }: {
       if (error) throw error;
       const transcribedText = data?.text || data?.transcript || "";
       if (transcribedText) {
-        setFeedback(prev => prev ? prev + "\n" + transcribedText : transcribedText);
+        const newText = feedback ? feedback + "\n" + transcribedText : transcribedText;
+        setFeedback(newText);
+        const detection = detectBusinessRuleIntent(newText);
+        if (detection.isBusinessRule) setDetectedRule(detection.ruleText);
       } else {
         toast({ title: "No speech detected", description: "Try recording again with clearer audio.", variant: "destructive" });
       }
@@ -649,10 +659,42 @@ function UserFeedbackSection({ contactId, existingFeedback, onFeedbackSaved }: {
       </p>
       <Textarea
         value={feedback}
-        onChange={(e) => setFeedback(e.target.value)}
-        placeholder="e.g., 'The agent was too pushy about scheduling', 'Great job handling the objection about pricing'..."
+        onChange={(e) => {
+          setFeedback(e.target.value);
+          const detection = detectBusinessRuleIntent(e.target.value);
+          setDetectedRule(detection.isBusinessRule ? detection.ruleText : null);
+        }}
+        placeholder="e.g., 'The agent was too pushy about scheduling', or say 'Add this as a business rule: always verify zip code'..."
         className="min-h-[60px] text-xs"
       />
+      {detectedRule && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+          <p className="text-xs font-medium text-primary flex items-center gap-1">
+            <BookmarkPlus className="h-3.5 w-3.5" /> Business rule detected
+          </p>
+          <p className="text-xs text-foreground">"{detectedRule}"</p>
+          <Button
+            size="sm"
+            className="h-7 text-xs"
+            disabled={savingRule}
+            onClick={async () => {
+              setSavingRule(true);
+              const result = await addBusinessRule(projectId, detectedRule);
+              setSavingRule(false);
+              if (result.success) {
+                toast({ title: "Business rule added!", description: `Saved to agent's business rules.` });
+                setDetectedRule(null);
+                setFeedback("");
+              } else {
+                toast({ title: "Failed to add rule", description: result.error, variant: "destructive" });
+              }
+            }}
+          >
+            {savingRule ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <BookmarkPlus className="mr-1 h-3 w-3" />}
+            Save as Business Rule
+          </Button>
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <Button
           onClick={handleSave}
