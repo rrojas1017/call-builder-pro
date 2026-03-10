@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -9,7 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Loader2, Play, Bot, BrainCircuit, ChevronDown, CheckCircle, XCircle,
-  ArrowUp, ArrowDown, Minus, RotateCcw, Zap, Trophy, MessageSquare, FileText,
+  ArrowUp, ArrowDown, Minus, RotateCcw, Zap, Trophy, MessageSquare, FileText, StopCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -19,24 +19,24 @@ interface SimulationTrainingProps {
   onComplete?: () => void;
 }
 
+interface CallResult {
+  call_id?: string;
+  transcript?: string;
+  evaluation?: {
+    overall_score?: number;
+    humanness_score?: number;
+    naturalness_score?: number;
+    issues_detected?: string[];
+  };
+  difficulty?: string;
+}
+
 interface RoundResult {
   round: number;
-  mode: string;
   status: string;
   avg_score: number | null;
   previous_score: number | null;
-  calls_evaluated?: number;
-  fixes_applied?: number;
-  fixes?: { field: string; reason: string; severity: string; action: string }[];
-  rolled_back?: string;
-}
-
-interface SimulationResult {
-  project_id: string;
-  mode: string;
-  rounds_completed: number;
-  results: RoundResult[];
-  final_score: number | null;
+  calls: CallResult[];
 }
 
 async function extractEdgeFunctionError(err: any): Promise<string> {
@@ -58,87 +58,119 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
   const [callsPerRound, setCallsPerRound] = useState(3);
 
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<SimulationResult | null>(null);
   const [currentRound, setCurrentRound] = useState(0);
+  const [currentCall, setCurrentCall] = useState(0);
+  const [roundResults, setRoundResults] = useState<RoundResult[]>([]);
   const [expandedRound, setExpandedRound] = useState<number | null>(null);
+  const [finalScore, setFinalScore] = useState<number | null>(null);
 
-  const [singleResult, setSingleResult] = useState<{
-    call_id: string;
-    transcript: string;
-    evaluation: any;
-    difficulty: string;
-  } | null>(null);
+  const [singleResult, setSingleResult] = useState<CallResult | null>(null);
   const [singleRunning, setSingleRunning] = useState(false);
 
+  const cancelRef = useRef(false);
   const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (result && resultRef.current) {
+    if (roundResults.length > 0 && !running && resultRef.current) {
       resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [result]);
+  }, [running, roundResults]);
+
+  const runSingleSimulation = useCallback(async (): Promise<CallResult> => {
+    const { data, error } = await supabase.functions.invoke("simulate-call", {
+      body: { project_id: projectId, customer_difficulty: difficulty, max_turns: 12 },
+    });
+    if (error) {
+      const msg = await extractEdgeFunctionError(error);
+      throw new Error(msg);
+    }
+    return data as CallResult;
+  }, [projectId, difficulty]);
 
   const handleStartTraining = async () => {
     setRunning(true);
-    setResult(null);
-    setCurrentRound(0);
+    setRoundResults([]);
+    setFinalScore(null);
     setExpandedRound(null);
+    cancelRef.current = false;
+
+    let previousScore: number | null = null;
 
     try {
-      toast({ title: "Training started", description: `Running ${maxRounds} rounds of ${mode} training...` });
+      toast({ title: "Training started", description: `Running up to ${maxRounds} rounds × ${callsPerRound} calls...` });
 
-      const progressInterval = setInterval(() => {
-        setCurrentRound((prev) => Math.min(prev + 1, maxRounds));
-      }, 15000);
+      for (let round = 1; round <= maxRounds; round++) {
+        if (cancelRef.current) break;
+        setCurrentRound(round);
 
-      const { data, error } = await supabase.functions.invoke("auto-train", {
-        body: {
-          project_id: projectId,
-          mode,
-          max_rounds: maxRounds,
-          calls_per_round: callsPerRound,
-          customer_difficulty: difficulty,
-          auto_apply_severity: ["critical", "important"],
-        },
-      });
+        const calls: CallResult[] = [];
+        let scoreSum = 0;
+        let scoreCount = 0;
 
-      clearInterval(progressInterval);
+        for (let call = 1; call <= callsPerRound; call++) {
+          if (cancelRef.current) break;
+          setCurrentCall(call);
 
-      if (error) {
-        const msg = await extractEdgeFunctionError(error);
-        throw new Error(msg);
+          try {
+            const result = await runSingleSimulation();
+            calls.push(result);
+            if (result.evaluation?.overall_score != null) {
+              scoreSum += result.evaluation.overall_score;
+              scoreCount++;
+            }
+          } catch (err: any) {
+            calls.push({ evaluation: undefined, difficulty: difficulty });
+            toast({ title: `Round ${round}, Call ${call} failed`, description: err.message, variant: "destructive" });
+          }
+        }
+
+        const avgScore = scoreCount > 0 ? Math.round((scoreSum / scoreCount) * 10) / 10 : null;
+
+        const roundResult: RoundResult = {
+          round,
+          status: "completed",
+          avg_score: avgScore,
+          previous_score: previousScore,
+          calls,
+        };
+
+        setRoundResults(prev => [...prev, roundResult]);
+        previousScore = avgScore;
+
+        // Early exit if score >= 9.0
+        if (avgScore != null && avgScore >= 9.0) {
+          setFinalScore(avgScore);
+          toast({ title: "Excellence reached!", description: `Score ${avgScore}/10 — stopping early.` });
+          break;
+        }
+
+        if (round === maxRounds) {
+          setFinalScore(avgScore);
+        }
       }
 
-      setResult(data as SimulationResult);
-      setCurrentRound(data.rounds_completed);
-      toast({
-        title: "Training complete!",
-        description: data.final_score
-          ? `Final score: ${data.final_score}/10 after ${data.rounds_completed} round(s)`
-          : `Completed ${data.rounds_completed} round(s)`,
-      });
-      onComplete?.();
+      if (!cancelRef.current) {
+        toast({ title: "Training complete!", description: finalScore ? `Final score: ${finalScore}/10` : "All rounds finished." });
+        onComplete?.();
+      }
     } catch (err: any) {
       toast({ title: "Training failed", description: err.message, variant: "destructive" });
     } finally {
       setRunning(false);
+      setCurrentCall(0);
     }
+  };
+
+  const handleCancel = () => {
+    cancelRef.current = true;
+    toast({ title: "Cancelling...", description: "Will stop after the current call finishes." });
   };
 
   const handleSingleSimulation = async () => {
     setSingleRunning(true);
     setSingleResult(null);
-
     try {
-      const { data, error } = await supabase.functions.invoke("simulate-call", {
-        body: { project_id: projectId, customer_difficulty: difficulty, max_turns: 12 },
-      });
-
-      if (error) {
-        const msg = await extractEdgeFunctionError(error);
-        throw new Error(msg);
-      }
-
+      const data = await runSingleSimulation();
       setSingleResult(data);
       toast({
         title: "Simulation complete",
@@ -158,19 +190,6 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
     return "text-red-400";
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "completed":
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case "regression_rollback":
-        return <RotateCcw className="h-4 w-4 text-destructive" />;
-      case "regression_detected_no_rollback":
-        return <XCircle className="h-4 w-4 text-yellow-500" />;
-      default:
-        return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />;
-    }
-  };
-
   const getScoreDelta = (current: number | null, previous: number | null) => {
     if (current == null || previous == null) return null;
     const delta = Math.round((current - previous) * 10) / 10;
@@ -179,11 +198,15 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
     return { icon: <Minus className="h-3 w-3" />, text: "0", color: "text-muted-foreground" };
   };
 
+  const totalCalls = maxRounds * callsPerRound;
+  const completedCalls = ((currentRound - 1) * callsPerRound) + currentCall;
+  const progressPct = running ? Math.min((completedCalls / totalCalls) * 100, 100) : 0;
+
   const isDisabled = disabled || running || singleRunning;
 
   return (
     <div className="space-y-4">
-      {/* Header + Config */}
+      {/* Config */}
       <div className="surface-elevated rounded-xl p-6 space-y-5">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -194,8 +217,7 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            Your agent practices against AI customers. The system evaluates each conversation,
-            fixes issues, and repeats until it's ready for real calls.
+            Your agent practices against AI customers. Each call is simulated and scored individually with live progress.
           </p>
         </div>
 
@@ -203,34 +225,23 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
           <div className="space-y-1.5">
             <Label className="text-xs">Training Mode</Label>
             <Select value={mode} onValueChange={(v) => setMode(v as any)} disabled={isDisabled}>
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="simulate">
-                  <span className="flex items-center gap-1.5"><Bot className="h-3.5 w-3.5" /> Simulate Only</span>
-                </SelectItem>
-                <SelectItem value="hybrid">
-                  <span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Hybrid (Auto-Graduate)</span>
-                </SelectItem>
-                <SelectItem value="live">
-                  <span className="flex items-center gap-1.5"><Play className="h-3.5 w-3.5" /> Live Calls Only</span>
-                </SelectItem>
+                <SelectItem value="simulate"><span className="flex items-center gap-1.5"><Bot className="h-3.5 w-3.5" /> Simulate Only</span></SelectItem>
+                <SelectItem value="hybrid"><span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> Hybrid</span></SelectItem>
+                <SelectItem value="live"><span className="flex items-center gap-1.5"><Play className="h-3.5 w-3.5" /> Live Calls Only</span></SelectItem>
               </SelectContent>
             </Select>
           </div>
-
           <div className="space-y-1.5">
             <Label className="text-xs">Customer Difficulty</Label>
             <Select value={difficulty} onValueChange={(v) => setDifficulty(v as any)} disabled={isDisabled}>
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="easy">Easy — Cooperative</SelectItem>
                 <SelectItem value="medium">Medium — Realistic</SelectItem>
                 <SelectItem value="hard">Hard — Challenging</SelectItem>
-                <SelectItem value="mixed">Mixed — Rotates Each Round</SelectItem>
+                <SelectItem value="mixed">Mixed — Rotates</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -244,7 +255,6 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
             </div>
             <Slider value={[maxRounds]} onValueChange={([v]) => setMaxRounds(v)} min={1} max={10} step={1} disabled={isDisabled} />
           </div>
-
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label className="text-xs">Calls per Round</Label>
@@ -254,37 +264,26 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
           </div>
         </div>
 
-        {mode === "hybrid" && (
-          <div className="rounded-lg border border-border bg-muted/30 p-3">
-            <p className="text-xs text-muted-foreground">
-              <Zap className="h-3 w-3 inline mr-1" />
-              Hybrid mode starts with AI simulations. When the score reaches 7.0+, it automatically switches to live calls for final testing.
-            </p>
-          </div>
-        )}
-
         <div className="flex gap-2">
-          <Button onClick={handleStartTraining} disabled={isDisabled || !projectId} className="flex-1">
-            {running ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Training Round {currentRound}/{maxRounds}...</>
-            ) : (
-              <><BrainCircuit className="mr-2 h-4 w-4" /> Start {maxRounds}-Round Training</>
-            )}
-          </Button>
+          {running ? (
+            <Button variant="destructive" onClick={handleCancel} className="flex-1">
+              <StopCircle className="mr-2 h-4 w-4" /> Cancel Training
+            </Button>
+          ) : (
+            <Button onClick={handleStartTraining} disabled={isDisabled || !projectId} className="flex-1">
+              <BrainCircuit className="mr-2 h-4 w-4" /> Start {maxRounds}-Round Training
+            </Button>
+          )}
           <Button variant="outline" onClick={handleSingleSimulation} disabled={isDisabled || !projectId} className="shrink-0">
-            {singleRunning ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <><MessageSquare className="mr-2 h-4 w-4" /> Test 1 Call</>
-            )}
+            {singleRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <><MessageSquare className="mr-2 h-4 w-4" /> Test 1 Call</>}
           </Button>
         </div>
 
         {running && (
           <div className="space-y-2">
-            <Progress value={(currentRound / maxRounds) * 100} className="h-2" />
+            <Progress value={progressPct} className="h-2" />
             <p className="text-xs text-muted-foreground animate-pulse">
-              Running {callsPerRound} simulated conversation{callsPerRound > 1 ? "s" : ""} per round...
+              Round {currentRound}/{maxRounds} — Call {currentCall}/{callsPerRound}...
             </p>
           </div>
         )}
@@ -292,96 +291,28 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
       {/* Single simulation result */}
       {singleResult && (
-        <div className="surface-elevated rounded-xl p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4 text-primary" />
-            <span className="text-sm font-semibold text-foreground">Single Simulation Result</span>
-            <Badge variant="outline" className="text-xs">{singleResult.difficulty}</Badge>
-          </div>
-
-          {singleResult.evaluation && (
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: "Overall", score: singleResult.evaluation.overall_score },
-                { label: "Humanness", score: singleResult.evaluation.humanness_score },
-                { label: "Naturalness", score: singleResult.evaluation.naturalness_score },
-              ].map(({ label, score }) => (
-                <div key={label} className="text-center rounded-lg border border-border p-3">
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                  <p className={`text-2xl font-bold ${getScoreColor(score)}`}>{score ?? "—"}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {singleResult.evaluation?.issues_detected?.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-foreground">Issues Detected:</p>
-              <ul className="space-y-1">
-                {singleResult.evaluation.issues_detected.map((issue: string, i: number) => (
-                  <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                    <XCircle className="h-3 w-3 text-destructive mt-0.5 shrink-0" />
-                    {issue}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <Collapsible>
-            <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-primary hover:underline">
-              <FileText className="h-3 w-3" /> View Conversation Transcript
-              <ChevronDown className="h-3 w-3" />
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="mt-2 rounded-lg border border-border bg-muted/30 p-3 space-y-1.5 max-h-64 overflow-y-auto text-xs">
-                {singleResult.transcript.split("\n").map((line, i) => {
-                  const isAgent = line.startsWith("Agent:");
-                  const isUser = line.startsWith("User:");
-                  return (
-                    <p key={i} className={isAgent ? "text-primary" : isUser ? "text-orange-400" : "text-muted-foreground"}>
-                      {isAgent && <span className="font-semibold">Agent: </span>}
-                      {isUser && <span className="font-semibold">Customer: </span>}
-                      {line.replace(/^(Agent|User):\s*/, "")}
-                    </p>
-                  );
-                })}
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
-        </div>
+        <SingleResultCard result={singleResult} getScoreColor={getScoreColor} />
       )}
 
-      {/* Full training results */}
-      {result && (
+      {/* Training results */}
+      {roundResults.length > 0 && (
         <div ref={resultRef} className="surface-elevated rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-primary" />
               <span className="text-sm font-semibold text-foreground">Training Results</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs">{result.mode}</Badge>
-              <Badge
-                variant="outline"
-                className={`text-xs ${
-                  result.final_score && result.final_score >= 8
-                    ? "border-green-500/30 text-green-400"
-                    : result.final_score && result.final_score >= 6
-                    ? "border-yellow-500/30 text-yellow-400"
-                    : "border-red-500/30 text-red-400"
-                }`}
-              >
-                Final: {result.final_score ?? "—"}/10
+            {finalScore != null && (
+              <Badge variant="outline" className={`text-xs ${finalScore >= 8 ? "border-green-500/30 text-green-400" : finalScore >= 6 ? "border-yellow-500/30 text-yellow-400" : "border-red-500/30 text-red-400"}`}>
+                Final: {finalScore}/10
               </Badge>
-            </div>
+            )}
           </div>
 
           <div className="space-y-2">
-            {result.results.map((round) => {
+            {roundResults.map((round) => {
               const delta = getScoreDelta(round.avg_score, round.previous_score);
               const isExpanded = expandedRound === round.round;
-
               return (
                 <div key={round.round} className="rounded-lg border border-border overflow-hidden">
                   <button
@@ -389,62 +320,30 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
                     onClick={() => setExpandedRound(isExpanded ? null : round.round)}
                   >
                     <div className="flex items-center gap-2">
-                      {getStatusIcon(round.status)}
+                      <CheckCircle className="h-4 w-4 text-green-500" />
                       <span className="font-medium text-foreground">Round {round.round}</span>
-                      <Badge variant="outline" className="text-xs">{round.mode}</Badge>
+                      <Badge variant="outline" className="text-xs">{round.calls.length} calls</Badge>
                     </div>
                     <div className="flex items-center gap-2">
                       {round.avg_score != null && (
-                        <span className={`text-sm font-semibold ${getScoreColor(round.avg_score)}`}>
-                          {round.avg_score}
-                        </span>
+                        <span className={`text-sm font-semibold ${getScoreColor(round.avg_score)}`}>{round.avg_score}</span>
                       )}
                       {delta && (
-                        <span className={`flex items-center gap-0.5 text-xs ${delta.color}`}>
-                          {delta.icon} {delta.text}
-                        </span>
-                      )}
-                      {round.fixes_applied != null && round.fixes_applied > 0 && (
-                        <Badge variant="secondary" className="text-xs">
-                          {round.fixes_applied} fix{round.fixes_applied > 1 ? "es" : ""}
-                        </Badge>
+                        <span className={`flex items-center gap-0.5 text-xs ${delta.color}`}>{delta.icon} {delta.text}</span>
                       )}
                       <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                     </div>
                   </button>
-
                   {isExpanded && (
                     <div className="border-t border-border px-3 py-2 space-y-2 bg-muted/20 text-xs">
-                      {round.status === "regression_rollback" && round.rolled_back && (
-                        <div className="rounded-md bg-destructive/10 px-2 py-1.5">
-                          <p className="flex items-center gap-1 text-destructive">
-                            <RotateCcw className="h-3 w-3" />
-                            Regression detected — rolled back: {round.rolled_back}
-                          </p>
+                      {round.calls.map((call, i) => (
+                        <div key={i} className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Call {i + 1}</span>
+                          <span className={getScoreColor(call.evaluation?.overall_score ?? null)}>
+                            {call.evaluation?.overall_score != null ? `${call.evaluation.overall_score}/10` : "—"}
+                          </span>
                         </div>
-                      )}
-
-                      {round.fixes && round.fixes.length > 0 && (
-                        <div className="space-y-1">
-                          <p className="font-medium text-foreground">Fixes Applied:</p>
-                          {round.fixes.map((fix, i) => (
-                            <div key={i} className="flex items-start gap-1.5">
-                              <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 shrink-0" />
-                              <span>
-                                <span className="font-medium text-foreground">{fix.field}</span>
-                                {" — "}{fix.reason}
-                                <Badge variant="outline" className="ml-1.5 text-[10px]">{fix.severity}</Badge>
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="flex gap-4 text-muted-foreground">
-                        {round.calls_evaluated != null && <span>Calls evaluated: {round.calls_evaluated}</span>}
-                        {round.avg_score != null && <span>Avg score: {round.avg_score}</span>}
-                        {round.previous_score != null && <span>Previous: {round.previous_score}</span>}
-                      </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -452,19 +351,79 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
             })}
           </div>
 
-          <div className="rounded-lg border border-border bg-muted/30 p-3">
-            <p className="text-xs text-muted-foreground">
-              Completed {result.rounds_completed} round{result.rounds_completed > 1 ? "s" : ""} with{" "}
-              {result.results.reduce((sum, r) => sum + (r.fixes_applied || 0), 0)} total fixes applied.
-              {result.final_score && result.final_score >= 9.0 && (
-                <span className="text-green-400"> Agent reached excellence (9.0+)!</span>
-              )}
-              {result.results.some((r) => r.status === "regression_rollback") && (
-                <span className="text-destructive"> Some changes were rolled back due to score regressions.</span>
-              )}
-            </p>
-          </div>
+          {!running && (
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">
+                Completed {roundResults.length} round{roundResults.length > 1 ? "s" : ""}.
+                {finalScore != null && finalScore >= 9.0 && <span className="text-green-400"> Agent reached excellence (9.0+)!</span>}
+              </p>
+            </div>
+          )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function SingleResultCard({ result, getScoreColor }: { result: CallResult; getScoreColor: (s: number | null) => string }) {
+  return (
+    <div className="surface-elevated rounded-xl p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <MessageSquare className="h-4 w-4 text-primary" />
+        <span className="text-sm font-semibold text-foreground">Single Simulation Result</span>
+        {result.difficulty && <Badge variant="outline" className="text-xs">{result.difficulty}</Badge>}
+      </div>
+
+      {result.evaluation && (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Overall", score: result.evaluation.overall_score },
+            { label: "Humanness", score: result.evaluation.humanness_score },
+            { label: "Naturalness", score: result.evaluation.naturalness_score },
+          ].map(({ label, score }) => (
+            <div key={label} className="text-center rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className={`text-2xl font-bold ${getScoreColor(score ?? null)}`}>{score ?? "—"}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {result.evaluation?.issues_detected && result.evaluation.issues_detected.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-foreground">Issues Detected:</p>
+          <ul className="space-y-1">
+            {result.evaluation.issues_detected.map((issue, i) => (
+              <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <XCircle className="h-3 w-3 text-destructive mt-0.5 shrink-0" />
+                {issue}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {result.transcript && (
+        <Collapsible>
+          <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-primary hover:underline">
+            <FileText className="h-3 w-3" /> View Transcript <ChevronDown className="h-3 w-3" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="mt-2 rounded-lg border border-border bg-muted/30 p-3 space-y-1.5 max-h-64 overflow-y-auto text-xs">
+              {result.transcript.split("\n").map((line, i) => {
+                const isAgent = line.startsWith("Agent:");
+                const isUser = line.startsWith("User:");
+                return (
+                  <p key={i} className={isAgent ? "text-primary" : isUser ? "text-orange-400" : "text-muted-foreground"}>
+                    {isAgent && <span className="font-semibold">Agent: </span>}
+                    {isUser && <span className="font-semibold">Customer: </span>}
+                    {line.replace(/^(Agent|User):\s*/, "")}
+                  </p>
+                );
+              })}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       )}
     </div>
   );
