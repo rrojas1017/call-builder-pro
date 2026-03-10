@@ -1097,12 +1097,20 @@ function ResultCard({
       )}
 
       {contact.extracted_data && (
-        <div className="space-y-1">
-          <h5 className="text-xs font-medium text-muted-foreground">Extracted Data</h5>
-          <pre className="rounded-lg bg-muted/30 border border-border p-3 text-xs font-mono overflow-auto">
-            {JSON.stringify(contact.extracted_data, null, 2)}
-          </pre>
-        </div>
+        <Collapsible>
+          <CollapsibleTrigger className="w-full flex items-center justify-between py-1 group">
+            <div className="flex items-center gap-1.5">
+              <Database className="h-3.5 w-3.5 text-muted-foreground" />
+              <h5 className="text-xs font-medium text-muted-foreground">Extracted Data</h5>
+            </div>
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <pre className="mt-1 rounded-lg bg-muted/30 border border-border p-3 text-xs font-mono overflow-auto">
+              {JSON.stringify(contact.extracted_data, null, 2)}
+            </pre>
+          </CollapsibleContent>
+        </Collapsible>
       )}
     </div>
   );
