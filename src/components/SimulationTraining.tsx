@@ -138,12 +138,53 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
         const avgScore = scoreCount > 0 ? Math.round((scoreSum / scoreCount) * 10) / 10 : null;
 
+        // ── Apply critical/important recommendations ──
+        let fixesApplied = 0;
+        if (!cancelRef.current) {
+          const allRecommendations: RecommendedImprovement[] = [];
+          for (const call of calls) {
+            const recs = call.evaluation?.recommended_improvements;
+            if (recs) {
+              for (const rec of recs) {
+                if (rec.severity === "critical" || rec.severity === "important") {
+                  allRecommendations.push(rec);
+                }
+              }
+            }
+          }
+
+          // Deduplicate by field name (take the first recommendation per field)
+          const seenFields = new Set<string>();
+          const uniqueRecs = allRecommendations.filter(rec => {
+            if (seenFields.has(rec.field)) return false;
+            seenFields.add(rec.field);
+            return true;
+          });
+
+          for (const rec of uniqueRecs) {
+            if (cancelRef.current) break;
+            try {
+              const { data: applyResult } = await supabase.functions.invoke("apply-audit-recommendation", {
+                body: {
+                  project_id: projectId,
+                  recommendation: `${rec.reason}. Set ${rec.field} to: ${rec.suggested_value}`,
+                  category: rec.severity,
+                },
+              });
+              if (applyResult?.success) fixesApplied++;
+            } catch {
+              // Non-critical — continue
+            }
+          }
+        }
+
         const roundResult: RoundResult = {
           round,
           status: "completed",
           avg_score: avgScore,
           previous_score: previousScore,
           calls,
+          fixesApplied,
         };
 
         setRoundResults(prev => [...prev, roundResult]);
