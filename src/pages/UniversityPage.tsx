@@ -917,14 +917,21 @@ function ResultCard({
         supabase.functions.invoke("apply-audit-recommendation", {
           body: { project_id: projectId, recommendation: feedbackText.trim(), category: "user_feedback" },
         }).then(({ data }) => {
-          if (data?.success) {
+          if (data?.held_for_review) {
+            feedbackToast({
+              title: "⚠️ Change held for review",
+              description: data.conflict?.description || "This feedback conflicts with existing rules.",
+              variant: "destructive",
+              duration: 8000,
+            });
+          } else if (data?.success) {
             const fieldInfo = data.field ? ` Updated: ${data.field}` : "";
             const syncInfo = data.synced_to_retell ? " • Synced to live agent" : "";
+            const impactNote = data.impact_summary ? ` — ${data.impact_summary}` : "";
             feedbackToast({
               title: "✅ Agent updated",
-              description: (data.reason || "Your feedback was applied.") + fieldInfo + syncInfo,
+              description: (data.reason || "Your feedback was applied.") + fieldInfo + syncInfo + impactNote,
             });
-            // Store for verification
             setLastAppliedFeedback({
               text: feedbackText.trim(),
               field: data.field || undefined,
