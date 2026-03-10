@@ -50,7 +50,7 @@ function AgentBadges({ agent }: { agent: Agent }) {
   );
 }
 
-function AgentActions({ agent, onDelete }: { agent: Agent; onDelete: (id: string) => void }) {
+function AgentActions({ agent, onDelete, onClone, cloningId }: { agent: Agent; onDelete: (id: string) => void; onClone: (agent: Agent) => void; cloningId: string | null }) {
   return (
     <div className="flex items-center gap-3">
       <Link to={`/agents/${agent.id}/edit`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
@@ -62,6 +62,9 @@ function AgentActions({ agent, onDelete }: { agent: Agent; onDelete: (id: string
       <Link to={`/agents/${agent.id}/knowledge`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
         <BookOpen className="h-3 w-3" /> Knowledge
       </Link>
+      <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClone(agent); }} disabled={cloningId === agent.id} className="inline-flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50">
+        {cloningId === agent.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Copy className="h-3 w-3" />} Clone
+      </button>
       <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(agent.id); }} className="inline-flex items-center gap-1 text-xs text-destructive hover:underline">
         <Trash2 className="h-3 w-3" /> Delete
       </button>
