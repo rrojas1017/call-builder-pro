@@ -214,7 +214,16 @@ RULES:
 - If the caller gives a detailed answer or shares something personal, react to it briefly before continuing — do not immediately jump to the next field.
 - ONE QUESTION PER TURN: Never ask more than one question in a single response. Ask one thing, then STOP and wait for the caller to answer before continuing.`;
 
-  if (resolvedOpeningLine) {
+  // Inject business rules as high-priority instructions
+  if (spec.business_rules && Object.keys(spec.business_rules).length > 0) {
+    const brText = typeof spec.business_rules === "string"
+      ? spec.business_rules
+      : Object.entries(spec.business_rules)
+          .map(([key, val]) => `- ${key}: ${val}`)
+          .join("\n");
+    prompt += `\n\nBUSINESS RULES (MUST follow strictly — these override any default behavior):\n${brText}`;
+  }
+
     const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "(caller's name — ask if unknown)";
     const filledGuide = resolvedOpeningLine.replace(/\{\{first_name\}\}/gi, nameHint);
     prompt += `\n\nOPENING GUIDE: Start with something like the line below, but adapt it naturally — do NOT read it word-for-word as a script.\nOpening guide: "${filledGuide}"`;
