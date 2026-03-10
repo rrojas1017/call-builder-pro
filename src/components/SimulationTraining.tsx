@@ -271,10 +271,10 @@ export default function SimulationTraining({ projectId, disabled, onComplete }: 
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="w-full bg-muted/50 p-1 rounded-lg">
-            <TabsTrigger value="training" className="flex-1 gap-1.5 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm" disabled={running || singleRunning}>
+            <TabsTrigger value="training" className="flex-1 gap-1.5 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm" disabled={running}>
               <Trophy className="h-3.5 w-3.5" /> Training
             </TabsTrigger>
-            <TabsTrigger value="live" className="flex-1 gap-1.5 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm" disabled={running || singleRunning}>
+            <TabsTrigger value="live" className="flex-1 gap-1.5 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm" disabled={running}>
               <Eye className="h-3.5 w-3.5" /> Live Practice
             </TabsTrigger>
           </TabsList>
