@@ -537,6 +537,8 @@ function UserFeedbackSection({ contactId, existingFeedback, onFeedbackSaved }: {
   const [editing, setEditing] = useState(!existingFeedback);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [detectedRule, setDetectedRule] = useState<string | null>(null);
+  const [savingRule, setSavingRule] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
