@@ -179,13 +179,12 @@ export default function EditAgentPage() {
         setDisqualificationRules(drStr === "{}" || drStr === "null" ? "" : drStr);
 
         const br = spec.business_rules as any;
-        if (br && typeof br === "object" && br.text) {
-          setBusinessRules(br.text);
+        if (br && typeof br === "object" && Array.isArray(br.rules)) {
+          setBusinessRules(br.rules.filter((r: any) => typeof r === "string" && r.trim()));
+        } else if (br && typeof br === "object" && br.text) {
+          setBusinessRules(br.text.split("\n").map((l: string) => l.trim()).filter(Boolean));
         } else if (br && typeof br === "string") {
-          setBusinessRules(br);
-        } else if (br && typeof br === "object") {
-          const brStr = JSON.stringify(br, null, 2);
-          setBusinessRules(brStr === "{}" || brStr === "null" ? "" : brStr);
+          setBusinessRules(br.split("\n").map((l: string) => l.trim()).filter(Boolean));
         }
 
         const bh = spec.business_hours as any;
