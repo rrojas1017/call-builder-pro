@@ -476,6 +476,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
               {selected.status === "completed" && (
                 <UserFeedbackSection
                   contactId={selected.id}
+                  projectId={projectId}
                   existingFeedback={selected.user_feedback || null}
                   onFeedbackSaved={(feedback) => {
                     setContacts(prev => prev.map(c => c.id === selected.id ? { ...c, user_feedback: feedback } : c));
