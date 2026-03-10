@@ -738,6 +738,7 @@ export default function UniversityPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs">Date</TableHead>
+                  <TableHead className="text-xs">Type</TableHead>
                   <TableHead className="text-xs">Outcome</TableHead>
                   <TableHead className="text-xs text-center">Duration</TableHead>
                   <TableHead className="text-xs text-center">Overall</TableHead>
