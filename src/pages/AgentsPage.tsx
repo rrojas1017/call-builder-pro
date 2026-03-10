@@ -117,6 +117,60 @@ export default function AgentsPage() {
 
   const unprovisionedCount = agents.filter(a => !a.has_retell_id).length;
 
+  const cloneAgent = async (agent: Agent) => {
+    setCloningId(agent.id);
+    try {
+      // 1. Fetch source spec
+      const { data: spec, error: specErr } = await supabase
+        .from("agent_specs")
+        .select("*")
+        .eq("project_id", agent.id)
+        .single();
+      if (specErr) throw specErr;
+
+      // 2. Fetch source project for org_id
+      const { data: project, error: projErr } = await supabase
+        .from("agent_projects")
+        .select("org_id, description, source_text")
+        .eq("id", agent.id)
+        .single();
+      if (projErr) throw projErr;
+
+      // 3. Create new agent_project
+      const { data: newProject, error: newProjErr } = await supabase
+        .from("agent_projects")
+        .insert({ name: `${agent.name} (Copy)`, org_id: project.org_id, description: project.description, source_text: project.source_text })
+        .select("id")
+        .single();
+      if (newProjErr) throw newProjErr;
+
+      // 4. Clone spec (exclude id, retell_agent_id, reset version)
+      const { id: _sid, project_id: _pid, retell_agent_id: _rid, ...specFields } = spec;
+      const { error: specInsertErr } = await supabase
+        .from("agent_specs")
+        .insert({ ...specFields, project_id: newProject.id, retell_agent_id: null, version: 1 });
+      if (specInsertErr) throw specInsertErr;
+
+      // 5. Clone knowledge entries
+      const { data: knowledge } = await supabase
+        .from("agent_knowledge")
+        .select("category, content, source_type, source_url, file_name")
+        .eq("project_id", agent.id);
+      if (knowledge && knowledge.length > 0) {
+        await supabase.from("agent_knowledge").insert(
+          knowledge.map(k => ({ ...k, project_id: newProject.id }))
+        );
+      }
+
+      toast({ title: "Agent cloned", description: `"${agent.name} (Copy)" created successfully.` });
+      await loadAgents();
+    } catch (e: any) {
+      toast({ title: "Clone failed", description: e.message, variant: "destructive" });
+    } finally {
+      setCloningId(null);
+    }
+  };
+
   const handleSync = async () => {
     setSyncing(true);
     try {
