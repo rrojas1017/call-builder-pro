@@ -1,37 +1,48 @@
 
 
-# Fix: Opening Line Guard Is Self-Contradicting
+# Simplify the Agent Creation Wizard
 
-## Problem
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-The `guardOpeningLine` function has two sequential steps that fight each other:
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-1. **Duplicate `{{agent_name}}` removal** — removes the second placeholder, creating text like `"Hi, this {{agent_name}} and I'm today because..."` (the word after "I'm" is now exposed)
-2. **Name mismatch scanner** — pattern `\bI'm (\w+)\b` then captures `"today"` as a "name", decides it doesn't match the persona, and replaces it with `{{agent_name}}` — **re-introducing the duplicate** it just removed
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-This creates a loop where the guard mangles the line. Additionally, even without duplicates, the patterns are too aggressive — `\bI'm (\w+)\b` matches ANY word after "I'm", not just names (e.g. "I'm calling", "I'm reaching out").
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-There's also the broader issue the user raised: the guard **should not be auto-correcting on save at all** without the user's approval. It silently rewrites their opening line.
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-## Fix
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-### 1. `src/lib/openingLineGuard.ts` — Stop running name-mismatch scan after duplicate removal
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-After removing duplicate placeholders, **skip the name-mismatch scan entirely** — the line is already using `{{agent_name}}` and further pattern matching on the cleaned-up text produces garbage results.
+## Plan
 
-Additionally, add a **skip-word list** to the intro patterns so common non-name words like "calling", "reaching", "today", "here" are never treated as names.
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
 
-### 2. `src/pages/EditAgentPage.tsx` — Don't silently rewrite, warn instead
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
 
-Instead of auto-correcting the opening line on save, only **warn** the user via toast if a potential name mismatch is detected, but **save what the user typed**. The guard becomes advisory, not destructive.
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
 
-### 3. `src/pages/CreateAgentPage.tsx` — Same change as above
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
 
-Same advisory-only behavior during agent creation.
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
-| File | Change |
-|------|--------|
-| `src/lib/openingLineGuard.ts` | Skip name scan after duplicate fix; add non-name skip list |
-| `src/pages/EditAgentPage.tsx` | Save user's text as-is; show warning toast instead of auto-rewrite |
-| `src/pages/CreateAgentPage.tsx` | Same advisory-only change |
+### Files Changed
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 
