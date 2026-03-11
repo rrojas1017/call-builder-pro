@@ -786,7 +786,7 @@ export default function EditAgentPage() {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 const r = newBusinessRule.trim();
-                if (r && !businessRules.includes(r)) { setBusinessRules([...businessRules, r]); setNewBusinessRule(""); }
+                if (r && !businessRules.includes(r)) { setBusinessRules([...businessRules, r]); setNewBusinessRule(""); scrollRulesToBottom(); }
               }
             }}
           />
