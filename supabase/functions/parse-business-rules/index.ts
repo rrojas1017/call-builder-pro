@@ -141,10 +141,10 @@ async function extractRulesFromBinary(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model: "google/gemini-2.5-pro",
       temperature: 0.1,
-      max_tokens: 4096,
-      max_completion_tokens: 4096,
+      max_tokens: 8192,
+      max_completion_tokens: 8192,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         {
