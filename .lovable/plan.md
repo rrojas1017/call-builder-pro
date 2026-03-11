@@ -1,48 +1,51 @@
 
 
-# Simplify the Agent Creation Wizard
+# Root Cause Analysis: Business Rules Deleted, Repeat Mistakes, Unwanted Fields
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+## What's Happening
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+Three interconnected issues traced to the same root causes in the evaluation and auto-apply pipeline:
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+### Issue 1: Business rules get deleted after training
+**Root cause**: The `evaluate-call` AI recommends changes to `business_rules` as a complete replacement object. When `apply-improvement` receives this, `business_rules` is in `JSON_FIELDS` but NOT in `ARRAY_FIELDS`. So at line 201 of `apply-improvement`, it does `patch[field] = parsedValue` — a full **replace**, not a merge. The existing business rules are overwritten entirely.
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+### Issue 2: Agent repeats mistakes after coaching (e.g., saying name twice)
+**Root cause**: The coaching feedback goes through `apply-audit-recommendation` which patches `humanization_notes` or `tone_style`. But the evaluate-call AI doesn't see prior coaching feedback in its prompt context — it only sees recent `improvements` table entries. When the next evaluation runs, it may suggest contradictory changes because it doesn't know about the coaching intent. Also, `humanization_notes` is applied with `replace_mode: true` (line 706), so each evaluation **replaces** all humanness notes instead of merging with coached ones.
 
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+### Issue 3: AI adds unwanted must_collect_fields (zip code, etc.)
+**Root cause**: The `evaluate-call` prompt (line 170) tells the AI: `For "must_collect_fields": suggested_value MUST be a JSON array of question strings`. The AI sees the agent's use case (e.g., ACA pre-qualification) and, based on its training data, suggests collecting zip code, state, etc. — even though the creator never configured those. When the fix has `severity: "critical"` and `isReorder` is detected (line 821-823), it's applied with `replace_mode: true`, completely replacing the creator's intended fields. Even without reorder, the `mergeArrays` function adds the unwanted fields.
 
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+## Fix Plan
 
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
+### Change 1: Add `business_rules` and `must_collect_fields` to PROTECTED_FIELDS
+In `evaluate-call/index.ts`, expand the `PROTECTED_FIELDS` array to include fields that should never be auto-modified without human approval:
 
-## Plan
+```
+const PROTECTED_FIELDS = ["opening_line", "business_rules", "must_collect_fields"];
+```
 
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+This prevents auto-critical fixes from overwriting these creator-controlled fields.
 
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+### Change 2: Add explicit constraint to evaluate-call AI prompt
+Add to the system prompt in `evaluate-call/index.ts`:
 
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
+- "Do NOT suggest adding fields to `must_collect_fields` that are not already present in the spec. Only suggest reordering or rewording existing fields."
+- "Do NOT suggest replacing or removing `business_rules`. Only suggest additions."
+- "When suggesting `humanization_notes`, provide ONLY the NEW notes to ADD, not a full replacement."
 
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+### Change 3: Fix business_rules handling in apply-improvement
+`business_rules` is stored as JSONB (can be `{rules: [...]}` object or a string). When the AI suggests a change, the current code replaces the entire object. Fix: for `business_rules`, deep-merge the `rules` array instead of replacing. Add `business_rules` handling that merges rule arrays similar to how `ARRAY_FIELDS` work.
 
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+### Change 4: Stop replace_mode for humanization_notes from evaluate-call
+In `evaluate-call/index.ts` around line 700-706, change the humanness auto-apply from `replace_mode: true` to `replace_mode: false` (merge mode). This preserves coaching-applied notes while adding new suggestions.
 
-### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+### Change 5: Add coaching context to evaluate-call prompt
+Before building the evaluation prompt, fetch recent `spec_change_log` entries with `source = 'user_feedback'` and include them as "COACHING DIRECTIVES" in the system prompt. This tells the evaluator AI what the creator explicitly trained, so it doesn't contradict it.
 
-No database or edge function changes needed.
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `supabase/functions/evaluate-call/index.ts` | Expand PROTECTED_FIELDS; add prompt constraints for must_collect_fields/business_rules; change humanness replace_mode to false; add coaching context block |
+| `supabase/functions/apply-improvement/index.ts` | Add business_rules deep-merge logic for rules arrays |
 
