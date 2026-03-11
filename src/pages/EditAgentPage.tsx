@@ -647,6 +647,11 @@ export default function EditAgentPage() {
           <Input value={toneStyle} onChange={(e) => setToneStyle(e.target.value)} placeholder="e.g. friendly, professional, casual" />
         </div>
         <div className="space-y-2">
+          <Label>Personality Traits</Label>
+          <p className="text-xs text-muted-foreground">Select traits that define how your agent sounds and behaves on calls.</p>
+          <PersonalityTraitSelector value={personalityNotes} onChange={setPersonalityNotes} />
+        </div>
+        <div className="space-y-2">
           <Label>Success Definition</Label>
           <Textarea value={successDefinition} onChange={(e) => setSuccessDefinition(e.target.value)} rows={2} placeholder="e.g. Caller is qualified and warm-transferred to a licensed agent" />
           <p className="text-xs text-muted-foreground">What counts as a successful call outcome.</p>
