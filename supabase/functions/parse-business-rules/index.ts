@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import JSZip from "https://esm.sh/jszip@3.10.1";
 import { callAI } from "../_shared/ai-client.ts";
 
 const corsHeaders = {
@@ -27,7 +28,6 @@ serve(async (req) => {
     let rules: string[] = [];
 
     if (text) {
-      // Plain text passed directly — use callAI as before
       const truncated = text.trim().slice(0, 30000);
       if (!truncated) throw new Error("No text content provided");
       rules = await extractRulesFromText(truncated);
@@ -58,17 +58,22 @@ serve(async (req) => {
         if (!rawText.trim()) throw new Error("No text content found in document");
         const truncated = rawText.slice(0, 30000);
         rules = await extractRulesFromText(truncated);
-      } else {
-        // PDF or DOCX — send as base64 to Gemini multimodal
+      } else if (fileName.endsWith(".docx")) {
+        // DOCX: unzip and extract text from word/document.xml
         const bytes = new Uint8Array(await fileData.arrayBuffer());
         if (bytes.length === 0) throw new Error("Uploaded file is empty");
-
+        const docxText = await extractTextFromDocx(bytes);
+        if (!docxText.trim()) throw new Error("No text content found in Word document");
+        const truncated = docxText.slice(0, 30000);
+        rules = await extractRulesFromText(truncated);
+      } else if (fileName.endsWith(".pdf")) {
+        // PDF: send as base64 to Gemini multimodal (natively supported)
+        const bytes = new Uint8Array(await fileData.arrayBuffer());
+        if (bytes.length === 0) throw new Error("Uploaded file is empty");
         const base64 = uint8ArrayToBase64(bytes);
-        const mimeType = fileName.endsWith(".pdf")
-          ? "application/pdf"
-          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-
-        rules = await extractRulesFromBinary(base64, mimeType);
+        rules = await extractRulesFromBinary(base64, "application/pdf");
+      } else {
+        throw new Error("Unsupported file format. Please use .docx, .pdf, .txt, .md, or .csv.");
       }
     }
 
@@ -83,6 +88,27 @@ serve(async (req) => {
     });
   }
 });
+
+// ── Extract text from DOCX by unzipping and reading word/document.xml ──
+async function extractTextFromDocx(bytes: Uint8Array): Promise<string> {
+  const zip = await JSZip.loadAsync(bytes);
+  const docXml = zip.file("word/document.xml");
+  if (!docXml) throw new Error("Invalid DOCX: word/document.xml not found");
+  const xmlContent = await docXml.async("string");
+  // Strip XML tags and normalize whitespace
+  return xmlContent
+    .replace(/<\/w:p>/g, "\n")       // paragraph breaks
+    .replace(/<\/w:tr>/g, "\n")      // table row breaks
+    .replace(/<[^>]+>/g, "")         // strip all tags
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/[ \t]+/g, " ")         // collapse horizontal whitespace
+    .replace(/\n{3,}/g, "\n\n")      // collapse excessive newlines
+    .trim();
+}
 
 // ── Extract rules from plain text via callAI ──
 async function extractRulesFromText(text: string): Promise<string[]> {
@@ -100,7 +126,7 @@ async function extractRulesFromText(text: string): Promise<string[]> {
   return parseRulesJson(aiResponse.content || "");
 }
 
-// ── Extract rules from binary (PDF/DOCX) via Gemini multimodal ──
+// ── Extract rules from binary (PDF only) via Gemini multimodal ──
 async function extractRulesFromBinary(
   base64Data: string,
   mimeType: string
@@ -108,7 +134,6 @@ async function extractRulesFromBinary(
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-  // Use OpenAI-compatible multimodal format with the Lovable gateway
   const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
