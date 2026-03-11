@@ -1,48 +1,64 @@
 
 
-# Simplify the Agent Creation Wizard
+# Agent Creation & Business Rules Review
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+## Summary
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+After reviewing the entire flow — from agent creation wizard (`CreateAgentPage`) through editing (`EditAgentPage`), business rule parsing (`parse-business-rules`), spec generation (`generate-spec`), and prompt building (`buildTaskPrompt`) — the system is **functioning correctly** with a few minor issues worth addressing.
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+## What's Working Correctly
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+| Area | Status |
+|------|--------|
+| 3-step creation wizard (Build → Clarify → Review & Save) | Working |
+| Multi-language support (EN, ES, FR, PT, DE, IT) | Working |
+| AI-powered spec generation via Gemini | Working |
+| Wizard clarification questions with AI Assist | Working |
+| Retell agent auto-provisioning (blocks save on failure) | Working |
+| Voice selection with language filtering | Working |
+| Opening line name guard (persona mismatch fix) | Working |
+| Business rules list UI with drag-and-drop reorder | Working |
+| Document upload for business rules (.docx, .pdf, .txt) | Working |
+| Business rules saved as `{ rules: [] }` JSON structure | Working |
+| `buildTaskPrompt` serializes rules into numbered BUSINESS RULES block | Working |
+| FPL/email suppression when business rules contain relevant keywords | Working |
+| Auto-sync to Retell on save | Working |
 
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+## Issues Found
 
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+### 1. CreateAgentPage: File upload doesn't invoke `parse-business-rules`
+In the creation wizard (Step 0), when a user uploads a `.docx`/`.pdf`/`.txt` file, it gets uploaded to the `agent_sources` bucket and appended as `[File uploaded: filename]` to the source text. It then goes through `generate-spec` or `ingest-agent-source` — but business rules are **not extracted from the uploaded document** during creation. The `parse-business-rules` function is only used in `EditAgentPage`.
 
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
+**Impact**: Business rules from uploaded documents during agent creation are not extracted into the structured rules list. They only influence the initial spec generation as general context.
 
-## Plan
+### 2. CreateAgentPage: No business rules UI in the wizard
+The creation wizard has no step for reviewing or editing business rules before saving. Rules only become manageable after the agent is created, on the Edit page.
 
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+**Impact**: Low — users can manage rules immediately after creation in the Edit page.
 
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+### 3. Duplicate `buildTaskPrompt.ts` files
+There are two copies: `src/lib/buildTaskPrompt.ts` and `supabase/functions/_shared/buildTaskPrompt.ts`. They appear to have similar but potentially divergent logic. This is a maintenance risk.
 
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
+**Impact**: Medium — any fix to one must be manually replicated in the other.
 
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+### 4. `parse-business-rules` system prompt could be stronger
+The current system prompt extracts rules but doesn't explicitly instruct the AI to "translate" vague procedural language into clear agent directives. The model was upgraded to `gemini-2.5-pro` but the prompt itself wasn't enhanced (per the earlier approved plan, only the model and `max_tokens` were changed).
 
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+**Impact**: Medium — extraction quality relies heavily on the model's default behavior rather than explicit prompting.
 
-### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+## Recommended Fixes
 
-No database or edge function changes needed.
+### Fix 1: Enhance the `parse-business-rules` system prompt
+Update the `SYSTEM_PROMPT` constant to instruct the AI to interpret intent, preserve conditional logic, and phrase rules as direct agent directives rather than raw text extraction.
+
+### Fix 2: No code change needed for the other items
+- The creation wizard file upload is intentionally general-purpose (feeds into spec generation, not structured rules).
+- The duplicate `buildTaskPrompt` is an architectural choice for edge function isolation.
+- Business rules management in Edit page only is acceptable UX.
+
+## Files to Change
+
+| File | Change |
+|------|--------|
+| `supabase/functions/parse-business-rules/index.ts` | Enhance the `SYSTEM_PROMPT` to produce higher-quality, agent-ready directives |
 
