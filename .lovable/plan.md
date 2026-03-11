@@ -1,53 +1,48 @@
 
 
-# Bug: `apply-improvement` Overwrites Business Rules with `false`
+# Simplify the Agent Creation Wizard
 
-## Root Cause
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-**Line 232 in `supabase/functions/apply-improvement/index.ts`** contains a misplaced boolean assignment that executes for ALL `JSON_FIELDS`, not just `BOOL_FIELDS`:
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-```javascript
-// Line 201-231: carefully merges business_rules, arrays, etc.
-// ...then IMMEDIATELY on line 232:
-patch[field] = improvement.suggested_value === "true" || improvement.suggested_value === true;
-```
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-This line was meant to be inside the `BOOL_FIELDS` branch (line 232 should be after `} else if (BOOL_FIELDS.includes(field)) {`), but instead it sits at the end of the `JSON_FIELDS` block. So after all the careful deep-merge logic runs for `business_rules`, `humanization_notes`, `must_collect_fields`, etc., the result is **immediately overwritten with `false`** (since the suggested value is never literally `"true"`).
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-This means every time `apply-improvement` processes a JSON field — including business_rules — the final patch is `{ business_rules: false }`, which **erases** all rules.
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-## Evidence
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-The edge function logs show `"Merged humanization_notes: 0 existing + 3 incoming → 3 total"` — the merge runs correctly, but the output is then overwritten by line 232.
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-## Fix
+## Plan
 
-### `supabase/functions/apply-improvement/index.ts`
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
 
-Move line 232 into the correct branch. The `} else if (BOOL_FIELDS.includes(field))` block is missing its body — line 232 needs to be inside it:
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
 
-**Before (lines 229-233):**
-```javascript
-      } else {
-        patch[field] = parsedValue;
-      }
-      patch[field] = improvement.suggested_value === "true" || improvement.suggested_value === true;
-    } else if (NUM_FIELDS.includes(field)) {
-```
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
 
-**After:**
-```javascript
-      } else {
-        patch[field] = parsedValue;
-      }
-    } else if (BOOL_FIELDS.includes(field)) {
-      patch[field] = improvement.suggested_value === "true" || improvement.suggested_value === true;
-    } else if (NUM_FIELDS.includes(field)) {
-```
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
 
-This is a one-line structural fix. The boolean conversion line becomes its own proper branch instead of dangling at the end of the JSON block.
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
-| File | Change |
-|------|--------|
-| `supabase/functions/apply-improvement/index.ts` | Move line 232 into a proper `BOOL_FIELDS` else-if branch |
+### Files Changed
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+
+No database or edge function changes needed.
 

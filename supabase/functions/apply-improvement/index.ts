@@ -229,6 +229,7 @@ serve(async (req) => {
       } else {
         patch[field] = parsedValue;
       }
+    } else if (BOOL_FIELDS.includes(field)) {
       patch[field] = improvement.suggested_value === "true" || improvement.suggested_value === true;
     } else if (NUM_FIELDS.includes(field)) {
       patch[field] = Number(improvement.suggested_value);
