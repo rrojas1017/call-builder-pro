@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -103,6 +103,13 @@ export default function EditAgentPage() {
   const [brDraggedIndex, setBrDraggedIndex] = useState<number | null>(null);
   const [parsingRules, setParsingRules] = useState(false);
   const [brDragOverIndex, setBrDragOverIndex] = useState<number | null>(null);
+  const rulesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollRulesToBottom = useCallback(() => {
+    setTimeout(() => {
+      rulesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 50);
+  }, []);
   const [consentRequired, setConsentRequired] = useState(true);
   const [disclosureRequired, setDisclosureRequired] = useState(true);
   const [disclosureText, setDisclosureText] = useState("");
@@ -765,6 +772,7 @@ export default function EditAgentPage() {
                 </button>
               </div>
             ))}
+            <div ref={rulesEndRef} />
           </div>
         </ScrollArea>
         <div className="flex gap-2 items-end">
@@ -778,13 +786,13 @@ export default function EditAgentPage() {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 const r = newBusinessRule.trim();
-                if (r && !businessRules.includes(r)) { setBusinessRules([...businessRules, r]); setNewBusinessRule(""); }
+                if (r && !businessRules.includes(r)) { setBusinessRules([...businessRules, r]); setNewBusinessRule(""); scrollRulesToBottom(); }
               }
             }}
           />
           <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
             const r = newBusinessRule.trim();
-            if (r && !businessRules.includes(r)) { setBusinessRules([...businessRules, r]); setNewBusinessRule(""); }
+            if (r && !businessRules.includes(r)) { setBusinessRules([...businessRules, r]); setNewBusinessRule(""); scrollRulesToBottom(); }
           }} disabled={!newBusinessRule.trim()}>
             <Plus className="h-3.5 w-3.5 mr-1" /> Add
           </Button>
@@ -814,6 +822,7 @@ export default function EditAgentPage() {
                 const newRules = (data.rules || []).filter((r: string) => r.trim() && !businessRules.includes(r));
                 if (newRules.length > 0) {
                   setBusinessRules(prev => [...prev, ...newRules]);
+                  scrollRulesToBottom();
                   toast({ title: `Imported ${newRules.length} rules from document` });
                 } else {
                   toast({ title: "No new rules found in document", variant: "destructive" });
