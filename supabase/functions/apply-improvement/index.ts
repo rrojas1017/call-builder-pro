@@ -198,10 +198,37 @@ serve(async (req) => {
           patch[field] = mergeArrays(existingArray, incomingArray);
           console.log(`[apply-improvement] Merged ${field}: ${existingArray.length} existing + ${incomingArray.length} incoming → ${patch[field].length} total`);
         }
+      } else if (field === "business_rules") {
+        // ── Deep-merge business_rules.rules array instead of replacing ──
+        const replaceMode = improvement.replace_mode === true;
+        const existingBR = spec[field] || {};
+        const existingObj = typeof existingBR === "string" ? JSON.parse(existingBR) : { ...existingBR };
+        const existingRules: string[] = Array.isArray(existingObj.rules) ? existingObj.rules : [];
+
+        let incomingObj: any;
+        if (typeof parsedValue === "object" && !Array.isArray(parsedValue)) {
+          incomingObj = parsedValue;
+        } else if (Array.isArray(parsedValue)) {
+          incomingObj = { rules: parsedValue };
+        } else {
+          incomingObj = { rules: [String(parsedValue)] };
+        }
+        const incomingRules: string[] = Array.isArray(incomingObj.rules) ? incomingObj.rules : [];
+
+        if (replaceMode) {
+          patch[field] = { ...existingObj, ...incomingObj };
+          console.log(`[apply-improvement] Replaced business_rules (replace_mode)`);
+        } else {
+          // Merge rules array, keeping all existing + adding new non-duplicates
+          const mergedRules = mergeArrays(existingRules, incomingRules);
+          // Merge other keys from incoming (non-rules)
+          const mergedObj = { ...existingObj, ...incomingObj, rules: mergedRules };
+          patch[field] = mergedObj;
+          console.log(`[apply-improvement] Merged business_rules: ${existingRules.length} existing + ${incomingRules.length} incoming → ${mergedRules.length} total rules`);
+        }
       } else {
         patch[field] = parsedValue;
       }
-    } else if (BOOL_FIELDS.includes(field)) {
       patch[field] = improvement.suggested_value === "true" || improvement.suggested_value === true;
     } else if (NUM_FIELDS.includes(field)) {
       patch[field] = Number(improvement.suggested_value);

@@ -105,6 +105,29 @@ serve(async (req) => {
     const isNonEnglish = agentLang !== "en" && agentLang !== "english";
     const langInstruction = `\n\nLANGUAGE DIRECTIVE: The agent operates in "${spec.language || "English"}". Write ALL evaluation feedback — issues_detected, humanness_suggestions, knowledge_gaps, delivery_issues, missed_fields, incorrect_logic, and recommended_improvements (reason, suggested_value) — in the SAME language as the conversation transcript (${spec.language || "English"}). Only spec field keys (e.g. "opening_line", "tone_style") stay in English. This applies regardless of whether the conversation is in English or another language — always match the transcript's language.`;
 
+    // ── Fetch coaching context from spec_change_log ──
+    let coachingBlock = "";
+    try {
+      const { data: coachingLogs } = await supabase
+        .from("spec_change_log")
+        .select("field_changed, new_value, source_detail, created_at")
+        .eq("project_id", call.project_id)
+        .eq("source", "user_feedback")
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (coachingLogs && coachingLogs.length > 0) {
+        const lines = ["\n\nCOACHING DIRECTIVES (from the agent creator — DO NOT contradict these):"];
+        for (const log of coachingLogs) {
+          lines.push(`- [${log.field_changed}] ${log.source_detail || log.new_value || "(no detail)"}`);
+        }
+        lines.push("These are explicit instructions from the creator. Your suggestions MUST NOT undo or contradict any of these directives.");
+        coachingBlock = lines.join("\n");
+      }
+    } catch (e) {
+      console.error("Failed to fetch coaching context:", e);
+    }
+
     const systemPrompt = `You are a Call Performance Auditor. You are an expert at evaluating AI phone agent conversations.
 
 CRITICAL INSTRUCTION — CHAIN-OF-THOUGHT SCORING:
@@ -167,8 +190,9 @@ Each recommended_improvement should be an object with:
 - "severity": one of "critical" (blocking agent success), "important" (noticeably hurts performance), or "minor" (polish)
 
 CRITICAL FORMAT RULES FOR suggested_value:
-- For "must_collect_fields": suggested_value MUST be a JSON array of question strings, e.g. ["What is your zip code?", "Do you currently have Medicaid?"]
-- For "humanization_notes": suggested_value MUST be a JSON array of technique strings, e.g. ["React to personal details the caller shares", "Use their name after they share something personal"]
+- For "must_collect_fields": suggested_value MUST be a JSON array of question strings. ONLY include fields that ALREADY EXIST in the current spec's must_collect_fields. Do NOT add new fields (like zip code, state, email) that the creator did not configure. You may REORDER or REWORD existing fields only.
+- For "humanization_notes": suggested_value MUST be a JSON array containing ONLY the NEW technique strings to ADD (not a full replacement). e.g. ["React to personal details the caller shares"]. Do NOT repeat notes already in the spec.
+- For "business_rules": Do NOT suggest replacing or removing existing business rules. Only suggest ADDITIONS as new rule strings to append. suggested_value should be a JSON object like {"rules": ["new rule 1", "new rule 2"]} containing ONLY the new rules to add.
 - For "research_sources": suggested_value MUST be a JSON array of source strings
 - For other JSON fields (qualification_rules, disqualification_rules, etc.): suggested_value must be valid JSON matching the field's expected schema
 - For text fields (tone_style, opening_line, etc.): suggested_value should be a plain string
@@ -183,7 +207,7 @@ VOICE TUNING RECOMMENDATIONS:
 - If repeated words detected → suggest lowering "temperature"
 - If rushed pacing → suggest lowering "speaking_speed"
 - If AI interrupts too quickly → suggest raising "interruption_threshold"
-- If words mispronounced → suggest "pronunciation_guide" entries${changeHistoryBlock}${langInstruction}`;
+- If words mispronounced → suggest "pronunciation_guide" entries${changeHistoryBlock}${coachingBlock}${langInstruction}`;
 
     // Fetch user feedback if this is a test call
     let userFeedbackBlock = "";
@@ -688,8 +712,7 @@ ${call.transcript}`;
           (s: string) => !currentNotes.some((existing: string) => existing.toLowerCase() === s.toLowerCase())
         );
         if (newSuggestions.length > 0) {
-          const merged = [...currentNotes, ...newSuggestions].slice(-20);
-          // Route through apply-improvement for proper version tracking
+          // Route through apply-improvement for proper version tracking (merge mode)
           const applyResp = await fetch(`${supabaseUrl}/functions/v1/apply-improvement`, {
             method: "POST",
             headers: {
@@ -700,10 +723,10 @@ ${call.transcript}`;
               project_id: call.project_id,
               improvement: {
                 field: "humanization_notes",
-                suggested_value: merged,
+                suggested_value: newSuggestions,
                 reason: `[AUTO-HUMANNESS] Applied ${newSuggestions.length} humanness suggestions`,
                 original_key: `humanness::batch::${Date.now()}`,
-                replace_mode: true,
+                replace_mode: false,
               },
             }),
           });
@@ -778,7 +801,7 @@ ${call.transcript}`;
     // ── Auto-apply critical-severity improvements ──
     // Protected fields: skip auto-critical overwrites for fields that were
     // recently set manually (verbal training or direct DB update)
-    const PROTECTED_FIELDS = ["opening_line"];
+    const PROTECTED_FIELDS = ["opening_line", "business_rules", "must_collect_fields"];
 
     if (isSimulatedOrTest && evaluation.recommended_improvements?.length > 0) {
       try {
