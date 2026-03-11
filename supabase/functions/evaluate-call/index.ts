@@ -190,8 +190,9 @@ Each recommended_improvement should be an object with:
 - "severity": one of "critical" (blocking agent success), "important" (noticeably hurts performance), or "minor" (polish)
 
 CRITICAL FORMAT RULES FOR suggested_value:
-- For "must_collect_fields": suggested_value MUST be a JSON array of question strings, e.g. ["What is your zip code?", "Do you currently have Medicaid?"]
-- For "humanization_notes": suggested_value MUST be a JSON array of technique strings, e.g. ["React to personal details the caller shares", "Use their name after they share something personal"]
+- For "must_collect_fields": suggested_value MUST be a JSON array of question strings. ONLY include fields that ALREADY EXIST in the current spec's must_collect_fields. Do NOT add new fields (like zip code, state, email) that the creator did not configure. You may REORDER or REWORD existing fields only.
+- For "humanization_notes": suggested_value MUST be a JSON array containing ONLY the NEW technique strings to ADD (not a full replacement). e.g. ["React to personal details the caller shares"]. Do NOT repeat notes already in the spec.
+- For "business_rules": Do NOT suggest replacing or removing existing business rules. Only suggest ADDITIONS as new rule strings to append. suggested_value should be a JSON object like {"rules": ["new rule 1", "new rule 2"]} containing ONLY the new rules to add.
 - For "research_sources": suggested_value MUST be a JSON array of source strings
 - For other JSON fields (qualification_rules, disqualification_rules, etc.): suggested_value must be valid JSON matching the field's expected schema
 - For text fields (tone_style, opening_line, etc.): suggested_value should be a plain string
