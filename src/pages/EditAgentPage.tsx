@@ -772,6 +772,7 @@ export default function EditAgentPage() {
                 </button>
               </div>
             ))}
+            <div ref={rulesEndRef} />
           </div>
         </ScrollArea>
         <div className="flex gap-2 items-end">
