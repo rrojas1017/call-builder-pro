@@ -167,6 +167,7 @@ export default function CallsPage() {
   const [selected, setSelected] = useState<Call | null>(null);
   const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
   const [appliedSet, setAppliedSet] = useState<Set<string>>(new Set());
+  const [ignoredSet, setIgnoredSet] = useState<Set<string>>(new Set());
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
