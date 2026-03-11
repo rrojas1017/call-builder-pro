@@ -712,8 +712,7 @@ ${call.transcript}`;
           (s: string) => !currentNotes.some((existing: string) => existing.toLowerCase() === s.toLowerCase())
         );
         if (newSuggestions.length > 0) {
-          const merged = [...currentNotes, ...newSuggestions].slice(-20);
-          // Route through apply-improvement for proper version tracking
+          // Route through apply-improvement for proper version tracking (merge mode)
           const applyResp = await fetch(`${supabaseUrl}/functions/v1/apply-improvement`, {
             method: "POST",
             headers: {
