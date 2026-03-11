@@ -319,6 +319,7 @@ export default function CreateAgentPage() {
   const [agentLanguage, setAgentLanguage] = useState<LangCode>("en");
   const [personaName, setPersonaName] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [personalityNotes, setPersonalityNotes] = useState<string[]>([]);
 
   const t = TRANSLATIONS[agentLanguage];
   const STEPS = STEPS_BY_LANG[agentLanguage];
