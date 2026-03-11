@@ -739,6 +739,15 @@ export default function CreateAgentPage() {
             )}
           </div>
 
+          {/* Personality & Style */}
+          <div className="surface-elevated rounded-xl p-6 space-y-4">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" /> Personality & Style
+            </h3>
+            <p className="text-xs text-muted-foreground">Select traits that define how your agent sounds and behaves on calls.</p>
+            <PersonalityTraitSelector value={personalityNotes} onChange={setPersonalityNotes} />
+          </div>
+
           {/* Call Ending / Transfer */}
           <div className="surface-elevated rounded-xl p-6 space-y-4">
             <h3 className="font-semibold text-foreground flex items-center gap-2">
