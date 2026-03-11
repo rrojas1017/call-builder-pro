@@ -207,7 +207,7 @@ VOICE TUNING RECOMMENDATIONS:
 - If repeated words detected → suggest lowering "temperature"
 - If rushed pacing → suggest lowering "speaking_speed"
 - If AI interrupts too quickly → suggest raising "interruption_threshold"
-- If words mispronounced → suggest "pronunciation_guide" entries${changeHistoryBlock}${langInstruction}`;
+- If words mispronounced → suggest "pronunciation_guide" entries${changeHistoryBlock}${coachingBlock}${langInstruction}`;
 
     // Fetch user feedback if this is a test call
     let userFeedbackBlock = "";
