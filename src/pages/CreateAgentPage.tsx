@@ -16,6 +16,7 @@ import { VoiceSelector } from "@/components/VoiceSelector";
 import { useOutboundNumbers } from "@/hooks/useOutboundNumbers";
 import { Progress } from "@/components/ui/progress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { PersonalityTraitSelector } from "@/components/PersonalityTraitSelector";
 
 // ─── Translation map ────────────────────────────────────────────────────────
 const LANGUAGES = [
@@ -318,6 +319,7 @@ export default function CreateAgentPage() {
   const [agentLanguage, setAgentLanguage] = useState<LangCode>("en");
   const [personaName, setPersonaName] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [personalityNotes, setPersonalityNotes] = useState<string[]>([]);
 
   const t = TRANSLATIONS[agentLanguage];
   const STEPS = STEPS_BY_LANG[agentLanguage];
@@ -469,6 +471,7 @@ export default function CreateAgentPage() {
         language: agentLanguage,
         persona_name: personaName.trim() || null,
         opening_line: finalOpeningLine,
+        humanization_notes: personalityNotes.length > 0 ? personalityNotes : null,
       } as any).eq("project_id", projectId);
 
       setSavePhase("Done!");
@@ -735,6 +738,15 @@ export default function CreateAgentPage() {
                 />
               </div>
             )}
+          </div>
+
+          {/* Personality & Style */}
+          <div className="surface-elevated rounded-xl p-6 space-y-4">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" /> Personality & Style
+            </h3>
+            <p className="text-xs text-muted-foreground">Select traits that define how your agent sounds and behaves on calls.</p>
+            <PersonalityTraitSelector value={personalityNotes} onChange={setPersonalityNotes} />
           </div>
 
           {/* Call Ending / Transfer */}

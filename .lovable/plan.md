@@ -1,53 +1,48 @@
 
 
-# Add Personality Traits Configuration to Agent Creation Wizard & Edit Page
+# Simplify the Agent Creation Wizard
 
-## Current State
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-The agent personality is currently controlled by two fields in `agent_specs`:
-- **`tone_style`** — a free-text input ("friendly, professional, casual") shown in Edit page only
-- **`humanization_notes`** — a JSON array of behavioral directives stored in the DB but **never exposed in the UI**. It's only populated by the AI via `save-wizard-answers` and `apply-improvement` functions, and consumed by `buildTaskPrompt` to generate the agent's interaction style.
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-Neither the creation wizard nor the edit page lets users explicitly define personality traits like "empathetic", "assertive", "humorous", "patient", etc.
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
 ## Plan
 
-### 1. Add a Personality Traits selector to the Creation Wizard (Step 2 — Review & Save)
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
 
-Add a new "Personality & Style" card in Step 2 with:
-- **Preset trait chips** — clickable badges for common traits: Empathetic, Assertive, Patient, Humorous, Warm, Direct, Enthusiastic, Calm, Persuasive, Casual, Formal, Energetic
-- **Custom trait input** — a text field to add custom traits not in the preset list
-- Selected traits get stored into `humanization_notes` as behavioral directives (e.g. selecting "Empathetic" becomes "Be empathetic — acknowledge the caller's feelings and concerns before moving forward")
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
 
-### 2. Add the same Personality Traits section to the Edit Agent page
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
 
-Add a new "Personality Traits" card in the Script section of `EditAgentPage.tsx`:
-- Same chip-based selector with preset traits + custom input
-- Loads existing `humanization_notes` from the spec on mount
-- Allows adding/removing traits visually
-- Saves back to `humanization_notes` on save
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
 
-### 3. Map traits to actionable directives
-
-Create a mapping in a shared utility that converts short trait labels into behavioral instructions for the prompt engine:
-
-```text
-Empathetic → "Be empathetic — acknowledge the caller's feelings and validate concerns before continuing"
-Assertive → "Be confidently assertive — guide the conversation with clear direction"
-Patient → "Be patient — never rush the caller, allow pauses and repeat information if needed"
-Humorous → "Use light, appropriate humor to build rapport — but never at the caller's expense"
-...etc
-```
-
-This ensures `buildTaskPrompt`'s existing `buildCompactStyle(humanizationNotes)` function produces high-quality agent behavior from simple user selections.
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
 ### Files Changed
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
 
-| File | Change |
-|------|--------|
-| `src/lib/personalityTraits.ts` | **New** — trait label → directive mapping, preset trait list |
-| `src/pages/CreateAgentPage.tsx` | Add personality trait selector in Step 2 (Review & Save) |
-| `src/pages/EditAgentPage.tsx` | Add personality trait section, load/save `humanization_notes` |
-
-No database changes needed — `humanization_notes` (JSON array) already exists in `agent_specs`.
+No database or edge function changes needed.
 

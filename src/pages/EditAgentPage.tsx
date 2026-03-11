@@ -26,6 +26,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 import { ScriptBuilder } from "@/components/ScriptBuilder";
 import { SectionHelp } from "@/components/SectionHelp";
+import { PersonalityTraitSelector } from "@/components/PersonalityTraitSelector";
 
 const maturityConfig: Record<string, { label: string; color: string }> = {
   training: { label: "Training", color: "text-muted-foreground bg-muted" },
@@ -120,6 +121,7 @@ export default function EditAgentPage() {
   const [smsEnabled, setSmsEnabled] = useState(false);
   const [smsMode, setSmsMode] = useState<"ai_generated" | "custom_script">("ai_generated");
   const [smsScript, setSmsScript] = useState("");
+  const [personalityNotes, setPersonalityNotes] = useState<string[]>([]);
 
   // AI Optimization
   const { optimizeAgent } = useRetellAgent(retellAgentId || null);
@@ -204,6 +206,11 @@ export default function EditAgentPage() {
             end: bh.end || "17:00",
             timezone: bh.timezone || "America/New_York",
           });
+        }
+
+        const hn = spec.humanization_notes as any;
+        if (Array.isArray(hn)) {
+          setPersonalityNotes(hn.filter((n: any) => typeof n === "string" && n.trim()));
         }
 
       }
@@ -332,6 +339,7 @@ export default function EditAgentPage() {
           sms_enabled: smsEnabled,
           sms_mode: smsMode,
           sms_script: smsScript || null,
+          humanization_notes: personalityNotes.length > 0 ? personalityNotes : null,
         } as any).eq("project_id", id),
       ]);
 
@@ -637,6 +645,11 @@ export default function EditAgentPage() {
         <div className="space-y-2">
           <Label>Tone / Style</Label>
           <Input value={toneStyle} onChange={(e) => setToneStyle(e.target.value)} placeholder="e.g. friendly, professional, casual" />
+        </div>
+        <div className="space-y-2">
+          <Label>Personality Traits</Label>
+          <p className="text-xs text-muted-foreground">Select traits that define how your agent sounds and behaves on calls.</p>
+          <PersonalityTraitSelector value={personalityNotes} onChange={setPersonalityNotes} />
         </div>
         <div className="space-y-2">
           <Label>Success Definition</Label>
