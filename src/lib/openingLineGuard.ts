@@ -33,10 +33,27 @@ export function guardOpeningLine(openingLine: string, personaName: string): Guar
     return { corrected: openingLine, wasFixed: false };
   }
 
+  let line = openingLine;
+  let wasFixed = false;
+  let oldName: string | undefined;
+
+  // Step 1: Fix duplicate {{agent_name}} placeholders — keep only the first occurrence
+  const placeholderCount = (line.match(/\{\{agent_name\}\}/g) || []).length;
+  if (placeholderCount > 1) {
+    let first = true;
+    line = line.replace(/\{\{agent_name\}\}/g, (match) => {
+      if (first) { first = false; return match; }
+      return "";
+    });
+    // Clean up resulting double spaces, orphaned commas, and awkward punctuation
+    line = line.replace(/,\s*,/g, ",").replace(/\s{2,}/g, " ").replace(/\s+([,.])/g, "$1").trim();
+    wasFixed = true;
+  }
+
   const personaFirstWord = trimmedPersona.split(/\s+/)[0].toLowerCase();
 
   for (const pattern of INTRO_PATTERNS) {
-    const match = openingLine.match(pattern);
+    const match = line.match(pattern);
     if (match && match[1]) {
       const foundName = match[1];
       // Skip if it already matches the persona name (full or first word for multi-word names)
@@ -45,12 +62,14 @@ export function guardOpeningLine(openingLine: string, personaName: string): Guar
       // Skip if it's the placeholder already
       if (foundName === "{{agent_name}}") continue;
 
-      const corrected = openingLine.replace(foundName, "{{agent_name}}");
-      return { corrected, wasFixed: true, oldName: foundName };
+      line = line.replace(foundName, "{{agent_name}}");
+      oldName = foundName;
+      wasFixed = true;
+      break;
     }
   }
 
-  return { corrected: openingLine, wasFixed: false };
+  return { corrected: line, wasFixed, oldName };
 }
 
 /**
