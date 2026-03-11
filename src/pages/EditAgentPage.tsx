@@ -26,6 +26,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 import { ScriptBuilder } from "@/components/ScriptBuilder";
 import { SectionHelp } from "@/components/SectionHelp";
+import { PersonalityTraitSelector } from "@/components/PersonalityTraitSelector";
 
 const maturityConfig: Record<string, { label: string; color: string }> = {
   training: { label: "Training", color: "text-muted-foreground bg-muted" },
