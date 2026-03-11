@@ -374,6 +374,31 @@ export default function EditAgentPage() {
         }
       }
 
+      // Record [MANUAL] improvement for opening_line if it changed
+      // This ensures the protection system recognizes user edits
+      try {
+        const { data: currentSpec } = await supabase
+          .from("agent_specs")
+          .select("opening_line, version")
+          .eq("project_id", id)
+          .single();
+        if (currentSpec && currentSpec.opening_line !== finalOpeningLine && finalOpeningLine) {
+          await supabase.functions.invoke("apply-improvement", {
+            body: {
+              project_id: id,
+              improvement: {
+                field: "opening_line",
+                suggested_value: finalOpeningLine,
+                reason: "[MANUAL] User edited opening line via Edit page",
+                original_key: `manual::opening_line::${Date.now()}`,
+              },
+            },
+          });
+        }
+      } catch (manualErr) {
+        console.warn("Failed to record manual opening_line edit:", manualErr);
+      }
+
       toast({ title: "Agent saved & synced!" });
       navigate("/agents");
     } catch (err: any) {

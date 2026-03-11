@@ -799,9 +799,12 @@ ${call.transcript}`;
     const isSimulatedOrTest = call.voice_provider === "simulated" || !!test_run_contact_id;
 
     // ── Auto-apply critical-severity improvements ──
-    // Protected fields: skip auto-critical overwrites for fields that were
-    // recently set manually (verbal training or direct DB update)
-    const PROTECTED_FIELDS = ["opening_line", "business_rules", "must_collect_fields"];
+    // Hard-blocked fields: NEVER auto-apply these regardless of history.
+    // These are user-controlled creative/behavioral elements.
+    const HARD_BLOCKED_FIELDS = ["opening_line"];
+
+    // Protected fields: skip auto-critical overwrites only if recently set manually
+    const PROTECTED_FIELDS = ["business_rules", "must_collect_fields"];
 
     if (isSimulatedOrTest && evaluation.recommended_improvements?.length > 0) {
       try {
@@ -831,6 +834,12 @@ ${call.transcript}`;
         }
 
         for (const fix of criticalFixes) {
+          // Hard-blocked fields are NEVER auto-applied
+          if (HARD_BLOCKED_FIELDS.includes(fix.field)) {
+            console.log(`Skipping auto-critical for "${fix.field}" — hard-blocked (user-controlled field)`);
+            continue;
+          }
+
           // Skip auto-critical overwrites for protected fields that were manually set
           if (PROTECTED_FIELDS.includes(fix.field) && recentManualFields.has(fix.field)) {
             console.log(`Skipping auto-critical for "${fix.field}" — recently set manually`);
