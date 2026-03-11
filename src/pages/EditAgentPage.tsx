@@ -121,6 +121,7 @@ export default function EditAgentPage() {
   const [smsEnabled, setSmsEnabled] = useState(false);
   const [smsMode, setSmsMode] = useState<"ai_generated" | "custom_script">("ai_generated");
   const [smsScript, setSmsScript] = useState("");
+  const [personalityNotes, setPersonalityNotes] = useState<string[]>([]);
 
   // AI Optimization
   const { optimizeAgent } = useRetellAgent(retellAgentId || null);
