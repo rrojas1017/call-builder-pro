@@ -802,7 +802,7 @@ ${call.transcript}`;
     // ── Auto-apply critical-severity improvements ──
     // Protected fields: skip auto-critical overwrites for fields that were
     // recently set manually (verbal training or direct DB update)
-    const PROTECTED_FIELDS = ["opening_line"];
+    const PROTECTED_FIELDS = ["opening_line", "business_rules", "must_collect_fields"];
 
     if (isSimulatedOrTest && evaluation.recommended_improvements?.length > 0) {
       try {
