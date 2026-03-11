@@ -471,6 +471,7 @@ export default function CreateAgentPage() {
         language: agentLanguage,
         persona_name: personaName.trim() || null,
         opening_line: finalOpeningLine,
+        humanization_notes: personalityNotes.length > 0 ? personalityNotes : null,
       } as any).eq("project_id", projectId);
 
       setSavePhase("Done!");
