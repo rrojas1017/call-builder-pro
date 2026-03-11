@@ -1,48 +1,74 @@
 
 
-# Simplify the Agent Creation Wizard
+# Fix: Business Rules Document Upload Fails for Binary Files
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+## Problem
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+The `parse-business-rules` edge function downloads the uploaded file and calls `await fileData.text()` on it regardless of file type (line 31). This works for `.txt` and `.md` files, but for `.docx` and `.pdf` files it returns binary garbage. The AI then either:
+- Gets gibberish and returns no rules, or
+- Throws "No text content found in document" because the binary text is nonsensical
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+The frontend accepts `.docx, .doc, .txt, .pdf, .md` — but the backend can only actually process `.txt` and `.md`.
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+## Fix
 
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+### `supabase/functions/parse-business-rules/index.ts`
 
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+Add file-type detection and proper handling:
 
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
+1. **For `.txt` / `.md`**: Keep current `fileData.text()` approach — works fine.
 
-## Plan
+2. **For `.docx`**: Use a Deno-compatible DOCX parser. The simplest approach is to extract the `word/document.xml` from the ZIP archive (DOCX is a ZIP file), then strip XML tags to get plain text. Use Deno's built-in `JSZip` or the `fflate` library via esm.sh.
 
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+3. **For `.pdf`**: PDF text extraction in Deno is limited. Two options:
+   - Use the AI model itself — send the raw file as a base64-encoded attachment (Gemini supports PDF input natively)
+   - Use a lightweight PDF-to-text library via esm.sh
 
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
+4. **For `.doc` (legacy Word)**: Not feasible to parse in an edge function. Show a clear error asking the user to convert to `.docx` or `.txt`.
 
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
+**Recommended approach** — Use Gemini's native document understanding:
+- For `.pdf` and `.docx`, convert the file to base64 and send it directly to Gemini as a file part instead of extracting text first. Gemini 2.5 Flash natively handles PDFs and can read DOCX content.
+- This eliminates the need for any parsing library and handles all formatting, tables, and complex layouts.
 
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
+**Implementation:**
+```
+// After downloading fileData:
+const fileName = file_path.toLowerCase();
+const isPlainText = fileName.endsWith(".txt") || fileName.endsWith(".md");
 
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
+if (isPlainText) {
+  rawText = await fileData.text();
+} else {
+  // For PDF/DOCX — send as file part to Gemini
+  const bytes = new Uint8Array(await fileData.arrayBuffer());
+  const base64 = btoa(String.fromCharCode(...bytes));
+  const mimeType = fileName.endsWith(".pdf") ? "application/pdf" : 
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  
+  // Call Gemini with file content directly
+  // (need to check if callAI supports file parts, 
+  //  or make a direct Gemini API call)
+}
+```
 
-### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
+**Important**: Need to check if the shared `callAI` helper supports multimodal file inputs. If not, either extend it or make a direct API call to Gemini for binary files.
 
-No database or edge function changes needed.
+Also add a guard for `.doc` files:
+```
+if (fileName.endsWith(".doc") && !fileName.endsWith(".docx")) {
+  throw new Error("Legacy .doc format is not supported. Please convert to .docx or .txt");
+}
+```
+
+### Frontend: `src/pages/EditAgentPage.tsx`
+
+Remove `.doc` from the accept list since it can't be parsed:
+```
+accept=".docx,.txt,.pdf,.md"
+```
+
+| File | Change |
+|------|--------|
+| `supabase/functions/parse-business-rules/index.ts` | Add file-type branching; use Gemini native PDF/DOCX input for binary files; reject `.doc` |
+| `src/pages/EditAgentPage.tsx` | Remove `.doc` from accepted file types |
 
