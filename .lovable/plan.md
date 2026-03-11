@@ -1,48 +1,31 @@
 
 
-# Simplify the Agent Creation Wizard
+# Fix: Opening Line Being Overwritten After Save + Double Agent Name
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+## Root Cause
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+Two issues are causing the opening line problems:
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+### Issue 1: Opening line gets overwritten by auto-applied critical fixes
+When a call is evaluated (`evaluate-call`), the AI may flag the opening line as needing a "critical" fix. The `PROTECTED_FIELDS` check only blocks the overwrite if there's a recent `[VERBAL-TRAINING]` or `[MANUAL]` tagged improvement — but **normal user edits via the Edit page don't create improvement records**. So the user saves their opening line, a test/simulation call runs, the evaluator generates a "better" opening line, and auto-applies it as a critical fix — overwriting what the user just set.
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+### Issue 2: Double `{{agent_name}}` in AI-generated opening lines
+The AI (via `generate-spec` or `evaluate-call`) sometimes produces opening lines like `"Hi, this is {{agent_name}} and I am {{agent_name}}"` because it's trying to fill in a name while also using the placeholder. The `guardOpeningLine` function only catches the **first** pattern match and only replaces hardcoded names that **don't match** the persona — it doesn't detect or fix duplicate `{{agent_name}}` placeholders.
 
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+## Fixes
 
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+### Fix 1: Block auto-apply of `opening_line` entirely
+In `supabase/functions/evaluate-call/index.ts`, add `opening_line` to a **hard-block list** that prevents auto-application regardless of manual edit history. The opening line is a user-controlled creative element that should never be auto-overwritten. Users can still see the recommendation and choose "Apply Fix" manually.
 
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
+### Fix 2: Add duplicate placeholder detection to `guardOpeningLine`
+In `src/lib/openingLineGuard.ts`, add a post-processing step that detects and removes duplicate `{{agent_name}}` occurrences, keeping only the first one and cleaning up the resulting text.
 
-## Plan
+### Fix 3: Record user edits as `[MANUAL]` improvements
+In `src/pages/EditAgentPage.tsx`, when saving and the opening line has changed from its original value, insert an improvement record tagged `[MANUAL]` so the protection system recognizes it. This provides defense-in-depth for all protected fields.
 
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
-
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
-
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
-
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
-
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
-
-### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
-
-No database or edge function changes needed.
+| File | Change |
+|------|--------|
+| `supabase/functions/evaluate-call/index.ts` | Hard-block `opening_line` from auto-critical application |
+| `src/lib/openingLineGuard.ts` | Add duplicate `{{agent_name}}` detection and cleanup |
+| `src/pages/EditAgentPage.tsx` | Record `[MANUAL]` improvement when opening line changes |
 
