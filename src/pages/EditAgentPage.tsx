@@ -339,6 +339,7 @@ export default function EditAgentPage() {
           sms_enabled: smsEnabled,
           sms_mode: smsMode,
           sms_script: smsScript || null,
+          humanization_notes: personalityNotes.length > 0 ? personalityNotes : null,
         } as any).eq("project_id", id),
       ]);
 
