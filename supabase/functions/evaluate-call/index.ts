@@ -105,6 +105,29 @@ serve(async (req) => {
     const isNonEnglish = agentLang !== "en" && agentLang !== "english";
     const langInstruction = `\n\nLANGUAGE DIRECTIVE: The agent operates in "${spec.language || "English"}". Write ALL evaluation feedback — issues_detected, humanness_suggestions, knowledge_gaps, delivery_issues, missed_fields, incorrect_logic, and recommended_improvements (reason, suggested_value) — in the SAME language as the conversation transcript (${spec.language || "English"}). Only spec field keys (e.g. "opening_line", "tone_style") stay in English. This applies regardless of whether the conversation is in English or another language — always match the transcript's language.`;
 
+    // ── Fetch coaching context from spec_change_log ──
+    let coachingBlock = "";
+    try {
+      const { data: coachingLogs } = await supabase
+        .from("spec_change_log")
+        .select("field_changed, new_value, source_detail, created_at")
+        .eq("project_id", call.project_id)
+        .eq("source", "user_feedback")
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (coachingLogs && coachingLogs.length > 0) {
+        const lines = ["\n\nCOACHING DIRECTIVES (from the agent creator — DO NOT contradict these):"];
+        for (const log of coachingLogs) {
+          lines.push(`- [${log.field_changed}] ${log.source_detail || log.new_value || "(no detail)"}`);
+        }
+        lines.push("These are explicit instructions from the creator. Your suggestions MUST NOT undo or contradict any of these directives.");
+        coachingBlock = lines.join("\n");
+      }
+    } catch (e) {
+      console.error("Failed to fetch coaching context:", e);
+    }
+
     const systemPrompt = `You are a Call Performance Auditor. You are an expert at evaluating AI phone agent conversations.
 
 CRITICAL INSTRUCTION — CHAIN-OF-THOUGHT SCORING:
