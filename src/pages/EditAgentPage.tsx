@@ -799,7 +799,7 @@ export default function EditAgentPage() {
           <input
             type="file"
             id="br-file-upload"
-            accept=".docx,.doc,.txt,.pdf,.md"
+            accept=".docx,.txt,.pdf,.md"
             className="hidden"
             onChange={async (e) => {
               const file = e.target.files?.[0];
