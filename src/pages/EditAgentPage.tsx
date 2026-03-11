@@ -208,6 +208,11 @@ export default function EditAgentPage() {
           });
         }
 
+        const hn = spec.humanization_notes as any;
+        if (Array.isArray(hn)) {
+          setPersonalityNotes(hn.filter((n: any) => typeof n === "string" && n.trim()));
+        }
+
       }
 
       // Compute avg score
