@@ -792,7 +792,7 @@ export default function EditAgentPage() {
           />
           <Button variant="outline" size="sm" className="shrink-0" onClick={() => {
             const r = newBusinessRule.trim();
-            if (r && !businessRules.includes(r)) { setBusinessRules([...businessRules, r]); setNewBusinessRule(""); }
+            if (r && !businessRules.includes(r)) { setBusinessRules([...businessRules, r]); setNewBusinessRule(""); scrollRulesToBottom(); }
           }} disabled={!newBusinessRule.trim()}>
             <Plus className="h-3.5 w-3.5 mr-1" /> Add
           </Button>
