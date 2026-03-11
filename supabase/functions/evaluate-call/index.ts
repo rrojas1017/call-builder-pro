@@ -724,10 +724,10 @@ ${call.transcript}`;
               project_id: call.project_id,
               improvement: {
                 field: "humanization_notes",
-                suggested_value: merged,
+                suggested_value: newSuggestions,
                 reason: `[AUTO-HUMANNESS] Applied ${newSuggestions.length} humanness suggestions`,
                 original_key: `humanness::batch::${Date.now()}`,
-                replace_mode: true,
+                replace_mode: false,
               },
             }),
           });
