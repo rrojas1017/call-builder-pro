@@ -822,6 +822,7 @@ export default function EditAgentPage() {
                 const newRules = (data.rules || []).filter((r: string) => r.trim() && !businessRules.includes(r));
                 if (newRules.length > 0) {
                   setBusinessRules(prev => [...prev, ...newRules]);
+                  scrollRulesToBottom();
                   toast({ title: `Imported ${newRules.length} rules from document` });
                 } else {
                   toast({ title: "No new rules found in document", variant: "destructive" });
