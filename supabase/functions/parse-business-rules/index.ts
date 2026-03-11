@@ -9,13 +9,19 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `You extract individual business rules from documents for an AI calling agent.
-Each rule should be a single, actionable directive — something the agent must do or must not do during a call.
-Combine related sub-points into one rule when they belong together.
-Strip out headers, numbering, and formatting — just the rule text.
+const SYSTEM_PROMPT = `You are a business-rules translator for an AI phone calling agent. Your job is to read a document and produce clear, actionable directives the agent must follow during live calls.
+
+RULES FOR EXTRACTION:
+1. Each rule must be a single, direct instruction the agent can act on — phrased as an imperative ("Do X", "Never Y", "If X then Y").
+2. Preserve conditional logic exactly: "If the caller has Medicaid, do NOT offer a transfer" — not just "Medicaid disqualifies."
+3. Translate vague procedural language into concrete agent behavior. E.g. "Compliance requires disclosure" → "You MUST read the recording disclosure within the first 30 seconds of the call."
+4. Merge redundant or overlapping rules into one. Split compound rules that cover unrelated topics into separate items.
+5. Omit general company info, marketing copy, or background context that doesn't affect call behavior.
+6. Keep each rule under 200 characters when possible, but never sacrifice clarity for brevity.
+7. Order rules by importance: compliance/legal first, then qualification logic, then behavioral guidelines.
 
 Return ONLY a JSON array of strings. No markdown fences, no explanation.
-Example: ["If caller has Medicaid, do not transfer", "Always confirm caller's age before proceeding"]`;
+Example: ["If caller has Medicaid, do not transfer — end the call politely", "Always confirm caller's full name and age before asking income questions", "You MUST read the recording disclosure before collecting any personal information"]`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS")
