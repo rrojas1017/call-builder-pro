@@ -103,6 +103,13 @@ export default function EditAgentPage() {
   const [brDraggedIndex, setBrDraggedIndex] = useState<number | null>(null);
   const [parsingRules, setParsingRules] = useState(false);
   const [brDragOverIndex, setBrDragOverIndex] = useState<number | null>(null);
+  const rulesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollRulesToBottom = useCallback(() => {
+    setTimeout(() => {
+      rulesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 50);
+  }, []);
   const [consentRequired, setConsentRequired] = useState(true);
   const [disclosureRequired, setDisclosureRequired] = useState(true);
   const [disclosureText, setDisclosureText] = useState("");
