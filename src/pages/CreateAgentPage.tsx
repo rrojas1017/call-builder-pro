@@ -16,6 +16,7 @@ import { VoiceSelector } from "@/components/VoiceSelector";
 import { useOutboundNumbers } from "@/hooks/useOutboundNumbers";
 import { Progress } from "@/components/ui/progress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { PersonalityTraitSelector } from "@/components/PersonalityTraitSelector";
 
 // ─── Translation map ────────────────────────────────────────────────────────
 const LANGUAGES = [
