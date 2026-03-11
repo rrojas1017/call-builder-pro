@@ -289,14 +289,12 @@ export default function EditAgentPage() {
         ? (phoneDigits.startsWith("1") ? `+${phoneDigits}` : `+1${phoneDigits}`)
         : null;
 
-      // Guard: auto-fix hardcoded name mismatch in opening line
-      let finalOpeningLine = openingLine;
+      // Guard: advisory warning for name mismatch (never auto-rewrite user input)
+      const finalOpeningLine = openingLine;
       if (openingLine && personaName.trim()) {
         const guard = guardOpeningLine(openingLine, personaName.trim());
-        if (guard.wasFixed) {
-          finalOpeningLine = guard.corrected;
-          setOpeningLine(guard.corrected);
-          toast({ title: "Opening line updated", description: `Replaced "${guard.oldName}" with your persona name placeholder.` });
+        if (guard.wasFixed && guard.oldName) {
+          toast({ title: "Heads up", description: `Your opening line contains "${guard.oldName}" which doesn't match your persona name "${personaName.trim()}". You may want to use {{agent_name}} instead.`, variant: "default" });
         }
       }
 

@@ -451,12 +451,12 @@ export default function CreateAgentPage() {
 
       setSavePhase("Saving configuration...");
 
-      // Guard: auto-fix hardcoded name mismatch in opening line
-      let finalOpeningLine = spec?.opening_line || null;
+      // Guard: advisory warning for name mismatch (never auto-rewrite user input)
+      const finalOpeningLine = spec?.opening_line || null;
       if (finalOpeningLine && personaName.trim()) {
         const guard = guardOpeningLine(finalOpeningLine, personaName.trim());
-        if (guard.wasFixed) {
-          finalOpeningLine = guard.corrected;
+        if (guard.wasFixed && guard.oldName) {
+          toast({ title: "Heads up", description: `Your opening line contains "${guard.oldName}" which doesn't match your persona name "${personaName.trim()}". You may want to use {{agent_name}} instead.` });
         }
       }
 
