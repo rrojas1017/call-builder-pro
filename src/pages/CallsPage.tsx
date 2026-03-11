@@ -167,6 +167,7 @@ export default function CallsPage() {
   const [selected, setSelected] = useState<Call | null>(null);
   const [applyingIdx, setApplyingIdx] = useState<number | null>(null);
   const [appliedSet, setAppliedSet] = useState<Set<string>>(new Set());
+  const [ignoredSet, setIgnoredSet] = useState<Set<string>>(new Set());
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -719,11 +720,26 @@ export default function CallsPage() {
                           <span className="inline-flex items-center gap-1 text-xs font-medium text-green-500">
                             <CheckCircle2 className="h-3 w-3" /> Applied
                           </span>
+                        ) : ignoredSet.has(improvementKey(imp)) ? (
+                          <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                            <X className="h-3 w-3" /> Ignored
+                            <button
+                              className="underline text-xs text-primary hover:text-primary/80"
+                              onClick={() => setIgnoredSet(prev => { const next = new Set(prev); next.delete(improvementKey(imp)); return next; })}
+                            >
+                              Undo
+                            </button>
+                          </span>
                         ) : (
-                          <Button size="sm" variant="outline" disabled={applyingIdx === i} onClick={() => handleApplyImprovement(imp, i)}>
-                            {applyingIdx === i ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Zap className="mr-2 h-3 w-3" />}
-                            Apply Improvement
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="ghost" onClick={() => setIgnoredSet(prev => new Set(prev).add(improvementKey(imp)))}>
+                              Ignore
+                            </Button>
+                            <Button size="sm" variant="outline" disabled={applyingIdx === i} onClick={() => handleApplyImprovement(imp, i)}>
+                              {applyingIdx === i ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Zap className="mr-2 h-3 w-3" />}
+                              Apply Fix
+                            </Button>
+                          </div>
                         )}
                       </div>
                     ))}
