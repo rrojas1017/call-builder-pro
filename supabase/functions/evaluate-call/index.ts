@@ -191,7 +191,7 @@ Each recommended_improvement should be an object with:
 
 CRITICAL FORMAT RULES FOR suggested_value:
 - For "must_collect_fields": suggested_value MUST be a JSON array of question strings. ONLY include fields that ALREADY EXIST in the current spec's must_collect_fields. Do NOT add new fields (like zip code, state, email) that the creator did not configure. You may REORDER or REWORD existing fields only.
-- For "humanization_notes": suggested_value MUST be a JSON array containing ONLY the NEW technique strings to ADD (not a full replacement). e.g. ["React to personal details the caller shares"]. Do NOT repeat notes already in the spec.
+- For "humanization_notes": Do NOT suggest humanization_notes changes unless the agent sounds severely robotic (naturalness_score < 50). Personality traits are set by the creator and should NOT be modified routinely. If you must suggest changes, suggested_value MUST be a JSON array containing ONLY the NEW technique strings to ADD (not a full replacement). Do NOT repeat notes already in the spec.
 - For "business_rules": Do NOT suggest replacing or removing existing business rules. Only suggest ADDITIONS as new rule strings to append. suggested_value should be a JSON object like {"rules": ["new rule 1", "new rule 2"]} containing ONLY the new rules to add.
 - For "research_sources": suggested_value MUST be a JSON array of source strings
 - For other JSON fields (qualification_rules, disqualification_rules, etc.): suggested_value must be valid JSON matching the field's expected schema
@@ -804,7 +804,7 @@ ${call.transcript}`;
     const HARD_BLOCKED_FIELDS = ["opening_line"];
 
     // Protected fields: skip auto-critical overwrites only if recently set manually
-    const PROTECTED_FIELDS = ["business_rules", "must_collect_fields"];
+    const PROTECTED_FIELDS = ["business_rules", "must_collect_fields", "humanization_notes"];
 
     if (isSimulatedOrTest && evaluation.recommended_improvements?.length > 0) {
       try {
