@@ -1,51 +1,48 @@
 
 
-# Fix: Large Recording Playback Fails on WAV Files
+# Simplify the Agent Creation Wizard
 
-## Problem
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
 
-The 15-minute recording (942 seconds) is stored as a `.wav` file at CloudFront. A 15-min WAV is ~150MB+. The `<audio>` element uses the raw `.wav` URL directly, and browsers struggle to load/stream large uncompressed WAV files — they often hang, timeout, or silently fail.
+However, the wizard UX has several friction points that make it confusing for non-technical users:
 
-Meanwhile, the codebase already has a `toMp3Url()` helper that converts `.wav` URLs to `.mp3` (Retell stores both formats). But this helper is **only used for the download button**, never for the audio player `src`.
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
 
-## Fix
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
 
-Use the MP3 URL as the primary source for the audio player, with WAV as fallback. This applies to three locations:
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
 
-### 1. `src/components/TestResultsModal.tsx` (line 228)
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
 
-Change the `<audio>` element to try MP3 first, WAV as fallback:
-```html
-<audio controls className="w-full h-8">
-  <source src={toMp3Url(selected.recording_url)} type="audio/mpeg" />
-  <source src={selected.recording_url} type="audio/wav" />
-</audio>
-```
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
-### 2. `src/pages/CallsPage.tsx` (lines 609-614)
+## Plan
 
-Same change — use `<source>` tags with MP3 first:
-```html
-<audio controls className="w-full h-10" onRateChange={...}>
-  <source src={toMp3Url(selected.recording_url)} type="audio/mpeg" />
-  <source src={selected.recording_url} type="audio/wav" />
-</audio>
-```
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
 
-### 3. `src/pages/UniversityPage.tsx` — `RecordingPlayer` component
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
 
-Same pattern for the university page audio player.
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
 
-### 4. `src/pages/CampaignDetailPage.tsx`
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
 
-If there's an inline audio player there, apply the same fix.
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
-| File | Change |
-|------|--------|
-| `src/components/TestResultsModal.tsx` | Use MP3 source with WAV fallback in audio player |
-| `src/pages/CallsPage.tsx` | Same MP3-first audio source change |
-| `src/pages/UniversityPage.tsx` | Same change in `RecordingPlayer` component |
-| `src/pages/CampaignDetailPage.tsx` | Same change if audio player exists |
+### Files Changed
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
 
-All files already import `toMp3Url` (or `downloadRecordingMp3` which uses it), so the import of `toMp3Url` just needs to be added where missing.
+No database or edge function changes needed.
 

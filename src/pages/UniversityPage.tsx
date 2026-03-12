@@ -17,6 +17,7 @@ import SimulationTraining from "@/components/SimulationTraining";
 import PendingChangesReview from "@/components/PendingChangesReview";
 import SpecChangeLog from "@/components/SpecChangeLog";
 import { detectBusinessRuleIntent } from "@/lib/detectBusinessRuleIntent";
+import { toMp3Url } from "@/lib/recordingDownload";
 import { addBusinessRule } from "@/lib/addBusinessRule";
 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
@@ -1457,11 +1458,13 @@ function RecordingPlayer({ url }: { url: string }) {
       <div className="rounded-lg bg-muted/30 border border-border p-3 space-y-2">
         <audio
           ref={audioRef}
-          src={url}
           controls
           className="w-full h-8"
           onPlay={() => { if (audioRef.current) audioRef.current.playbackRate = speed; }}
-        />
+        >
+          <source src={toMp3Url(url)} type="audio/mpeg" />
+          <source src={url} type="audio/wav" />
+        </audio>
         <div className="flex items-center gap-1">
           <span className="text-[10px] text-muted-foreground mr-1">Speed:</span>
           {speeds.map((s) => (
