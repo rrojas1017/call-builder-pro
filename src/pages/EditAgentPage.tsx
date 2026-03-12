@@ -776,7 +776,7 @@ export default function EditAgentPage() {
         <p className="text-xs text-muted-foreground">
           Define specific rules your agent must follow. These are treated as high-priority directives that override default behavior.
         </p>
-        <ScrollArea className="max-h-[400px]">
+        <ScrollArea className="max-h-[400px] overflow-hidden">
           <div className="space-y-2 pr-3">
             {businessRules.map((rule, index) => (
               <div
@@ -802,7 +802,7 @@ export default function EditAgentPage() {
                 )}
               >
                 <GripVertical className="h-4 w-4 mt-0.5 shrink-0 text-muted-foreground" />
-                <span className="flex-1 text-sm text-foreground">{rule}</span>
+                <span className="flex-1 text-sm text-foreground whitespace-pre-wrap break-words">{rule}</span>
                 <button onClick={() => setBusinessRules(businessRules.filter((_, i) => i !== index))} className="shrink-0 hover:text-destructive text-muted-foreground">
                   <X className="h-4 w-4" />
                 </button>
