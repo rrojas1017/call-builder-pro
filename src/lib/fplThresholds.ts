@@ -1,22 +1,27 @@
 /**
- * 2025 Federal Poverty Level (FPL) Guidelines
+ * 2026 Federal Poverty Level (FPL) Guidelines
  * Source: U.S. Department of Health & Human Services (HHS)
  * Used for ACA marketplace qualification screening.
  */
 
-export const FPL_2025_BASE = 14580;
-export const FPL_2025_PER_ADDITIONAL = 5140;
+export const FPL_2026_BASE = 15060;
+export const FPL_2026_PER_ADDITIONAL = 5380;
 
-export const FPL_2025_THRESHOLDS: Record<number, number> = {
-  1: 14580,
-  2: 19720,
-  3: 24860,
-  4: 30000,
-  5: 35140,
-  6: 40280,
-  7: 45420,
-  8: 50560,
+export const FPL_2026_THRESHOLDS: Record<number, number> = {
+  1: 15060,
+  2: 20440,
+  3: 25820,
+  4: 31200,
+  5: 36580,
+  6: 41960,
+  7: 47340,
+  8: 52720,
 };
+
+// Keep legacy exports for backward compat
+export const FPL_2025_BASE = FPL_2026_BASE;
+export const FPL_2025_PER_ADDITIONAL = FPL_2026_PER_ADDITIONAL;
+export const FPL_2025_THRESHOLDS = FPL_2026_THRESHOLDS;
 
 export function getFplForHouseholdSize(size: number): number {
   if (size <= 0) return FPL_2025_THRESHOLDS[1];
