@@ -106,6 +106,7 @@ export function runtimeGuardOpeningLine(resolvedLine: string, personaName: strin
     const match = resolvedLine.match(pattern);
     if (match && match[1]) {
       const foundName = match[1];
+      // Use the same SKIP_WORDS list as guardOpeningLine to avoid false positives
       if (SKIP_WORDS.has(foundName.toLowerCase())) continue;
       if (foundName.toLowerCase() === trimmedPersona.toLowerCase()) continue;
       if (foundName.toLowerCase() === personaFirstWord) continue;

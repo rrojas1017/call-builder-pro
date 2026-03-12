@@ -250,6 +250,7 @@ RULES:
     const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "(caller's name — ask if unknown)";
     const filledGuide = resolvedOpeningLine.replace(/\{\{first_name\}\}/gi, nameHint);
     prompt += `\n\nOPENING GUIDE: Start with something like the line below, but adapt it naturally — do NOT read it word-for-word as a script.\nOpening guide: "${filledGuide}"`;
+    prompt += `\nAFTER THE OPENING: Once you deliver your opening line, proceed DIRECTLY into your first question or field collection. Do NOT pause and wait for a response unless your opening line ends with a direct question. Flow naturally from the introduction into the conversation.`;
   }
 
   // Knowledge: prefer AI briefing, fallback to compact raw knowledge
