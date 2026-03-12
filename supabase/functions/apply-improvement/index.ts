@@ -237,7 +237,8 @@ serve(async (req) => {
     } else {
       console.warn(`Unknown field "${field}", storing in business_rules`);
       const currentBR = spec.business_rules || {};
-      const brObj = typeof currentBR === "string" ? JSON.parse(currentBR) : { ...currentBR };
+      let brObj: any;
+      try { brObj = typeof currentBR === "string" ? JSON.parse(currentBR) : { ...currentBR }; } catch { brObj = { notes: currentBR }; }
       brObj[field.replace(/\s+/g, "_").toLowerCase()] = improvement.suggested_value;
       patch.business_rules = brObj;
     }
