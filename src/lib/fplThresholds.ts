@@ -24,9 +24,9 @@ export const FPL_2025_PER_ADDITIONAL = FPL_2026_PER_ADDITIONAL;
 export const FPL_2025_THRESHOLDS = FPL_2026_THRESHOLDS;
 
 export function getFplForHouseholdSize(size: number): number {
-  if (size <= 0) return FPL_2025_THRESHOLDS[1];
-  if (size <= 8) return FPL_2025_THRESHOLDS[size];
-  return FPL_2025_THRESHOLDS[8] + (size - 8) * FPL_2025_PER_ADDITIONAL;
+  if (size <= 0) return FPL_2026_THRESHOLDS[1];
+  if (size <= 8) return FPL_2026_THRESHOLDS[size];
+  return FPL_2026_THRESHOLDS[8] + (size - 8) * FPL_2026_PER_ADDITIONAL;
 }
 
 export function getFplRange(householdSize: number, percentageRange: [number, number]): [number, number] {
