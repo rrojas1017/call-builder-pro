@@ -195,8 +195,15 @@ serve(async (req) => {
             : (typeof existingValue === "string" ? coerceToArray(existingValue, field) : []);
 
           // Merge instead of replace
-          patch[field] = mergeArrays(existingArray, incomingArray);
-          console.log(`[apply-improvement] Merged ${field}: ${existingArray.length} existing + ${incomingArray.length} incoming → ${patch[field].length} total`);
+          const merged = mergeArrays(existingArray, incomingArray);
+          // Cap humanization_notes to prevent unbounded growth
+          if (ARRAY_FIELDS.includes(field) && field === "humanization_notes" && merged.length > 15) {
+            console.warn(`[apply-improvement] Capping ${field} from ${merged.length} to 15 entries`);
+            patch[field] = merged.slice(0, 15);
+          } else {
+            patch[field] = merged;
+          }
+          console.log(`[apply-improvement] Merged ${field}: ${existingArray.length} existing + ${incomingArray.length} incoming → ${(patch[field] as string[]).length} total`);
         }
       } else if (field === "business_rules") {
         // ── Deep-merge business_rules.rules array instead of replacing ──
