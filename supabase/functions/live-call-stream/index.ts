@@ -31,6 +31,40 @@ serve(async (req) => {
       });
     }
 
+    // ─── Recording status check ─────────────────────────────────────
+    if (action === "recording_status") {
+      const res = await fetch(`https://api.retellai.com/v2/get-call/${call_id}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${RETELL_API_KEY}` },
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Retell get-call error (recording_status):", res.status, text);
+        return new Response(JSON.stringify({
+          exists: false,
+          recording_url: null,
+          call_status: null,
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const data = await res.json();
+      return new Response(JSON.stringify({
+        exists: true,
+        recording_url: data.recording_url || null,
+        public_log_url: data.public_log_url || null,
+        opt_in_signed_url: data.opt_in_signed_url || null,
+        call_status: data.call_status || data.status || null,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── Transcript fetch ───────────────────────────────────────────
     if (action === "transcript" || action === "retell_transcript") {
       const res = await fetch(`https://api.retellai.com/v2/get-call/${call_id}`, {
         method: "GET",
@@ -104,7 +138,7 @@ serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ error: "Invalid action. Use 'transcript'." }), {
+    return new Response(JSON.stringify({ error: "Invalid action. Use 'transcript' or 'recording_status'." }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

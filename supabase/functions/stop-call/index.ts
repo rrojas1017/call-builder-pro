@@ -14,18 +14,6 @@ async function tryEndCall(callId: string, apiKey: string): Promise<{ status: num
   return { status: res.status, body };
 }
 
-async function tryDeleteCall(callId: string, apiKey: string): Promise<{ status: number; body: any }> {
-  const res = await fetch(`https://api.retellai.com/v2/delete-call/${callId}`, {
-    method: "DELETE",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-  });
-  const body = await res.json().catch(() => ({}));
-  return { status: res.status, body };
-}
-
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -57,6 +45,7 @@ serve(async (req) => {
       terminated = true;
       method = "end-call";
     } else if (attempt1.status === 404) {
+      // Retry once after propagation delay
       console.log("Got 404, retrying after 1s…");
       await delay(1000);
 
@@ -67,14 +56,10 @@ serve(async (req) => {
         terminated = true;
         method = "end-call-retry";
       } else {
-        console.log("end-call retry failed, trying delete-call fallback…");
-        const delResult = await tryDeleteCall(call_id, RETELL_API_KEY);
-        console.log(`delete-call fallback: status=${delResult.status}`, JSON.stringify(delResult.body));
-
-        if (delResult.status >= 200 && delResult.status < 300) {
-          terminated = true;
-          method = "delete-call";
-        }
+        // Treat as already ended — do NOT delete the call (preserves recording)
+        console.log("end-call retry failed (404), treating as already ended");
+        terminated = true;
+        method = "already-ended";
       }
     } else {
       throw new Error(`Retell API error: ${attempt1.body?.message || attempt1.body?.error_message || attempt1.status}`);

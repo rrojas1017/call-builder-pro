@@ -1440,14 +1440,14 @@ function SeverityBadge({ severity }: { severity?: string }) {
   );
 }
 
-function RecordingPlayer({ url }: { url: string }) {
+function RecordingPlayer({ url, retellCallId }: { url: string; retellCallId?: string | null }) {
   return (
     <div className="space-y-2">
       <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
         🎧 Call Recording
       </h5>
       <div className="rounded-lg bg-muted/30 border border-border p-3">
-        <SmartAudioPlayer url={url} className="w-full h-8" />
+        <SmartAudioPlayer url={url} className="w-full h-8" retellCallId={retellCallId} />
       </div>
     </div>
   );

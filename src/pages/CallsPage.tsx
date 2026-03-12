@@ -611,6 +611,7 @@ export default function CallsPage() {
                   url={selected.recording_url}
                   className="w-full h-10"
                   onRateChange={(rate) => setPlaybackRate(rate)}
+                  retellCallId={selected.retell_call_id}
                 />
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1">
