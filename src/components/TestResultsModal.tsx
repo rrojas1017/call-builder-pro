@@ -226,7 +226,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                   <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                     <Play className="h-3 w-3" /> Recording
                   </h5>
-                  <SmartAudioPlayer url={selected.recording_url} className="w-full h-8" />
+                  <SmartAudioPlayer url={selected.recording_url} className="w-full h-8" retellCallId={(selected as any).retell_call_id} />
                   <Button
                     variant="outline"
                     size="sm"
