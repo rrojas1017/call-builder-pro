@@ -8,7 +8,8 @@ import {
   TrendingUp, PhoneIncoming, PhoneOutgoing, Search, X, Download,
   Clock, Target, BarChart3, Bot, User, Play, ChevronDown,
 } from "lucide-react";
-import { downloadRecordingMp3, toMp3Url } from "@/lib/recordingDownload";
+import { downloadRecordingMp3 } from "@/lib/recordingDownload";
+import { SmartAudioPlayer } from "@/components/SmartAudioPlayer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -606,14 +607,11 @@ export default function CallsPage() {
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                   <Play className="h-3 w-3" /> Recording
                 </p>
-                <audio
-                  controls
+                <SmartAudioPlayer
+                  url={selected.recording_url}
                   className="w-full h-10"
-                  onRateChange={(e) => setPlaybackRate((e.target as HTMLAudioElement).playbackRate)}
-                >
-                  <source src={toMp3Url(selected.recording_url)} type="audio/mpeg" />
-                  <source src={selected.recording_url} type="audio/wav" />
-                </audio>
+                  onRateChange={(rate) => setPlaybackRate(rate)}
+                />
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1">
                     {[1, 1.25, 1.5, 2].map(rate => (

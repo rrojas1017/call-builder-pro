@@ -7,7 +7,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2, GraduationCap, Download, Mic, MicOff, MessageSquarePlus, Pencil, Send, BookmarkPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { downloadRecordingMp3, toMp3Url } from "@/lib/recordingDownload";
+import { downloadRecordingMp3 } from "@/lib/recordingDownload";
+import { SmartAudioPlayer } from "@/components/SmartAudioPlayer";
 import { detectBusinessRuleIntent } from "@/lib/detectBusinessRuleIntent";
 import { addBusinessRule } from "@/lib/addBusinessRule";
 
@@ -225,10 +226,7 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                   <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                     <Play className="h-3 w-3" /> Recording
                   </h5>
-                  <audio controls className="w-full h-8">
-                    <source src={toMp3Url(selected.recording_url)} type="audio/mpeg" />
-                    <source src={selected.recording_url} type="audio/wav" />
-                  </audio>
+                  <SmartAudioPlayer url={selected.recording_url} className="w-full h-8" />
                   <Button
                     variant="outline"
                     size="sm"
