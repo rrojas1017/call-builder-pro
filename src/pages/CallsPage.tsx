@@ -8,7 +8,8 @@ import {
   TrendingUp, PhoneIncoming, PhoneOutgoing, Search, X, Download,
   Clock, Target, BarChart3, Bot, User, Play, ChevronDown,
 } from "lucide-react";
-import { downloadRecordingMp3, toMp3Url } from "@/lib/recordingDownload";
+import { downloadRecordingMp3 } from "@/lib/recordingDownload";
+import { SmartAudioPlayer } from "@/components/SmartAudioPlayer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";

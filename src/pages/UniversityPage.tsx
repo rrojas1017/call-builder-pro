@@ -1441,46 +1441,13 @@ function SeverityBadge({ severity }: { severity?: string }) {
 }
 
 function RecordingPlayer({ url }: { url: string }) {
-  const [speed, setSpeed] = useState(1);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const speeds = [1, 1.25, 1.5, 2];
-
-  const handleSpeedChange = (s: number) => {
-    setSpeed(s);
-    if (audioRef.current) audioRef.current.playbackRate = s;
-  };
-
   return (
     <div className="space-y-2">
       <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
         🎧 Call Recording
       </h5>
-      <div className="rounded-lg bg-muted/30 border border-border p-3 space-y-2">
-        <audio
-          ref={audioRef}
-          controls
-          className="w-full h-8"
-          onPlay={() => { if (audioRef.current) audioRef.current.playbackRate = speed; }}
-        >
-          <source src={toMp3Url(url)} type="audio/mpeg" />
-          <source src={url} type="audio/wav" />
-        </audio>
-        <div className="flex items-center gap-1">
-          <span className="text-[10px] text-muted-foreground mr-1">Speed:</span>
-          {speeds.map((s) => (
-            <button
-              key={s}
-              onClick={() => handleSpeedChange(s)}
-              className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
-                speed === s
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {s}x
-            </button>
-          ))}
-        </div>
+      <div className="rounded-lg bg-muted/30 border border-border p-3">
+        <SmartAudioPlayer url={url} className="w-full h-8" />
       </div>
     </div>
   );

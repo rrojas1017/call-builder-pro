@@ -7,7 +7,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, CheckCircle, XCircle, Phone, Clock, ArrowLeft, FileText, Play, Wand2, GraduationCap, Download, Mic, MicOff, MessageSquarePlus, Pencil, Send, BookmarkPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { downloadRecordingMp3, toMp3Url } from "@/lib/recordingDownload";
+import { downloadRecordingMp3 } from "@/lib/recordingDownload";
+import { SmartAudioPlayer } from "@/components/SmartAudioPlayer";
 import { detectBusinessRuleIntent } from "@/lib/detectBusinessRuleIntent";
 import { addBusinessRule } from "@/lib/addBusinessRule";
 
