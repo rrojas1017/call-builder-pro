@@ -155,15 +155,15 @@ serve(async (req) => {
       const [parentCol, ...rest] = field.split(".");
       if (!ALL_KNOWN.includes(parentCol)) {
         const currentBR = spec.business_rules || {};
-        const brObj = typeof currentBR === "string" ? JSON.parse(currentBR) : { ...currentBR };
+        let brObj: any;
+        try { brObj = typeof currentBR === "string" ? JSON.parse(currentBR) : { ...currentBR }; } catch { brObj = { notes: currentBR }; }
         brObj[field.replace(/\./g, "_")] = improvement.suggested_value;
         patch.business_rules = brObj;
       } else {
         const nestedKey = rest.join(".");
         const currentParentValue = spec[parentCol] || {};
-        const parentObj = typeof currentParentValue === "string"
-          ? JSON.parse(currentParentValue)
-          : { ...currentParentValue };
+        let parentObj: any;
+        try { parentObj = typeof currentParentValue === "string" ? JSON.parse(currentParentValue) : { ...currentParentValue }; } catch { parentObj = {}; }
         parentObj[nestedKey] = improvement.suggested_value;
         patch[parentCol] = parentObj;
       }
@@ -202,7 +202,8 @@ serve(async (req) => {
         // ── Deep-merge business_rules.rules array instead of replacing ──
         const replaceMode = improvement.replace_mode === true;
         const existingBR = spec[field] || {};
-        const existingObj = typeof existingBR === "string" ? JSON.parse(existingBR) : { ...existingBR };
+        let existingObj: any;
+        try { existingObj = typeof existingBR === "string" ? JSON.parse(existingBR) : { ...existingBR }; } catch { existingObj = { notes: existingBR }; }
         const existingRules: string[] = Array.isArray(existingObj.rules) ? existingObj.rules : [];
 
         let incomingObj: any;
@@ -236,7 +237,8 @@ serve(async (req) => {
     } else {
       console.warn(`Unknown field "${field}", storing in business_rules`);
       const currentBR = spec.business_rules || {};
-      const brObj = typeof currentBR === "string" ? JSON.parse(currentBR) : { ...currentBR };
+      let brObj: any;
+      try { brObj = typeof currentBR === "string" ? JSON.parse(currentBR) : { ...currentBR }; } catch { brObj = { notes: currentBR }; }
       brObj[field.replace(/\s+/g, "_").toLowerCase()] = improvement.suggested_value;
       patch.business_rules = brObj;
     }
