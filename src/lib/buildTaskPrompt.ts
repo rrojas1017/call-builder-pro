@@ -26,9 +26,16 @@ interface KnowledgeEntry {
 
 /** Compact FPL + SEP rules (~800 chars instead of ~3,000) */
 export function buildCompactFplSep(): string {
-  return `FPL QUALIFICATION (2025): Income must be 100-400% of Federal Poverty Level. Reference: Single=$14.6k-$58.3k; Family of 4=$30k-$120k. Add $5.1k per person beyond 8 for 100% FPL; multiply by 4 for 400%.
+  return `FPL QUALIFICATION (2026): Income must be 100-400% of Federal Poverty Level. Reference: Single=$15.1k-$60.2k; Family of 4=$31.2k-$124.8k. Add $5.4k per person beyond 8 for 100% FPL; multiply by 4 for 400%.
 - ESI or Medicare → disqualify. Medicaid → tag, no transfer.
 - Uninsured/private + income in FPL range → qualified for transfer.
+
+FPL RESPONSE RULE: After collecting household size AND estimated annual income, calculate approximate FPL %. Respond positively:
+- If FPL ~100-150%: "Great news — based on your household and income, you likely qualify for a subsidy that could cover your entire monthly premium!"
+- If FPL ~150-250%: "That's good news — you qualify for a subsidy that should cover a significant portion of your monthly premium."
+- If FPL ~250-400%: "You still qualify for a subsidy that covers a meaningful portion of your premium costs."
+- Below 100%: Check if they were denied Medicaid. If yes, they may still qualify. If no, guide them to apply for Medicaid first.
+- Above 400%: Let them know they may not qualify for premium assistance but can still enroll at full price.
 
 ENROLLMENT TIMING: Outside Open Enrollment (Nov 1 - Dec 15), caller MUST have a Qualifying Life Event (lost coverage, marriage, baby, move, citizenship, divorce w/ coverage loss) within 60 days. No QLE = next Open Enrollment. Income alone does NOT qualify for SEP.`;
 }
