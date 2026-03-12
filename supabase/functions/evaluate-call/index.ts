@@ -804,7 +804,7 @@ ${call.transcript}`;
     const HARD_BLOCKED_FIELDS = ["opening_line"];
 
     // Protected fields: skip auto-critical overwrites only if recently set manually
-    const PROTECTED_FIELDS = ["business_rules", "must_collect_fields"];
+    const PROTECTED_FIELDS = ["business_rules", "must_collect_fields", "humanization_notes"];
 
     if (isSimulatedOrTest && evaluation.recommended_improvements?.length > 0) {
       try {
