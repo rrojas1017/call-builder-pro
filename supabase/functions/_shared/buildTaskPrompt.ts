@@ -40,6 +40,16 @@ const INTRO_PATTERNS = [
   /\bmi chiamo (\w+)/i,
 ];
 
+// Common words that follow intro patterns but are NOT names
+const SKIP_WORDS = new Set([
+  "calling", "reaching", "contacting", "following", "checking",
+  "today", "here", "back", "just", "also", "currently", "still",
+  "very", "really", "so", "not", "the", "a", "an", "your", "our",
+  "glad", "happy", "pleased", "sorry", "excited", "thrilled",
+  "going", "trying", "looking", "wanting", "hoping", "working",
+  "with", "from", "at", "in", "on", "for",
+]);
+
 /** Runtime safety net: replace hardcoded names that don't match persona */
 function runtimeGuardResolvedLine(resolvedLine: string, personaName: string): string {
   if (!resolvedLine || !personaName) return resolvedLine;
@@ -50,8 +60,8 @@ function runtimeGuardResolvedLine(resolvedLine: string, personaName: string): st
     const match = resolvedLine.match(pattern);
     if (match && match[1]) {
       const foundName = match[1];
+      if (SKIP_WORDS.has(foundName.toLowerCase())) continue;
       if (foundName.toLowerCase() === trimmed.toLowerCase()) continue;
-      // If found name matches first word of multi-word persona, it's already correct
       if (foundName.toLowerCase() === personaFirstWord) continue;
       return resolvedLine.replace(foundName, trimmed);
     }
