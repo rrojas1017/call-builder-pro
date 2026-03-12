@@ -1,48 +1,31 @@
 
 
-# Simplify the Agent Creation Wizard
+# Fix: Stop personality traits from accumulating with every fix
 
-## Problem Analysis
-After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+## Problem
+Every time a call is evaluated and improvements are applied, the AI suggests new `humanization_notes` entries. Because `humanization_notes` is treated as an append-only array field (via `mergeArrays`), and the dedup logic only catches exact substring matches (not semantic duplicates), the list grows indefinitely with semantically similar but textually different traits.
 
-However, the wizard UX has several friction points that make it confusing for non-technical users:
+## Root cause
+Two issues working together:
+1. **`humanization_notes` is not protected** — In `evaluate-call/index.ts`, `PROTECTED_FIELDS` only includes `business_rules` and `must_collect_fields`. So humanization_notes changes get auto-applied.
+2. **Weak dedup in `mergeArrays`** — The normalize function strips punctuation and checks substring inclusion, but "Be warm and friendly" vs "Show genuine warmth from the start" won't match, so both get added.
 
-1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+## Fix
 
-2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+### 1. Add `humanization_notes` to PROTECTED_FIELDS in evaluate-call
+**File**: `supabase/functions/evaluate-call/index.ts` (line 807)
 
-3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+Add `"humanization_notes"` to the `PROTECTED_FIELDS` array. This prevents the evaluation system from auto-applying personality trait changes — they'll be logged but won't silently accumulate.
 
-4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+### 2. Cap humanization_notes in apply-audit-recommendation
+**File**: `supabase/functions/apply-audit-recommendation/index.ts` (around line 96-99)
 
-5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
+After `mergeArrays`, cap the result to a maximum of ~15 entries. If the merged array exceeds the cap, keep the first 15 (preserving the original creator-selected traits which come first).
 
-## Plan
+### 3. Strengthen the evaluate-call prompt to stop suggesting humanization_notes
+**File**: `supabase/functions/evaluate-call/index.ts` (around line 194)
 
-### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
-Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
+Add to the format rules: "Do NOT suggest humanization_notes changes unless the agent sounds robotic or has severe naturalness issues (naturalness_score < 50). Personality traits are set by the creator and should not be modified routinely."
 
-### 2. Fix silent failure: block save if Retell provisioning fails
-In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
-
-### 3. Add step-by-step save progress
-Replace the single "Save Agent" button with a multi-phase save that shows progress:
-- Phase 1: "Setting up voice..." (Retell agent creation)
-- Phase 2: "Saving configuration..." (DB update)
-- Phase 3: "Done!" → redirect
-
-Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
-
-### 4. Consolidate Step 3 layout
-Reorder the Review & Save step to be more logical and less overwhelming:
-1. Summary cards (what the agent does) — already good
-2. Voice Selection (pick a voice)
-3. Call Ending (end or transfer)
-4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
-5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
-
-### Files Changed
-- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
-
-No database or edge function changes needed.
+These three changes together will stop the trait accumulation: the prompt discourages unnecessary suggestions, protection blocks auto-apply, and the cap provides a safety net.
 
