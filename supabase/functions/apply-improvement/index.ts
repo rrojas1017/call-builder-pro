@@ -155,7 +155,8 @@ serve(async (req) => {
       const [parentCol, ...rest] = field.split(".");
       if (!ALL_KNOWN.includes(parentCol)) {
         const currentBR = spec.business_rules || {};
-        const brObj = typeof currentBR === "string" ? JSON.parse(currentBR) : { ...currentBR };
+        let brObj: any;
+        try { brObj = typeof currentBR === "string" ? JSON.parse(currentBR) : { ...currentBR }; } catch { brObj = { notes: currentBR }; }
         brObj[field.replace(/\./g, "_")] = improvement.suggested_value;
         patch.business_rules = brObj;
       } else {
