@@ -105,9 +105,12 @@ function buildPatch(spec: any, field: string, suggestedValue: any): Record<strin
   } else if (NUM_FIELDS.includes(f)) {
     patch[f] = Number(suggestedValue);
   } else {
-    const br = typeof spec.business_rules === "string" ? JSON.parse(spec.business_rules) : { ...(spec.business_rules || {}) };
-    br[f.replace(/\s+/g, "_").toLowerCase()] = suggestedValue;
-    patch.business_rules = br;
+    let br2 = spec.business_rules || {};
+    if (typeof br2 === "string") br2 = { rules: br2.trim() ? [br2.trim()] : [] };
+    else br2 = { ...br2 };
+    if (!Array.isArray(br2.rules)) br2.rules = [];
+    br2[f.replace(/\s+/g, "_").toLowerCase()] = suggestedValue;
+    patch.business_rules = br2;
   }
   return patch;
 }

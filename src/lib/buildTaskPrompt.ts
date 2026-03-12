@@ -168,23 +168,29 @@ RULES:
   // Build business rules text (injected at end of prompt for highest priority)
   let businessRulesBlock = "";
   let businessRulesCoverFpl = false;
-  if (spec.business_rules && typeof spec.business_rules === "object" && Object.keys(spec.business_rules).length > 0) {
-    const br = spec.business_rules as any;
-    let brText: string;
-    if (Array.isArray(br.rules)) {
-      brText = br.rules.map((r: string, i: number) => `${i + 1}. ${r}`).join("\n");
-    } else if (typeof br.text === "string") {
-      brText = br.text;
-    } else if (typeof spec.business_rules === "string") {
-      brText = spec.business_rules;
-    } else {
-      brText = Object.entries(spec.business_rules)
-        .map(([key, val]) => `- ${key}: ${val}`)
-        .join("\n");
+  const rawBr = spec.business_rules;
+  if (rawBr) {
+    let brText = "";
+    if (typeof rawBr === "string") {
+      brText = rawBr;
+    } else if (typeof rawBr === "object" && Object.keys(rawBr).length > 0) {
+      const br = rawBr as any;
+      if (Array.isArray(br.rules) && br.rules.length > 0) {
+        brText = br.rules.map((r: string, i: number) => `${i + 1}. ${r}`).join("\n");
+      } else if (typeof br.text === "string") {
+        brText = br.text;
+      } else {
+        brText = Object.entries(rawBr)
+          .filter(([k]) => k !== "rules")
+          .map(([key, val]) => `- ${key}: ${val}`)
+          .join("\n");
+      }
     }
-    businessRulesBlock = brText;
-    const brLower = brText.toLowerCase();
-    businessRulesCoverFpl = brLower.includes("fpl") || brLower.includes("federal poverty");
+    if (brText.trim()) {
+      businessRulesBlock = brText;
+      const brLower = brText.toLowerCase();
+      businessRulesCoverFpl = brLower.includes("fpl") || brLower.includes("federal poverty");
+    }
   }
 
   if (resolvedOpeningLine) {
