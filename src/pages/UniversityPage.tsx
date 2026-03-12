@@ -1092,7 +1092,7 @@ function ResultCard({
       )}
 
       {contact.recording_url && (
-        <RecordingPlayer url={contact.recording_url} />
+        <RecordingPlayer url={contact.recording_url} retellCallId={contact.retell_call_id} />
       )}
 
       {isTerminal && !contact.evaluation && (
