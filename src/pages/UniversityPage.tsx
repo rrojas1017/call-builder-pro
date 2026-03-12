@@ -1457,11 +1457,13 @@ function RecordingPlayer({ url }: { url: string }) {
       <div className="rounded-lg bg-muted/30 border border-border p-3 space-y-2">
         <audio
           ref={audioRef}
-          src={url}
           controls
           className="w-full h-8"
           onPlay={() => { if (audioRef.current) audioRef.current.playbackRate = speed; }}
-        />
+        >
+          <source src={toMp3Url(url)} type="audio/mpeg" />
+          <source src={url} type="audio/wav" />
+        </audio>
         <div className="flex items-center gap-1">
           <span className="text-[10px] text-muted-foreground mr-1">Speed:</span>
           {speeds.map((s) => (

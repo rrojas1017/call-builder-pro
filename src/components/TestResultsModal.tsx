@@ -225,8 +225,9 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                   <h5 className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                     <Play className="h-3 w-3" /> Recording
                   </h5>
-                  <audio controls className="w-full h-8" src={selected.recording_url}>
-                    Your browser does not support the audio element.
+                  <audio controls className="w-full h-8">
+                    <source src={toMp3Url(selected.recording_url)} type="audio/mpeg" />
+                    <source src={selected.recording_url} type="audio/wav" />
                   </audio>
                   <Button
                     variant="outline"

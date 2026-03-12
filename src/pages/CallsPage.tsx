@@ -607,11 +607,13 @@ export default function CallsPage() {
                   <Play className="h-3 w-3" /> Recording
                 </p>
                 <audio
-                  src={selected.recording_url}
                   controls
                   className="w-full h-10"
                   onRateChange={(e) => setPlaybackRate((e.target as HTMLAudioElement).playbackRate)}
-                />
+                >
+                  <source src={toMp3Url(selected.recording_url)} type="audio/mpeg" />
+                  <source src={selected.recording_url} type="audio/wav" />
+                </audio>
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1">
                     {[1, 1.25, 1.5, 2].map(rate => (
