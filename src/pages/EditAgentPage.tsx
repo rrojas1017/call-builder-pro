@@ -776,7 +776,7 @@ export default function EditAgentPage() {
         <p className="text-xs text-muted-foreground">
           Define specific rules your agent must follow. These are treated as high-priority directives that override default behavior.
         </p>
-        <ScrollArea className="max-h-[400px]">
+        <ScrollArea className="max-h-[400px] overflow-hidden">
           <div className="space-y-2 pr-3">
             {businessRules.map((rule, index) => (
               <div
