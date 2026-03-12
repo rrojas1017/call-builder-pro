@@ -96,7 +96,13 @@ function buildPatch(spec: any, field: string, suggestedValue: any): Record<strin
     if (ARRAY_FIELDS.includes(f)) {
       const incoming = coerceToArray(parsed);
       const existing = Array.isArray(spec[f]) ? spec[f] : (typeof spec[f] === "string" ? coerceToArray(spec[f]) : []);
-      patch[f] = mergeArrays(existing, incoming);
+      let merged = mergeArrays(existing, incoming);
+      // Cap humanization_notes to prevent unbounded growth
+      if (f === "humanization_notes" && merged.length > 15) {
+        console.warn(`[apply-audit-rec] Capping ${f} from ${merged.length} to 15 entries`);
+        merged = merged.slice(0, 15);
+      }
+      patch[f] = merged;
     } else {
       patch[f] = parsed;
     }
