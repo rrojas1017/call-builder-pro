@@ -17,6 +17,7 @@ import SimulationTraining from "@/components/SimulationTraining";
 import PendingChangesReview from "@/components/PendingChangesReview";
 import SpecChangeLog from "@/components/SpecChangeLog";
 import { detectBusinessRuleIntent } from "@/lib/detectBusinessRuleIntent";
+import { toMp3Url } from "@/lib/recordingDownload";
 import { addBusinessRule } from "@/lib/addBusinessRule";
 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from "recharts";
