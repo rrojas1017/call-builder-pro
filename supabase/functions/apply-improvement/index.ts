@@ -162,9 +162,8 @@ serve(async (req) => {
       } else {
         const nestedKey = rest.join(".");
         const currentParentValue = spec[parentCol] || {};
-        const parentObj = typeof currentParentValue === "string"
-          ? JSON.parse(currentParentValue)
-          : { ...currentParentValue };
+        let parentObj: any;
+        try { parentObj = typeof currentParentValue === "string" ? JSON.parse(currentParentValue) : { ...currentParentValue }; } catch { parentObj = {}; }
         parentObj[nestedKey] = improvement.suggested_value;
         patch[parentCol] = parentObj;
       }
