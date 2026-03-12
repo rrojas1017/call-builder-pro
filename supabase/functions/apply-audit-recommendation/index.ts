@@ -76,7 +76,10 @@ function buildPatch(spec: any, field: string, suggestedValue: any): Record<strin
   if (f.includes(".")) {
     const [parentCol, ...rest] = f.split(".");
     if (!ALL_KNOWN.includes(parentCol)) {
-      const br = typeof spec.business_rules === "string" ? JSON.parse(spec.business_rules) : { ...(spec.business_rules || {}) };
+    let br = spec.business_rules || {};
+      if (typeof br === "string") br = { rules: br.trim() ? [br.trim()] : [] };
+      else br = { ...br };
+      if (!Array.isArray(br.rules)) br.rules = [];
       br[f.replace(/\./g, "_")] = suggestedValue;
       patch.business_rules = br;
     } else {
@@ -102,9 +105,12 @@ function buildPatch(spec: any, field: string, suggestedValue: any): Record<strin
   } else if (NUM_FIELDS.includes(f)) {
     patch[f] = Number(suggestedValue);
   } else {
-    const br = typeof spec.business_rules === "string" ? JSON.parse(spec.business_rules) : { ...(spec.business_rules || {}) };
-    br[f.replace(/\s+/g, "_").toLowerCase()] = suggestedValue;
-    patch.business_rules = br;
+    let br2 = spec.business_rules || {};
+    if (typeof br2 === "string") br2 = { rules: br2.trim() ? [br2.trim()] : [] };
+    else br2 = { ...br2 };
+    if (!Array.isArray(br2.rules)) br2.rules = [];
+    br2[f.replace(/\s+/g, "_").toLowerCase()] = suggestedValue;
+    patch.business_rules = br2;
   }
   return patch;
 }

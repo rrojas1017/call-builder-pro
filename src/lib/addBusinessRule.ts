@@ -14,7 +14,11 @@ export async function addBusinessRule(projectId: string, rule: string): Promise<
 
     if (fetchErr) throw fetchErr;
 
-    const existing = (spec?.business_rules as any) || {};
+    let existing = (spec?.business_rules as any) || {};
+    // Normalize legacy string format to object
+    if (typeof existing === "string") {
+      existing = { rules: existing.trim() ? [existing.trim()] : [] };
+    }
     const rules: string[] = Array.isArray(existing.rules) ? existing.rules : [];
 
     // Deduplicate

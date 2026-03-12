@@ -1,27 +1,32 @@
 /**
- * 2025 Federal Poverty Level (FPL) Guidelines
+ * 2026 Federal Poverty Level (FPL) Guidelines
  * Source: U.S. Department of Health & Human Services (HHS)
  * Used for ACA marketplace qualification screening.
  */
 
-export const FPL_2025_BASE = 14580;
-export const FPL_2025_PER_ADDITIONAL = 5140;
+export const FPL_2026_BASE = 15060;
+export const FPL_2026_PER_ADDITIONAL = 5380;
 
-export const FPL_2025_THRESHOLDS: Record<number, number> = {
-  1: 14580,
-  2: 19720,
-  3: 24860,
-  4: 30000,
-  5: 35140,
-  6: 40280,
-  7: 45420,
-  8: 50560,
+export const FPL_2026_THRESHOLDS: Record<number, number> = {
+  1: 15060,
+  2: 20440,
+  3: 25820,
+  4: 31200,
+  5: 36580,
+  6: 41960,
+  7: 47340,
+  8: 52720,
 };
 
+// Keep legacy exports for backward compat
+export const FPL_2025_BASE = FPL_2026_BASE;
+export const FPL_2025_PER_ADDITIONAL = FPL_2026_PER_ADDITIONAL;
+export const FPL_2025_THRESHOLDS = FPL_2026_THRESHOLDS;
+
 export function getFplForHouseholdSize(size: number): number {
-  if (size <= 0) return FPL_2025_THRESHOLDS[1];
-  if (size <= 8) return FPL_2025_THRESHOLDS[size];
-  return FPL_2025_THRESHOLDS[8] + (size - 8) * FPL_2025_PER_ADDITIONAL;
+  if (size <= 0) return FPL_2026_THRESHOLDS[1];
+  if (size <= 8) return FPL_2026_THRESHOLDS[size];
+  return FPL_2026_THRESHOLDS[8] + (size - 8) * FPL_2026_PER_ADDITIONAL;
 }
 
 export function getFplRange(householdSize: number, percentageRange: [number, number]): [number, number] {
@@ -41,19 +46,19 @@ export function shouldIncludeFplTable(useCase: string | null | undefined): boole
 }
 
 export function buildFplTableSection(): string {
-  return `FEDERAL POVERTY LEVEL THRESHOLDS (2025):
+  return `FEDERAL POVERTY LEVEL THRESHOLDS (2026):
 Qualification Range: 100-400% of Federal Poverty Level
 
 Household Size | 100% FPL  | 400% FPL
-1              | $14,580   | $58,320
-2              | $19,720   | $78,880
-3              | $24,860   | $99,440
-4              | $30,000   | $120,000
-5              | $35,140   | $140,560
-6              | $40,280   | $161,120
-7              | $45,420   | $181,680
-8+             | $50,560+  | $202,240+
-(Add $5,140 per additional person beyond 8 for 100% FPL; multiply by 4 for 400% FPL)
+1              | $15,060   | $60,240
+2              | $20,440   | $81,760
+3              | $25,820   | $103,280
+4              | $31,200   | $124,800
+5              | $36,580   | $146,320
+6              | $41,960   | $167,840
+7              | $47,340   | $189,360
+8+             | $52,720+  | $210,880+
+(Add $5,380 per additional person beyond 8 for 100% FPL; multiply by 4 for 400% FPL)
 
 Use this table to determine qualification: If the caller's annual household income falls between the 100% and 400% FPL amounts for their household size, they may qualify for ACA marketplace assistance.`;
 }
