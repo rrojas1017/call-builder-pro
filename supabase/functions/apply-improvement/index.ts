@@ -202,7 +202,8 @@ serve(async (req) => {
         // ── Deep-merge business_rules.rules array instead of replacing ──
         const replaceMode = improvement.replace_mode === true;
         const existingBR = spec[field] || {};
-        const existingObj = typeof existingBR === "string" ? JSON.parse(existingBR) : { ...existingBR };
+        let existingObj: any;
+        try { existingObj = typeof existingBR === "string" ? JSON.parse(existingBR) : { ...existingBR }; } catch { existingObj = { notes: existingBR }; }
         const existingRules: string[] = Array.isArray(existingObj.rules) ? existingObj.rules : [];
 
         let incomingObj: any;
