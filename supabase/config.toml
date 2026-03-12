@@ -134,3 +134,6 @@ verify_jwt = false
 
 [functions.check-spec-conflicts]
 verify_jwt = false
+
+[functions.download-recording]
+verify_jwt = false

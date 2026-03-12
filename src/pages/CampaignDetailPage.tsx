@@ -1103,10 +1103,10 @@ export default function CampaignDetailPage() {
                         <ExternalLink className="h-4 w-4" /> Listen to Recording
                       </a>
                       <button
-                        onClick={() => downloadRecordingMp3(call.recording_url!, `campaign-call-${call.id}.mp3`)}
+                        onClick={() => downloadRecordingMp3(call.recording_url!, `campaign-call-${call.id}.mp3`, call?.retell_call_id)}
                         className="inline-flex items-center gap-1.5 text-sm bg-muted hover:bg-muted/80 text-foreground rounded-full px-4 py-2 transition-colors font-medium"
                       >
-                        <Download className="h-4 w-4" /> MP3
+                        <Download className="h-4 w-4" /> Download
                       </button>
                     </div>
                   )}

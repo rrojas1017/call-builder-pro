@@ -1,38 +1,48 @@
 
 
-# Server-Side Recording Download Proxy
+# Simplify the Agent Creation Wizard
 
-## Problem
-The recording URLs from the CDN return `403 AccessDenied` when accessed from the browser (both for `<audio>` playback and `fetch()`). The specific 15-minute Appendify Educator recording (`call_5d862fd88f63d6a8c44ead73a29`) is confirmed gone from the provider entirely — it cannot be recovered. However, for recordings that DO still exist at the CDN but are blocked by CORS/access policies, browser-side fetching will never work. We need a server-side proxy.
+## Problem Analysis
+After reviewing Jason Fine's data and the full wizard code, the good news is all 8 of his agents *did* eventually get provisioned with Retell IDs. The original failure (Appendify AI Educator missing `retell_agent_id`) was already patched with our auto-provisioning guard.
+
+However, the wizard UX has several friction points that make it confusing for non-technical users:
+
+1. **Step 3 (Review & Save) is overwhelming** — it shows 7+ configuration sections (Agent Mode, Voice Provider with RetellAgentManager, Call Ending, Voice Selection, raw spec editor) all at once. Users like Jason likely don't know what "Voice Provider" or "Append Agent" means.
+
+2. **RetellAgentManager is exposed to end users** — it shows "Create Append Agent" button, agent IDs, webhook status, transfer agent warnings. This is internal plumbing that should be invisible.
+
+3. **Voice selection is disconnected from provisioning** — user picks a voice but then also sees a separate "Voice Provider" card asking them to create/connect an agent. These should be unified.
+
+4. **No progress feedback during save** — the `handleSaveAgent` does multiple async steps (create Retell agent, guard opening line, update DB) with no step-by-step feedback. If any step fails silently (like the Retell creation try/catch on line 444-447), the agent is saved without provisioning and the user gets no clear indication.
+
+5. **Error on Retell creation is swallowed** — line 444-447 catches the error, shows a toast, but **continues saving the agent anyway** with `finalRetellAgentId` still empty. This is how agents end up with `null` retell_agent_id.
 
 ## Plan
 
-### 1. Create `download-recording` edge function
-**File:** `supabase/functions/download-recording/index.ts`
+### 1. Hide RetellAgentManager from the wizard (remove from Step 3)
+Remove the entire "Voice Provider" card (lines 742-763) from `CreateAgentPage.tsx`. The Retell agent should be created automatically and silently — users should never see agent IDs, webhook status, or "Create Append Agent" buttons during creation.
 
-A new backend function that:
-- Accepts `{ recording_url, retell_call_id }` in the request body
-- Fetches the WAV (then MP3 fallback) **server-side** — no CORS restrictions
-- If the stored URL fails and `retell_call_id` is provided, looks up a fresh URL from the provider API
-- Streams the audio bytes back to the client with proper `Content-Disposition: attachment` header
-- Authenticated via the existing `requireAuth` pattern
+### 2. Fix silent failure: block save if Retell provisioning fails
+In `handleSaveAgent` (line 408), change the try/catch around auto-creation (lines 424-448) so that if Retell creation fails, the save is **aborted** with a clear error message instead of continuing with a null `retell_agent_id`.
 
-### 2. Update `SmartAudioPlayer` to use proxy for playback and download
-**File:** `src/components/SmartAudioPlayer.tsx`
+### 3. Add step-by-step save progress
+Replace the single "Save Agent" button with a multi-phase save that shows progress:
+- Phase 1: "Setting up voice..." (Retell agent creation)
+- Phase 2: "Saving configuration..." (DB update)
+- Phase 3: "Done!" → redirect
 
-- In the `handleError` fallback chain, after direct fetch fails, call the new edge function to get the audio as a blob via the server-side proxy
-- Update the "Download" button in the failed state to also use the proxy
-- Keep the "unavailable" state for truly deleted recordings
+Show these phases inline using the existing `saving` state plus a new `savePhase` state string.
 
-### 3. Update `downloadRecording` utility to use proxy
-**File:** `src/lib/recordingDownload.ts`
+### 4. Consolidate Step 3 layout
+Reorder the Review & Save step to be more logical and less overwhelming:
+1. Summary cards (what the agent does) — already good
+2. Voice Selection (pick a voice)
+3. Call Ending (end or transfer)
+4. Agent Mode (outbound/inbound/hybrid) — collapse into a simple toggle since most users want outbound
+5. Remove raw spec editor button from default view (keep for power users via a smaller "Advanced" collapsible)
 
-- After direct WAV/MP3 fetch fails, attempt download via the edge function proxy before falling back to opening in new tab
+### Files Changed
+- **`src/pages/CreateAgentPage.tsx`** — Remove RetellAgentManager from wizard, fix error handling in `handleSaveAgent`, add save progress, reorder Step 3 sections
 
-### 4. Update download buttons across pages
-**Files:** `src/pages/CallsPage.tsx`, `src/components/TestResultsModal.tsx`, `src/pages/CampaignDetailPage.tsx`
-
-- Pass `retellCallId` to the download function so the proxy can look up fresh URLs if needed
-
-**Note:** The specific 15-minute recording from last night is permanently unavailable from the provider. This fix ensures future recordings can always be downloaded even when the CDN blocks browser access.
+No database or edge function changes needed.
 

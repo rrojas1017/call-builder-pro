@@ -131,7 +131,7 @@ export function SmartAudioPlayer({ url, className = "w-full h-10", onRateChange,
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => downloadRecording(url)}
+          onClick={() => downloadRecording(url, undefined, retellCallId)}
         >
           <Download className="h-3 w-3 mr-1" /> Download
         </Button>

@@ -634,9 +634,9 @@ export default function CallsPage() {
                     variant="outline"
                     size="sm"
                     className="text-xs h-7 ml-auto"
-                    onClick={() => downloadRecordingMp3(selected.recording_url!, `call-${selected.id}.mp3`)}
+                    onClick={() => downloadRecordingMp3(selected.recording_url!, `call-${selected.id}.mp3`, selected.retell_call_id)}
                   >
-                    <Download className="mr-1 h-3 w-3" /> MP3
+                    <Download className="mr-1 h-3 w-3" /> Download
                   </Button>
                 </div>
               </div>
