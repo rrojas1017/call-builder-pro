@@ -231,9 +231,9 @@ export default function TestResultsModal({ testRunId, projectId, open, onClose }
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => downloadRecordingMp3(selected.recording_url!, `test-${selected.id}.mp3`)}
+                    onClick={() => downloadRecordingMp3(selected.recording_url!, `test-${selected.id}.mp3`, (selected as any).retell_call_id)}
                   >
-                    <Download className="mr-1 h-3 w-3" /> Download MP3
+                    <Download className="mr-1 h-3 w-3" /> Download
                   </Button>
                 </div>
               )}
