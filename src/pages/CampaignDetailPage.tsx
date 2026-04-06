@@ -323,7 +323,8 @@ export default function CampaignDetailPage() {
           hipaa_enabled: editForm.hipaa_enabled,
           is_test: editForm.is_test,
           voicemail_message: editForm.voicemail_message || null,
-        })
+          webhook_url: editForm.webhook_url || null,
+        } as any)
         .eq("id", id);
       if (error) throw error;
       setCampaign((prev: any) => ({ ...prev, ...editForm, voicemail_message: editForm.voicemail_message || null }));
