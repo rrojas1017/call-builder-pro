@@ -612,30 +612,49 @@ export default function CampaignDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 bg-card/80 backdrop-blur-sm rounded-full px-2 py-1.5 border border-border/50">
-            <Button size="sm" variant="ghost" onClick={() => {
-              // Export all conversations as CSV
-              const headers = ["Contact Name", "Phone", "Status", "Outcome", "Duration (s)", "Transcript", "Extracted Data", "Score", "Recording URL", "Called At"];
-              const rows = contacts.map((c: any) => {
-                const call = calls.find((cl: any) => cl.contact_id === c.id);
-                const outcome = resolveOutcome(c, call);
-                const extractedStr = call?.extracted_data ? Object.entries(call.extracted_data).map(([k, v]) => `${k}: ${v}`).join("; ") : "";
-                return [
-                  c.name, c.phone, c.status, outcome || "", call?.duration_seconds ?? "",
-                  (call?.transcript || "").replace(/"/g, '""'), extractedStr.replace(/"/g, '""'),
-                  call?.evaluation?.overall_score ?? "", call?.recording_url || "", c.called_at || "",
-                ];
-              });
-              const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
-              const blob = new Blob([csv], { type: "text/csv" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `${campaign.short_id || "campaign"}-conversations-${new Date().toISOString().slice(0, 10)}.csv`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }} className="rounded-full h-8">
-              <Download className="h-4 w-4 mr-1" /> Export
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="ghost" className="rounded-full h-8">
+                  <Download className="h-4 w-4 mr-1" /> Export <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => exportContacts("all")}>
+                  <Download className="h-4 w-4 mr-2" /> All Contacts
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportContacts("successful")}>
+                  <CheckCircle className="h-4 w-4 mr-2" /> Successful Only
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Filter className="h-4 w-4 mr-2" /> By Outcome
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {["qualified", "disqualified", "completed", "voicemail", "no_answer", "busy", "dnc", "disconnected", "failed", "call_me_later"].map((o) => (
+                      <DropdownMenuItem key={o} onClick={() => exportContacts("outcome", [o])}>
+                        {o.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                {lists.length > 1 && (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <FileText className="h-4 w-4 mr-2" /> By List
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      {lists.map((l: any) => (
+                        <DropdownMenuItem key={l.id} onClick={() => exportContacts("list", [], l.id)}>
+                          {l.short_id && <span className="font-mono text-xs mr-1">{l.short_id}</span>}
+                          {l.name}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button size="sm" variant="ghost" onClick={fetchData} className="rounded-full h-8">
               <RefreshCw className="h-4 w-4 mr-1" /> Refresh
             </Button>
