@@ -390,6 +390,60 @@ export default function CampaignDetailPage() {
 
   const liveCalls = contacts.filter((c) => c.status === "calling");
 
+  const exportContacts = (filter: string, outcomes?: string[], listId?: string) => {
+    let filtered = contacts;
+    if (filter === "successful") {
+      filtered = contacts.filter((c) => {
+        const call = calls.find((cl: any) => cl.contact_id === c.id);
+        const o = resolveOutcome(c, call);
+        return ["qualified", "transfer_completed", "completed"].includes(o || "");
+      });
+    } else if (filter === "outcome" && outcomes?.length) {
+      filtered = contacts.filter((c) => {
+        const call = calls.find((cl: any) => cl.contact_id === c.id);
+        const o = resolveOutcome(c, call);
+        return outcomes.includes(o || "");
+      });
+    } else if (filter === "list" && listId) {
+      filtered = contacts.filter((c) => c.list_id === listId);
+    }
+
+    // Collect all extracted_data keys dynamically
+    const allExtractedKeys = new Set<string>();
+    filtered.forEach((c) => {
+      const call = calls.find((cl: any) => cl.contact_id === c.id);
+      if (call?.extracted_data && typeof call.extracted_data === "object") {
+        Object.keys(call.extracted_data).forEach((k) => allExtractedKeys.add(k));
+      }
+    });
+    const extractedKeysArr = Array.from(allExtractedKeys);
+
+    const headers = ["Contact Name", "Phone", "Status", "Outcome", "Duration (s)", "Transcript", "Score", "Recording URL", "Called At", ...extractedKeysArr];
+    const rows = filtered.map((c: any) => {
+      const call = calls.find((cl: any) => cl.contact_id === c.id);
+      const outcome = resolveOutcome(c, call);
+      const extractedVals = extractedKeysArr.map((k) => {
+        const v = call?.extracted_data?.[k];
+        return v != null ? String(v).replace(/"/g, '""') : "";
+      });
+      return [
+        c.name, c.phone, c.status, outcome || "", call?.duration_seconds ?? "",
+        (call?.transcript || "").replace(/"/g, '""'),
+        call?.evaluation?.overall_score ?? "", call?.recording_url || "", c.called_at || "",
+        ...extractedVals,
+      ];
+    });
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${campaign.short_id || "campaign"}-${filter}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: `Exported ${filtered.length} contacts` });
+  };
+
   const handleStopAll = async () => {
     for (const c of liveCalls) {
       const activeCallId = (c as any).retell_call_id;
