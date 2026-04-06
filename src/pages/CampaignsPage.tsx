@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import AgentProfileCard from "@/components/AgentProfileCard";
+import CampaignScheduleEditor, { defaultSchedule } from "@/components/CampaignScheduleEditor";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import {
