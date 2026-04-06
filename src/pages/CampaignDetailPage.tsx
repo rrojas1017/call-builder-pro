@@ -220,6 +220,19 @@ export default function CampaignDetailPage() {
     return () => clearInterval(interval);
   }, [id, campaign?.status]);
 
+  // Self-sustaining tick loop: invoke tick-campaign every 30s while running
+  useEffect(() => {
+    if (!id || campaign?.status !== "running") return;
+    const tickInterval = setInterval(async () => {
+      try {
+        await supabase.functions.invoke("tick-campaign", { body: { campaign_id: id } });
+      } catch (e) {
+        console.warn("[tick-poll] Error invoking tick-campaign:", e);
+      }
+    }, 30000);
+    return () => clearInterval(tickInterval);
+  }, [id, campaign?.status]);
+
   const handleStart = async () => {
     setActionLoading(true);
     try {
