@@ -27,6 +27,7 @@ import AuditLogPage from "./pages/AuditLogPage";
 import TrainingAuditPage from "./pages/TrainingAuditPage";
 import CRMPage from "./pages/CRMPage";
 import CostAuditsPage from "./pages/CostAuditsPage";
+import ReportsPage from "./pages/ReportsPage";
 
 import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import TermsOfServicePage from "./pages/TermsOfServicePage";
