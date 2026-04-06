@@ -7,14 +7,15 @@ import { Loader2, Clock, LogOut, XCircle } from "lucide-react";
 import appendifyLogo from "@/assets/appendify-logo.png";
 
 export default function PendingApprovalPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [status, setStatus] = useState<"pending" | "denied" | "no_request" | "loading">("loading");
   const [orgName, setOrgName] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    // Wait until auth is fully resolved
+    if (authLoading || !user || redirecting) return;
 
     let cancelled = false;
 
@@ -70,14 +71,14 @@ export default function PendingApprovalPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [user, navigate, redirecting]);
+  }, [user, authLoading, navigate, redirecting]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/auth", { replace: true });
   };
 
-  if (redirecting) {
+  if (authLoading || redirecting) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
