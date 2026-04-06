@@ -149,13 +149,13 @@ export default function CampaignDetailPage() {
     setLists((clRes.data as any[])?.map((cl: any) => cl.dial_lists) || []);
     setCalls(callsRes.data || []);
 
+    // Fetch all agents for the selector and the assigned agent
+    const { data: agentsData } = await supabase.from("agent_projects").select("id, name").order("name");
+    setAllAgents(agentsData || []);
+
     if (campRes.data?.agent_project_id) {
-      const { data: ag } = await supabase
-        .from("agent_projects")
-        .select("name")
-        .eq("id", campRes.data.agent_project_id)
-        .single();
-      setAgent(ag);
+      const ag = (agentsData || []).find((a: any) => a.id === campRes.data.agent_project_id);
+      setAgent(ag || null);
     }
     setLoading(false);
   }, [user, id]);
