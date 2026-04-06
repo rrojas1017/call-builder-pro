@@ -445,6 +445,12 @@ export type Database = {
           redial_delay_minutes: number
           redial_statuses: string[]
           retell_batch_id: string | null
+          schedule_day_overrides: Json
+          schedule_days: string[]
+          schedule_enabled: boolean
+          schedule_end_time: string
+          schedule_start_time: string
+          schedule_timezone: string
           short_id: string | null
           status: string
           voicemail_message: string | null
@@ -464,6 +470,12 @@ export type Database = {
           redial_delay_minutes?: number
           redial_statuses?: string[]
           retell_batch_id?: string | null
+          schedule_day_overrides?: Json
+          schedule_days?: string[]
+          schedule_enabled?: boolean
+          schedule_end_time?: string
+          schedule_start_time?: string
+          schedule_timezone?: string
           short_id?: string | null
           status?: string
           voicemail_message?: string | null
@@ -483,6 +495,12 @@ export type Database = {
           redial_delay_minutes?: number
           redial_statuses?: string[]
           retell_batch_id?: string | null
+          schedule_day_overrides?: Json
+          schedule_days?: string[]
+          schedule_enabled?: boolean
+          schedule_end_time?: string
+          schedule_start_time?: string
+          schedule_timezone?: string
           short_id?: string | null
           status?: string
           voicemail_message?: string | null
