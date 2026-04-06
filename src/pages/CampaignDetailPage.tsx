@@ -261,11 +261,35 @@ export default function CampaignDetailPage() {
     }
   };
 
+  const [resetStats, setResetStats] = useState<{ toRequeue: number; toSkip: number } | null>(null);
+
+  const computeResetStats = async () => {
+    // Find contacts with successful call outcomes to skip
+    const { data: successCalls } = await supabase
+      .from("calls")
+      .select("contact_id")
+      .eq("campaign_id", id)
+      .in("outcome", ["qualified", "transfer_completed"]);
+    const successContactIds = new Set((successCalls || []).map((c: any) => c.contact_id).filter(Boolean));
+    const total = contacts.length;
+    const toSkip = contacts.filter((c: any) => successContactIds.has(c.id)).length;
+    setResetStats({ toRequeue: total - toSkip, toSkip });
+    return { successContactIds };
+  };
+
   const handleReset = async () => {
     setResetting(true);
     try {
-      // Reset all contacts
-      const { error: contactErr } = await supabase
+      // Find successful contacts to skip
+      const { data: successCalls } = await supabase
+        .from("calls")
+        .select("contact_id")
+        .eq("campaign_id", id)
+        .in("outcome", ["qualified", "transfer_completed"]);
+      const successContactIds = (successCalls || []).map((c: any) => c.contact_id).filter(Boolean);
+
+      // Build query to reset non-successful contacts only
+      let query = supabase
         .from("contacts")
         .update({
           status: "queued",
@@ -275,6 +299,13 @@ export default function CampaignDetailPage() {
           last_error: null,
         } as any)
         .eq("campaign_id", id);
+
+      if (successContactIds.length > 0) {
+        // Exclude successful contacts from reset
+        query = query.not("id", "in", `(${successContactIds.join(",")})`);
+      }
+
+      const { error: contactErr } = await query;
       if (contactErr) throw contactErr;
 
       // Reset campaign status
@@ -285,12 +316,19 @@ export default function CampaignDetailPage() {
       if (campErr) throw campErr;
 
       setCampaign((prev: any) => ({ ...prev, status: "draft" }));
-      toast({ title: "Campaign reset", description: "All contacts re-queued. Historical call data preserved." });
+      const skipped = successContactIds.length;
+      toast({
+        title: "Campaign reset",
+        description: skipped > 0
+          ? `${contacts.length - skipped} contacts re-queued. ${skipped} successful contacts preserved.`
+          : "All contacts re-queued. Historical call data preserved.",
+      });
       fetchData();
     } catch (err: any) {
       toast({ title: "Error resetting", description: err.message, variant: "destructive" });
     } finally {
       setResetting(false);
+      setResetStats(null);
     }
   };
 
