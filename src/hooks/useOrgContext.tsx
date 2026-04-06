@@ -46,6 +46,9 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Reset loading state when user changes to prevent flash of "no org"
+    setProfileLoading(true);
+
     const load = async () => {
       const { data: profile } = await supabase
         .from("profiles")

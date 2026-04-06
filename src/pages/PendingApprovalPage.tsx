@@ -1,19 +1,26 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Loader2, Clock, LogOut, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, Clock, LogOut, XCircle } from "lucide-react";
 import appendifyLogo from "@/assets/appendify-logo.png";
 
 export default function PendingApprovalPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [status, setStatus] = useState<"pending" | "denied" | "no_request" | "loading">("loading");
   const [orgName, setOrgName] = useState<string | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     if (!user) return;
 
+    let cancelled = false;
+
     const checkStatus = async () => {
+      if (cancelled || redirecting) return;
+
       // Check if user now has an org (approved)
       const { data: profile } = await supabase
         .from("profiles")
@@ -21,9 +28,11 @@ export default function PendingApprovalPage() {
         .eq("id", user.id)
         .single();
 
+      if (cancelled) return;
+
       if (profile?.org_id) {
-        // User has been approved, reload
-        window.location.href = "/dashboard";
+        setRedirecting(true);
+        navigate("/dashboard", { replace: true });
         return;
       }
 
@@ -35,6 +44,8 @@ export default function PendingApprovalPage() {
         .order("created_at", { ascending: false })
         .limit(1);
 
+      if (cancelled) return;
+
       if (requests && requests.length > 0) {
         const req = requests[0];
         if (req.status === "denied") {
@@ -42,28 +53,37 @@ export default function PendingApprovalPage() {
         } else {
           setStatus("pending");
         }
-        // Try to get org name
         const { data: org } = await supabase
           .from("organizations")
           .select("name")
           .eq("id", req.org_id)
           .single();
-        setOrgName(org?.name ?? null);
+        if (!cancelled) setOrgName(org?.name ?? null);
       } else {
         setStatus("no_request");
       }
     };
 
     checkStatus();
-    // Poll every 10 seconds
     const interval = setInterval(checkStatus, 10000);
-    return () => clearInterval(interval);
-  }, [user]);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [user, navigate, redirecting]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    window.location.href = "/auth";
+    navigate("/auth", { replace: true });
   };
+
+  if (redirecting) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
