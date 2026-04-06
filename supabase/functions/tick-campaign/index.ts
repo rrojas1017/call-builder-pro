@@ -33,6 +33,46 @@ serve(async (req) => {
       });
     }
 
+    // ===== SCHEDULE CHECK =====
+    if (campaign.schedule_enabled) {
+      const dayMap: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+      const reverseDayMap = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+      const tz = campaign.schedule_timezone || "America/New_York";
+
+      // Get current time in the campaign's timezone
+      const nowStr = new Date().toLocaleString("en-US", { timeZone: tz });
+      const nowInTz = new Date(nowStr);
+      const currentDay = reverseDayMap[nowInTz.getDay()];
+      const currentMinutes = nowInTz.getHours() * 60 + nowInTz.getMinutes();
+
+      // Check if today is a dialing day
+      const dialDays: string[] = campaign.schedule_days || ["mon", "tue", "wed", "thu", "fri"];
+      if (!dialDays.includes(currentDay)) {
+        console.log(`[tick-campaign] Schedule: ${currentDay} not in dialing days ${dialDays.join(",")}`);
+        return new Response(JSON.stringify({ message: "Outside scheduled dialing days", day: currentDay }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Check time window (with per-day overrides)
+      const overrides = campaign.schedule_day_overrides || {};
+      const dayOverride = overrides[currentDay];
+      const startTime = dayOverride?.start || campaign.schedule_start_time || "09:00";
+      const endTime = dayOverride?.end || campaign.schedule_end_time || "17:00";
+      const [startH, startM] = startTime.split(":").map(Number);
+      const [endH, endM] = endTime.split(":").map(Number);
+      const startMinutes = startH * 60 + startM;
+      const endMinutes = endH * 60 + endM;
+
+      if (currentMinutes < startMinutes || currentMinutes >= endMinutes) {
+        console.log(`[tick-campaign] Schedule: current time ${nowInTz.toLocaleTimeString()} outside ${startTime}-${endTime} (${tz})`);
+        return new Response(JSON.stringify({ message: "Outside scheduled dialing hours", current: nowInTz.toLocaleTimeString(), window: `${startTime}-${endTime}` }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      console.log(`[tick-campaign] Schedule OK: ${currentDay} ${nowInTz.toLocaleTimeString()} within ${startTime}-${endTime} (${tz})`);
+    }
+
     // Check org credit balance
     const orgId = campaign.agent_projects.org_id;
     console.log(`[tick-campaign] org_id=${orgId}, project_id=${campaign.project_id}, status=${campaign.status}`);
