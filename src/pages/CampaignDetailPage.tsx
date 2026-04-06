@@ -858,6 +858,16 @@ export default function CampaignDetailPage() {
                 rows={3}
               />
             </div>
+            <div className="space-y-2">
+              <Label>CRM Webhook URL</Label>
+              <Input
+                value={editForm.webhook_url}
+                onChange={(e) => setEditForm((f: any) => ({ ...f, webhook_url: e.target.value }))}
+                placeholder="https://hooks.zapier.com/... or any webhook endpoint"
+                type="url"
+              />
+              <p className="text-xs text-muted-foreground">Successful calls (qualified, transferred, completed) will be POSTed here automatically.</p>
+            </div>
           </CardContent>
         </Card>
       )}
