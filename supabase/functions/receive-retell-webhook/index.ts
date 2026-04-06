@@ -458,6 +458,59 @@ serve(async (req) => {
       await trackCallCost(supabase, metadata.org_id, retellCallId, duration, phoneLabel);
     }
 
+    // ===== CRM WEBHOOK PUSH =====
+    const successOutcomes = ["qualified", "transfer_completed", "completed"];
+    if (successOutcomes.includes(outcome)) {
+      try {
+        // Check campaign webhook_url first, then org fallback
+        let webhookUrl: string | null = null;
+        if (metadata.campaign_id) {
+          const { data: campData } = await supabase
+            .from("campaigns")
+            .select("webhook_url, short_id")
+            .eq("id", metadata.campaign_id)
+            .single();
+          if (campData?.webhook_url) webhookUrl = campData.webhook_url;
+          
+          if (!webhookUrl) {
+            const { data: orgData } = await supabase
+              .from("organizations")
+              .select("webhook_url")
+              .eq("id", metadata.org_id)
+              .single();
+            if (orgData?.webhook_url) webhookUrl = orgData.webhook_url;
+          }
+
+          if (webhookUrl) {
+            const webhookPayload = {
+              event: "call_completed",
+              campaign_id: metadata.campaign_id,
+              campaign_short_id: campData?.short_id || null,
+              contact: {
+                name: metadata.contact_name || extractedData?.caller_name || extractedData?.name || null,
+                phone: metadata.phone || callData.from_number || null,
+              },
+              outcome,
+              duration_seconds: duration,
+              transcript,
+              extracted_data: extractedData,
+              recording_url: recordingUrl,
+              timestamp: new Date().toISOString(),
+            };
+            // Fire-and-forget
+            fetch(webhookUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(webhookPayload),
+            }).then((r) => console.log(`[CRM Webhook] POST ${webhookUrl} status=${r.status}`))
+              .catch((e) => console.error("[CRM Webhook] Error:", e));
+          }
+        }
+      } catch (webhookErr) {
+        console.error("[CRM Webhook] Exception:", webhookErr);
+      }
+    }
+
     if (metadata.contact_id) {
       const { data: currentContact } = await supabase
         .from("contacts")
