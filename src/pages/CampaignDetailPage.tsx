@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save, FileText, Phone, ExternalLink, AlertTriangle, Lightbulb, BookOpen, ShieldCheck, RotateCcw, Pencil, Download } from "lucide-react";
@@ -129,6 +130,10 @@ export default function CampaignDetailPage() {
   const [editForm, setEditForm] = useState<any>({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [allAgents, setAllAgents] = useState<any[]>([]);
+  const [editingAgent, setEditingAgent] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [savingAgent, setSavingAgent] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user || !id) return;
@@ -145,13 +150,13 @@ export default function CampaignDetailPage() {
     setLists((clRes.data as any[])?.map((cl: any) => cl.dial_lists) || []);
     setCalls(callsRes.data || []);
 
+    // Fetch all agents for the selector and the assigned agent
+    const { data: agentsData } = await supabase.from("agent_projects").select("id, name").order("name");
+    setAllAgents(agentsData || []);
+
     if (campRes.data?.agent_project_id) {
-      const { data: ag } = await supabase
-        .from("agent_projects")
-        .select("name")
-        .eq("id", campRes.data.agent_project_id)
-        .single();
-      setAgent(ag);
+      const ag = (agentsData || []).find((a: any) => a.id === campRes.data.agent_project_id);
+      setAgent(ag || null);
     }
     setLoading(false);
   }, [user, id]);
@@ -513,10 +518,48 @@ export default function CampaignDetailPage() {
                     <AlertTriangle className="h-3 w-3" /> TEST
                   </Badge>
                 )}
-                {agent && (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/80 rounded-full px-3 py-1">
-                    <HeadphonesIcon className="h-3 w-3" /> {agent.name}
+                {editingAgent ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs bg-secondary/80 rounded-full px-2 py-0.5">
+                    <HeadphonesIcon className="h-3 w-3 text-muted-foreground" />
+                    <Select value={selectedAgentId || ""} onValueChange={setSelectedAgentId}>
+                      <SelectTrigger className="h-5 w-40 text-xs border-0 bg-transparent p-0">
+                        <SelectValue placeholder="Select agent" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allAgents.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-5 px-1"
+                      disabled={savingAgent || !selectedAgentId}
+                      onClick={async () => {
+                        setSavingAgent(true);
+                        await supabase.from("campaigns").update({
+                          project_id: selectedAgentId,
+                          agent_project_id: selectedAgentId,
+                        }).eq("id", id);
+                        const ag = allAgents.find((a: any) => a.id === selectedAgentId);
+                        setAgent(ag || null);
+                        setCampaign((prev: any) => ({ ...prev, project_id: selectedAgentId, agent_project_id: selectedAgentId }));
+                        setEditingAgent(false);
+                        setSavingAgent(false);
+                        toast({ title: "Agent updated" });
+                      }}
+                    >
+                      {savingAgent ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                    </Button>
                   </span>
+                ) : (
+                  <button
+                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/80 rounded-full px-3 py-1 cursor-pointer hover:bg-secondary"
+                    onClick={() => { setSelectedAgentId(campaign.agent_project_id || campaign.project_id); setEditingAgent(true); }}
+                  >
+                    <HeadphonesIcon className="h-3 w-3" /> {agent?.name || "No agent"}
+                  </button>
                 )}
                 <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/80 rounded-full px-3 py-1">
                   <Clock className="h-3 w-3" /> {new Date(campaign.created_at).toLocaleDateString()}
