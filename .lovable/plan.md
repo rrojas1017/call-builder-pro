@@ -1,31 +1,49 @@
 
 
-# Fix Auth Stability: Deduplicate Profile Loads and Eliminate Flicker
+# Fix Campaign Stalling: Stale Call Recovery + Independent Tick Loop
 
 ## Problem
-After login, the `onAuthStateChange` listener fires multiple times (INITIAL_SESSION, SIGNED_IN, TOKEN_REFRESHED), each creating a new `user` object that re-triggers `useOrgContext`'s effect. This causes 15+ duplicate profile queries, brief loading flickers, and the "comes and goes" feeling.
+The campaign ticker only fires when a webhook comes back from a completed call. If Retell fails to send a webhook for even one call, the entire campaign stalls permanently. Right now, contact `+18632470817` has been stuck in "calling" for 1.5+ hours, blocking all 358 remaining contacts.
 
-## Changes
+## Two fixes needed
 
-### 1. Stabilize user reference in `useAuth.tsx`
-- Use a `ref` to track whether the initial session has been resolved
-- Only call `setLoading(false)` once (from `getSession`), and let `onAuthStateChange` handle subsequent changes without resetting loading
-- Compare `user.id` before calling `setUser` to avoid unnecessary re-renders when the same user is emitted multiple times
+### 1. Stale call timeout in `tick-campaign`
+Before checking available slots, scan for contacts stuck in "calling" for more than 10 minutes and mark them as `no_answer` (or a new `timeout` status). This frees the concurrency slot automatically.
 
-### 2. Deduplicate profile fetch in `useOrgContext.tsx`
-- Depend on `user?.id` instead of `user` object in the effect dependency array — this prevents re-fetching when the same user object is re-created with a new reference
-- Remove the `cancelled` pattern in favor of a simpler approach since the effect will only fire when user ID actually changes
+**File: `supabase/functions/tick-campaign/index.ts`**
+- After fetching the campaign and before counting active calls, add a query:
+  ```sql
+  UPDATE contacts SET status = 'no_answer', outcome = 'timeout'
+  WHERE campaign_id = ? AND status = 'calling'
+  AND called_at < now() - interval '10 minutes'
+  ```
+- Log how many stale contacts were recovered
+- This ensures even if a webhook is lost, the campaign self-heals on the next tick
 
-### 3. Fix React ref warning in `ProtectedLayout.tsx`
-- Wrap `OrgGate` with `React.forwardRef` or restructure so React Router doesn't try to pass a ref to a plain function component
+### 2. Self-sustaining tick loop via `setInterval` in `start-campaign`
+Instead of relying solely on webhook-driven ticks, add a polling mechanism so the campaign keeps ticking independently.
 
-## Files to update
-- `src/hooks/useAuth.tsx`
-- `src/hooks/useOrgContext.tsx`
-- `src/components/ProtectedLayout.tsx`
+**File: `supabase/functions/start-campaign/index.ts`**
+- After the initial tick, fire a background polling loop: invoke `tick-campaign` every 30 seconds for the duration of the campaign
+- Use a simple approach: after `start-campaign` does its initial tick, schedule a Supabase `pg_cron` job or use a client-side polling approach
+
+**Better approach — client-side polling (simpler, no pg_cron needed):**
+
+**File: `src/pages/CampaignDetailPage.tsx`**
+- When the campaign status is "running", set up a 30-second interval that calls `tick-campaign` via the edge function
+- This already partially exists (the page polls for contact status every 5 seconds) — add a tick invocation every 30 seconds alongside it
+- Stop the interval when campaign is paused/completed
+
+### 3. Immediate fix for current stall
+- The stale-call timeout in the updated `tick-campaign` will automatically recover the stuck contact on the next invocation
+- The client-side polling will ensure that invocation happens within 30 seconds of deploying
+
+## Files to change
+- `supabase/functions/tick-campaign/index.ts` — add stale call recovery (10-min timeout)
+- `src/pages/CampaignDetailPage.tsx` — add 30-second tick polling for running campaigns
 
 ## Expected outcome
-- Login resolves in a single profile + role fetch (not 15+)
-- No loading flicker between auth and dashboard
-- Console warnings eliminated
+- Campaigns never permanently stall from a missed webhook
+- Stuck "calling" contacts auto-recover after 10 minutes
+- The current campaign (CMP-0004) will resume dialing within 30 seconds of deployment
 
