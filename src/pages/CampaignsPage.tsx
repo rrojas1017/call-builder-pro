@@ -115,6 +115,12 @@ export default function CampaignsPage() {
           hipaa_enabled: hipaaEnabled,
           is_test: isTest,
           voicemail_message: voicemailEnabled ? voicemailMessage || null : null,
+          schedule_enabled: schedule.schedule_enabled,
+          schedule_days: schedule.schedule_days,
+          schedule_start_time: schedule.schedule_start_time,
+          schedule_end_time: schedule.schedule_end_time,
+          schedule_timezone: schedule.schedule_timezone,
+          schedule_day_overrides: schedule.schedule_day_overrides,
         } as any)
         .select()
         .single();
