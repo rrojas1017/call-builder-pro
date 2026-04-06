@@ -448,6 +448,7 @@ export type Database = {
           short_id: string | null
           status: string
           voicemail_message: string | null
+          webhook_url: string | null
         }
         Insert: {
           agent_project_id?: string | null
@@ -466,6 +467,7 @@ export type Database = {
           short_id?: string | null
           status?: string
           voicemail_message?: string | null
+          webhook_url?: string | null
         }
         Update: {
           agent_project_id?: string | null
@@ -484,6 +486,7 @@ export type Database = {
           short_id?: string | null
           status?: string
           voicemail_message?: string | null
+          webhook_url?: string | null
         }
         Relationships: [
           {
@@ -1054,6 +1057,7 @@ export type Database = {
           id: string
           name: string
           stripe_customer_id: string | null
+          webhook_url: string | null
         }
         Insert: {
           created_at?: string
@@ -1061,6 +1065,7 @@ export type Database = {
           id?: string
           name: string
           stripe_customer_id?: string | null
+          webhook_url?: string | null
         }
         Update: {
           created_at?: string
@@ -1068,6 +1073,7 @@ export type Database = {
           id?: string
           name?: string
           stripe_customer_id?: string | null
+          webhook_url?: string | null
         }
         Relationships: []
       }
