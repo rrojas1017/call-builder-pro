@@ -224,6 +224,7 @@ export default function CampaignsPage() {
       setIsTest(false);
       setVoicemailEnabled(false);
       setVoicemailMessage("");
+      setSchedule(defaultSchedule);
       setShowCreate(false);
       load();
     } catch (err: any) {
