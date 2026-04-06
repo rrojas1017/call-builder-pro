@@ -90,7 +90,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
     load();
     return () => { cancelled = true; };
-  }, [user, authLoading]);
+  }, [user?.id, authLoading]);
 
   const switchOrg = (orgId: string, name: string) => {
     setActiveOrgId(orgId);
