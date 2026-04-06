@@ -27,6 +27,7 @@ import AuditLogPage from "./pages/AuditLogPage";
 import TrainingAuditPage from "./pages/TrainingAuditPage";
 import CRMPage from "./pages/CRMPage";
 import CostAuditsPage from "./pages/CostAuditsPage";
+import ReportsPage from "./pages/ReportsPage";
 
 import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import TermsOfServicePage from "./pages/TermsOfServicePage";
@@ -68,6 +69,7 @@ const App = () => (
             <Route path="/admin/audit" element={<AuditLogPage />} />
             <Route path="/training-audit" element={<TrainingAuditPage />} />
             <Route path="/crm" element={<CRMPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
             <Route path="/admin/cost-audits" element={<CostAuditsPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />
