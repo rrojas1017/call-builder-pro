@@ -37,7 +37,7 @@ export function useUserRole() {
 
     fetchRole();
     return () => { cancelled = true; };
-  }, [user, authLoading]);
+  }, [user?.id, authLoading]);
 
   return {
     role,
