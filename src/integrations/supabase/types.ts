@@ -445,6 +445,7 @@ export type Database = {
           redial_delay_minutes: number
           redial_statuses: string[]
           retell_batch_id: string | null
+          short_id: string | null
           status: string
           voicemail_message: string | null
         }
@@ -462,6 +463,7 @@ export type Database = {
           redial_delay_minutes?: number
           redial_statuses?: string[]
           retell_batch_id?: string | null
+          short_id?: string | null
           status?: string
           voicemail_message?: string | null
         }
@@ -479,6 +481,7 @@ export type Database = {
           redial_delay_minutes?: number
           redial_statuses?: string[]
           retell_batch_id?: string | null
+          short_id?: string | null
           status?: string
           voicemail_message?: string | null
         }
@@ -731,6 +734,7 @@ export type Database = {
           name: string
           org_id: string
           row_count: number
+          short_id: string | null
           status: string
         }
         Insert: {
@@ -741,6 +745,7 @@ export type Database = {
           name: string
           org_id: string
           row_count?: number
+          short_id?: string | null
           status?: string
         }
         Update: {
@@ -751,6 +756,7 @@ export type Database = {
           name?: string
           org_id?: string
           row_count?: number
+          short_id?: string | null
           status?: string
         }
         Relationships: [
