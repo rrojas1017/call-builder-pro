@@ -520,7 +520,10 @@ export default function CampaignsPage() {
             <Card key={c.id} className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => navigate(`/campaigns/${c.id}`)}>
               <CardContent className="p-5 flex items-center justify-between">
                 <div className="space-y-1">
-                  <h3 className="font-semibold text-foreground">{c.name}</h3>
+                  <h3 className="font-semibold text-foreground">
+                    {(c as any).short_id && <Badge variant="outline" className="mr-2 text-[10px] font-mono">{(c as any).short_id}</Badge>}
+                    {c.name}
+                  </h3>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", statusColor[c.status])}>
                       {c.status}

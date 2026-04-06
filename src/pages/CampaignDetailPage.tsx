@@ -502,7 +502,10 @@ export default function CampaignDetailPage() {
               <ArrowLeft className="h-5 w-5" />
             </Link>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-foreground">{campaign.name}</h1>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                {campaign.short_id && <Badge variant="outline" className="mr-2 text-xs font-mono align-middle">{campaign.short_id}</Badge>}
+                {campaign.name}
+              </h1>
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColor[campaign.status] || "bg-muted text-muted-foreground"}`}>
                   {campaign.status.toUpperCase()}
@@ -606,6 +609,30 @@ export default function CampaignDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 bg-card/80 backdrop-blur-sm rounded-full px-2 py-1.5 border border-border/50">
+            <Button size="sm" variant="ghost" onClick={() => {
+              // Export all conversations as CSV
+              const headers = ["Contact Name", "Phone", "Status", "Outcome", "Duration (s)", "Transcript", "Extracted Data", "Score", "Recording URL", "Called At"];
+              const rows = contacts.map((c: any) => {
+                const call = calls.find((cl: any) => cl.contact_id === c.id);
+                const outcome = resolveOutcome(c, call);
+                const extractedStr = call?.extracted_data ? Object.entries(call.extracted_data).map(([k, v]) => `${k}: ${v}`).join("; ") : "";
+                return [
+                  c.name, c.phone, c.status, outcome || "", call?.duration_seconds ?? "",
+                  (call?.transcript || "").replace(/"/g, '""'), extractedStr.replace(/"/g, '""'),
+                  call?.evaluation?.overall_score ?? "", call?.recording_url || "", c.called_at || "",
+                ];
+              });
+              const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+              const blob = new Blob([csv], { type: "text/csv" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `${campaign.short_id || "campaign"}-conversations-${new Date().toISOString().slice(0, 10)}.csv`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }} className="rounded-full h-8">
+              <Download className="h-4 w-4 mr-1" /> Export
+            </Button>
             <Button size="sm" variant="ghost" onClick={fetchData} className="rounded-full h-8">
               <RefreshCw className="h-4 w-4 mr-1" /> Refresh
             </Button>

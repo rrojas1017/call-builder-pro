@@ -420,7 +420,10 @@ export default function ListsPage() {
                 <CardContent className="p-5 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1 flex-1 min-w-0">
-                      <h3 className="font-semibold text-foreground">{l.name}</h3>
+                      <h3 className="font-semibold text-foreground">
+                        {(l as any).short_id && <Badge variant="outline" className="mr-2 text-[10px] font-mono">{(l as any).short_id}</Badge>}
+                        {l.name}
+                      </h3>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <span>{l.file_name}</span>
                         <span>•</span>
