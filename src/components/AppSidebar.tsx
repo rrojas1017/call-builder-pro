@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Bot, PlusCircle, Megaphone, Phone, PhoneIncoming,
   BookOpen, Settings, LogOut, GraduationCap, FileSpreadsheet, Users, CreditCard,
   Building2, ScrollText, X, Pencil, Save, RotateCcw, GripVertical,
-  Brain, Shield, ContactRound, DollarSign, LucideIcon
+  Brain, Shield, ContactRound, DollarSign, BarChart3, LucideIcon
 } from "lucide-react";
 import { useUserRole, AppRole } from "@/hooks/useUserRole";
 import { Badge } from "@/components/ui/badge";
