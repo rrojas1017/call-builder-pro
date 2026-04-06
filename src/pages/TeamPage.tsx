@@ -214,7 +214,7 @@ export default function TeamPage() {
             </Tooltip>
           )}
         {isAdmin && (
-          <div className="flex gap-2">
+          <>
             <Button onClick={() => setCreateUserOpen(true)}>
               <Plus className="mr-2 h-4 w-4" /> Create User
             </Button>
@@ -222,41 +222,42 @@ export default function TeamPage() {
               <DialogTrigger asChild>
                 <Button variant="outline"><UserPlus className="mr-2 h-4 w-4" /> Invite Member</Button>
               </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Invite a Team Member</DialogTitle>
-              <DialogDescription>Send an invitation to join your organization.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 mt-2">
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  placeholder="colleague@company.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <Select value={inviteRole} onValueChange={setInviteRole}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="analyst">Analyst</SelectItem>
-                    <SelectItem value="viewer">Viewer</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={handleInvite} disabled={inviting || !inviteEmail} className="w-full">
-                {inviting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Send Invitation
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-          </div>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Invite a Team Member</DialogTitle>
+                  <DialogDescription>Send an invitation to join your organization.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 mt-2">
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input
+                      type="email"
+                      placeholder="colleague@company.com"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Role</Label>
+                    <Select value={inviteRole} onValueChange={setInviteRole}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="analyst">Analyst</SelectItem>
+                        <SelectItem value="viewer">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button onClick={handleInvite} disabled={inviting || !inviteEmail} className="w-full">
+                    {inviting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Send Invitation
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </>
         )}
+        </div>
       </div>
       <CreateUserDialog
         open={createUserOpen}
