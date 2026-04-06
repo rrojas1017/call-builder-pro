@@ -11,8 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UserPlus, Trash2, Users, Plus } from "lucide-react";
+import { Loader2, UserPlus, Trash2, Users, Plus, CheckCircle, XCircle, Copy, Key } from "lucide-react";
 import CreateUserDialog from "@/components/CreateUserDialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface TeamMember {
   id: string;

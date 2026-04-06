@@ -28,11 +28,13 @@ import TrainingAuditPage from "./pages/TrainingAuditPage";
 import CRMPage from "./pages/CRMPage";
 import CostAuditsPage from "./pages/CostAuditsPage";
 import ReportsPage from "./pages/ReportsPage";
+import PendingApprovalPage from "./pages/PendingApprovalPage";
 
 import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import TermsOfServicePage from "./pages/TermsOfServicePage";
 import NotFound from "./pages/NotFound";
 import { ThemeProvider } from "./components/ThemeProvider";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +50,7 @@ const App = () => (
           <Route path="/" element={<LandingPage />} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
           <Route path="/terms" element={<TermsOfServicePage />} />
+          <Route path="/pending" element={<ProtectedRoute><PendingApprovalPage /></ProtectedRoute>} />
           <Route element={<ProtectedLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/agents" element={<AgentsPage />} />
