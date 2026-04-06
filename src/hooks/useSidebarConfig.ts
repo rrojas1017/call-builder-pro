@@ -34,6 +34,7 @@ const DEFAULT_SECTIONS: SidebarSection[] = [
     label: "MONITOR",
     items: [
       { label: "Calls", path: "/calls" },
+      { label: "Reports", path: "/reports" },
       { label: "CRM", path: "/crm" },
       { label: "University", path: "/test" },
     ],

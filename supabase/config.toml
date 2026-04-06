@@ -137,3 +137,6 @@ verify_jwt = false
 
 [functions.download-recording]
 verify_jwt = false
+
+[functions.generate-campaign-insights]
+verify_jwt = false
