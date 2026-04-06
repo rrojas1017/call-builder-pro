@@ -756,7 +756,7 @@ export default function CampaignDetailPage() {
               </Button>
             )}
             {(campaign.status === "paused" || campaign.status === "completed") && (
-              <AlertDialog>
+              <AlertDialog onOpenChange={(open) => { if (open) computeResetStats(); else setResetStats(null); }}>
                 <AlertDialogTrigger asChild>
                   <Button size="sm" variant="ghost" disabled={resetting} className="rounded-full h-8">
                     {resetting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RotateCcw className="h-4 w-4 mr-1" />}
@@ -767,7 +767,17 @@ export default function CampaignDetailPage() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Reset Campaign</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will re-queue all contacts (attempts reset to 0) and set the campaign back to draft. Historical call records and CRM data will NOT be affected.
+                      {resetStats ? (
+                        <>
+                          <strong>{resetStats.toRequeue}</strong> contacts will be re-queued.
+                          {resetStats.toSkip > 0 && (
+                            <> <strong>{resetStats.toSkip}</strong> successful contacts (qualified/transferred) will be <strong>preserved</strong>.</>
+                          )}
+                          <br />Historical call records and CRM data will NOT be affected.
+                        </>
+                      ) : (
+                        "Calculating contacts..."
+                      )}
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
