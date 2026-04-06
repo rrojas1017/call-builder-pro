@@ -270,7 +270,6 @@ export default function CampaignDetailPage() {
           status: "queued",
           attempts: 0,
           called_at: null,
-          retell_call_id: null,
           bland_call_id: null,
           last_error: null,
         } as any)
