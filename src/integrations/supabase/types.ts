@@ -946,6 +946,50 @@ export type Database = {
           },
         ]
       }
+      join_requests: {
+        Row: {
+          created_at: string
+          id: string
+          org_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          user_email: string
+          user_full_name: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          org_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_email: string
+          user_full_name?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          org_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          user_email?: string
+          user_full_name?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "join_requests_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_api_endpoints: {
         Row: {
           created_at: string
@@ -1055,6 +1099,7 @@ export type Database = {
           created_at: string
           credits_balance: number
           id: string
+          join_code: string
           name: string
           stripe_customer_id: string | null
           webhook_url: string | null
@@ -1063,6 +1108,7 @@ export type Database = {
           created_at?: string
           credits_balance?: number
           id?: string
+          join_code?: string
           name: string
           stripe_customer_id?: string | null
           webhook_url?: string | null
@@ -1071,6 +1117,7 @@ export type Database = {
           created_at?: string
           credits_balance?: number
           id?: string
+          join_code?: string
           name?: string
           stripe_customer_id?: string | null
           webhook_url?: string | null
@@ -1731,6 +1778,11 @@ export type Database = {
     }
     Functions: {
       accept_invitation: { Args: { invitation_id: string }; Returns: Json }
+      approve_join_request: {
+        Args: { approved: boolean; request_id: string }
+        Returns: Json
+      }
+      generate_join_code: { Args: never; Returns: string }
       get_user_org_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
