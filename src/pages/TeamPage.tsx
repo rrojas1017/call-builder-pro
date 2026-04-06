@@ -11,8 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UserPlus, Trash2, Users, Plus } from "lucide-react";
+import { Loader2, UserPlus, Trash2, Users, Plus, CheckCircle, XCircle, Copy, Key } from "lucide-react";
 import CreateUserDialog from "@/components/CreateUserDialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface TeamMember {
   id: string;
@@ -30,6 +31,14 @@ interface Invitation {
   expires_at: string;
 }
 
+interface JoinRequest {
+  id: string;
+  user_email: string;
+  user_full_name: string | null;
+  status: string;
+  created_at: string;
+}
+
 export default function TeamPage() {
   const { user } = useAuth();
   const { activeOrgId, isSuperAdmin } = useOrgContext();
@@ -37,6 +46,9 @@ export default function TeamPage() {
   const { isAdmin } = useUserRole();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [joinCode, setJoinCode] = useState<string | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [createUserOpen, setCreateUserOpen] = useState(false);
@@ -48,37 +60,28 @@ export default function TeamPage() {
     if (!user || !activeOrgId) return;
 
     // Get all profiles in the org
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name, org_id")
-      .eq("org_id", activeOrgId);
-
-    // Get roles for those users
-    const { data: roles } = await supabase
-      .from("user_roles")
-      .select("user_id, role");
+    const [profilesRes, rolesRes, invsRes, orgRes, joinReqRes] = await Promise.all([
+      supabase.from("profiles").select("id, full_name, org_id").eq("org_id", activeOrgId),
+      supabase.from("user_roles").select("user_id, role"),
+      supabase.from("org_invitations").select("*").eq("org_id", activeOrgId).eq("status", "pending").order("created_at", { ascending: false }),
+      supabase.from("organizations").select("join_code").eq("id", activeOrgId).single(),
+      supabase.from("join_requests").select("*").eq("org_id", activeOrgId).eq("status", "pending").order("created_at", { ascending: false }),
+    ]);
 
     const roleMap: Record<string, string> = {};
-    (roles || []).forEach((r: any) => {
+    (rolesRes.data || []).forEach((r: any) => {
       roleMap[r.user_id] = r.role;
     });
 
-    const teamMembers = (profiles || []).map((p: any) => ({
+    const teamMembers = (profilesRes.data || []).map((p: any) => ({
       ...p,
       role: roleMap[p.id] || "viewer",
     }));
 
     setMembers(teamMembers);
-
-    // Load invitations
-    const { data: invs } = await supabase
-      .from("org_invitations")
-      .select("*")
-      .eq("org_id", activeOrgId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
-
-    setInvitations((invs || []) as Invitation[]);
+    setInvitations((invsRes.data || []) as Invitation[]);
+    setJoinCode((orgRes.data as any)?.join_code ?? null);
+    setJoinRequests((joinReqRes.data || []) as JoinRequest[]);
     setLoading(false);
   };
 
@@ -186,8 +189,32 @@ export default function TeamPage() {
           </h1>
           <p className="text-muted-foreground mt-1">Manage your organization's members and roles.</p>
         </div>
+        <div className="flex items-center gap-3">
+          {/* Join Code Badge */}
+          {isAdmin && joinCode && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="font-mono tracking-widest gap-2"
+                  onClick={() => {
+                    navigator.clipboard.writeText(joinCode);
+                    setCodeCopied(true);
+                    setTimeout(() => setCodeCopied(false), 2000);
+                    toast({ title: "Join code copied", description: `Share "${joinCode}" with new users to let them request access.` });
+                  }}
+                >
+                  <Key className="h-3.5 w-3.5" />
+                  {joinCode}
+                  {codeCopied ? <CheckCircle className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Click to copy company join code</TooltipContent>
+            </Tooltip>
+          )}
         {isAdmin && (
-          <div className="flex gap-2">
+          <>
             <Button onClick={() => setCreateUserOpen(true)}>
               <Plus className="mr-2 h-4 w-4" /> Create User
             </Button>
@@ -195,41 +222,42 @@ export default function TeamPage() {
               <DialogTrigger asChild>
                 <Button variant="outline"><UserPlus className="mr-2 h-4 w-4" /> Invite Member</Button>
               </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Invite a Team Member</DialogTitle>
-              <DialogDescription>Send an invitation to join your organization.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 mt-2">
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  placeholder="colleague@company.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <Select value={inviteRole} onValueChange={setInviteRole}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="analyst">Analyst</SelectItem>
-                    <SelectItem value="viewer">Viewer</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={handleInvite} disabled={inviting || !inviteEmail} className="w-full">
-                {inviting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Send Invitation
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-          </div>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Invite a Team Member</DialogTitle>
+                  <DialogDescription>Send an invitation to join your organization.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 mt-2">
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input
+                      type="email"
+                      placeholder="colleague@company.com"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Role</Label>
+                    <Select value={inviteRole} onValueChange={setInviteRole}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="analyst">Analyst</SelectItem>
+                        <SelectItem value="viewer">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button onClick={handleInvite} disabled={inviting || !inviteEmail} className="w-full">
+                    {inviting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Send Invitation
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </>
         )}
+        </div>
       </div>
       <CreateUserDialog
         open={createUserOpen}
@@ -310,6 +338,81 @@ export default function TeamPage() {
                       <Button variant="ghost" size="sm" onClick={() => handleCancelInvite(inv.id)}>
                         Cancel
                       </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+
+      {/* Join Requests */}
+      {isAdmin && joinRequests.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold text-foreground">Pending Join Requests</h2>
+          <div className="surface-elevated rounded-xl overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Requested</TableHead>
+                  <TableHead className="w-[160px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {joinRequests.map((jr) => (
+                  <TableRow key={jr.id}>
+                    <TableCell className="font-medium">{jr.user_full_name || "—"}</TableCell>
+                    <TableCell>{jr.user_email}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {new Date(jr.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={async () => {
+                            const { data, error } = await supabase.rpc("approve_join_request", {
+                              request_id: jr.id,
+                              approved: true,
+                            });
+                            if (error) {
+                              toast({ title: "Error", description: error.message, variant: "destructive" });
+                            } else {
+                              const r = data as any;
+                              if (r?.error) {
+                                toast({ title: "Error", description: r.error, variant: "destructive" });
+                              } else {
+                                toast({ title: "User approved", description: `${jr.user_email} has been added to the team.` });
+                                loadTeam();
+                              }
+                            }
+                          }}
+                        >
+                          <CheckCircle className="mr-1 h-3.5 w-3.5" /> Approve
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            const { data, error } = await supabase.rpc("approve_join_request", {
+                              request_id: jr.id,
+                              approved: false,
+                            });
+                            if (error) {
+                              toast({ title: "Error", description: error.message, variant: "destructive" });
+                            } else {
+                              toast({ title: "Request denied" });
+                              loadTeam();
+                            }
+                          }}
+                        >
+                          <XCircle className="mr-1 h-3.5 w-3.5" /> Deny
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

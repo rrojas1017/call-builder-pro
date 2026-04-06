@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, MessageSquare, BarChart3, FlaskConical, ArrowLeft } from "lucide-react";
+import { Loader2, MessageSquare, BarChart3, FlaskConical, ArrowLeft, Building2 } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 import appendifyLogo from "@/assets/appendify-logo.png";
 
@@ -20,6 +20,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -54,13 +55,24 @@ export default function AuthPage() {
 
         navigate("/dashboard");
       } else {
+        const metadata: Record<string, string> = { full_name: fullName };
+        if (joinCode.trim()) {
+          metadata.join_code = joinCode.trim().toUpperCase();
+        }
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: fullName } },
+          options: { data: metadata },
         });
         if (error) throw error;
-        toast({ title: "Check your email", description: "We sent you a confirmation link." });
+        if (joinCode.trim()) {
+          toast({
+            title: "Account created",
+            description: "Your request to join the company has been submitted. An admin will review and approve your access.",
+          });
+        } else {
+          toast({ title: "Check your email", description: "We sent you a confirmation link." });
+        }
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -129,7 +141,7 @@ export default function AuthPage() {
               <p className="text-sm text-muted-foreground">
                 {isLogin
                   ? "Sign in to manage your AI voice agents."
-                  : "Start building AI voice agents for free."}
+                  : "Enter a company code to join an existing team, or sign up to request access."}
               </p>
             </div>
 
@@ -166,16 +178,36 @@ export default function AuthPage() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {!isLogin && (
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
-                  <Input
-                    id="name"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Jane Smith"
-                    className="h-12 rounded-xl bg-muted/50 border-border/60"
-                  />
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Full Name</Label>
+                    <Input
+                      id="name"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Jane Smith"
+                      className="h-12 rounded-xl bg-muted/50 border-border/60"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="joinCode" className="flex items-center gap-1.5">
+                      <Building2 className="h-3.5 w-3.5" />
+                      Company Code
+                      <span className="text-muted-foreground font-normal text-xs">(optional)</span>
+                    </Label>
+                    <Input
+                      id="joinCode"
+                      value={joinCode}
+                      onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                      placeholder="e.g. A1B2C3"
+                      maxLength={6}
+                      className="h-12 rounded-xl bg-muted/50 border-border/60 uppercase tracking-widest font-mono text-center"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Ask your company admin for the join code to request access to their team.
+                    </p>
+                  </div>
+                </>
               )}
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -204,7 +236,7 @@ export default function AuthPage() {
               </div>
               <Button type="submit" className="w-full h-12 rounded-xl text-base mt-2" disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isLogin ? "Sign In" : "Create Account"}
+                {isLogin ? "Sign In" : joinCode.trim() ? "Request Access" : "Create Account"}
               </Button>
             </form>
 
