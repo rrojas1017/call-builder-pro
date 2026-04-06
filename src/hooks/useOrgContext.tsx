@@ -30,7 +30,7 @@ const OrgContext = createContext<OrgContextValue>({
 });
 
 export function OrgProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { role, loading: roleLoading, isSuperAdmin, isAdmin } = useUserRole();
   const [ownOrgId, setOwnOrgId] = useState<string | null>(null);
   const [ownOrgName, setOwnOrgName] = useState<string | null>(null);
@@ -39,14 +39,22 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(true);
 
   useEffect(() => {
+    // Wait for auth to resolve before querying profile
+    if (authLoading) {
+      setProfileLoading(true);
+      return;
+    }
+
     if (!user) {
       setOwnOrgId(null);
+      setOwnOrgName(null);
       setActiveOrgId(null);
+      setActiveOrgName(null);
       setProfileLoading(false);
       return;
     }
 
-    // Reset loading state when user changes to prevent flash of "no org"
+    let cancelled = false;
     setProfileLoading(true);
 
     const load = async () => {
@@ -55,6 +63,8 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         .select("org_id")
         .eq("id", user.id)
         .single();
+
+      if (cancelled) return;
 
       if (profile?.org_id) {
         setOwnOrgId(profile.org_id);
@@ -65,14 +75,22 @@ export function OrgProvider({ children }: { children: ReactNode }) {
           .select("name")
           .eq("id", profile.org_id)
           .single();
+
+        if (cancelled) return;
         setOwnOrgName(org?.name ?? null);
         setActiveOrgName(org?.name ?? null);
+      } else {
+        setOwnOrgId(null);
+        setOwnOrgName(null);
+        setActiveOrgId(null);
+        setActiveOrgName(null);
       }
       setProfileLoading(false);
     };
 
     load();
-  }, [user]);
+    return () => { cancelled = true; };
+  }, [user, authLoading]);
 
   const switchOrg = (orgId: string, name: string) => {
     setActiveOrgId(orgId);
@@ -95,7 +113,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         isImpersonating,
         switchOrg,
         resetOrg,
-        loading: profileLoading || roleLoading,
+        loading: authLoading || profileLoading || roleLoading,
         role,
         isSuperAdmin,
         isAdmin,
