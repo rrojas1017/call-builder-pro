@@ -343,6 +343,12 @@ export default function CampaignDetailPage() {
       is_test: campaign.is_test,
       voicemail_message: campaign.voicemail_message || "",
       webhook_url: campaign.webhook_url || "",
+      schedule_enabled: campaign.schedule_enabled || false,
+      schedule_days: campaign.schedule_days || ["mon", "tue", "wed", "thu", "fri"],
+      schedule_start_time: campaign.schedule_start_time || "09:00",
+      schedule_end_time: campaign.schedule_end_time || "17:00",
+      schedule_timezone: campaign.schedule_timezone || "America/New_York",
+      schedule_day_overrides: campaign.schedule_day_overrides || {},
     });
     setIsEditing(true);
   };
