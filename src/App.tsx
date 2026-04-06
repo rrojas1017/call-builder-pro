@@ -82,7 +82,7 @@ const App = () => (
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
+  </AuthProvider>
   </ThemeProvider>
-);
 
 export default App;
