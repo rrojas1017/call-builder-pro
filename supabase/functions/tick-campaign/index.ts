@@ -102,6 +102,20 @@ serve(async (req) => {
     if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
     console.log(`[tick-campaign] retell_agent_id=${retellAgentId}, spec_version=${spec.version}`);
 
+    // === STALE CALL RECOVERY ===
+    // Reset contacts stuck in "calling" for more than 10 minutes (missed webhook)
+    const staleThreshold = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: staleContacts } = await supabase
+      .from("contacts")
+      .update({ status: "no_answer" } as any)
+      .eq("campaign_id", campaign_id)
+      .eq("status", "calling")
+      .lt("called_at", staleThreshold)
+      .select("id");
+    if (staleContacts && staleContacts.length > 0) {
+      console.log(`[tick-campaign] Recovered ${staleContacts.length} stale contacts: ${staleContacts.map((c: any) => c.id).join(", ")}`);
+    }
+
     // Count currently active calls to enforce concurrency limit
     const { count: activeCalls } = await supabase
       .from("contacts").select("id", { count: "exact", head: true })
