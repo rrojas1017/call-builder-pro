@@ -31,6 +31,14 @@ interface Invitation {
   expires_at: string;
 }
 
+interface JoinRequest {
+  id: string;
+  user_email: string;
+  user_full_name: string | null;
+  status: string;
+  created_at: string;
+}
+
 export default function TeamPage() {
   const { user } = useAuth();
   const { activeOrgId, isSuperAdmin } = useOrgContext();
