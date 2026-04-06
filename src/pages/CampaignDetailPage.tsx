@@ -928,6 +928,17 @@ export default function CampaignDetailPage() {
               />
               <p className="text-xs text-muted-foreground">Successful calls (qualified, transferred, completed) will be POSTed here automatically.</p>
             </div>
+            <CampaignScheduleEditor
+              value={{
+                schedule_enabled: editForm.schedule_enabled,
+                schedule_days: editForm.schedule_days,
+                schedule_start_time: editForm.schedule_start_time,
+                schedule_end_time: editForm.schedule_end_time,
+                schedule_timezone: editForm.schedule_timezone,
+                schedule_day_overrides: editForm.schedule_day_overrides,
+              }}
+              onChange={(sched) => setEditForm((f: any) => ({ ...f, ...sched }))}
+            />
           </CardContent>
         </Card>
       )}
