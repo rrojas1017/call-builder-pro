@@ -128,18 +128,25 @@ function parseTranscript(raw: string | null): ChatLine[] {
 // ─── CSV Export ──────────────────────────────────────────────────────────────
 
 function exportCSV(calls: Call[], agentMap: Record<string, string>, campaignMap: Record<string, string>) {
-  const headers = ["ID", "Agent", "Campaign", "Direction", "Outcome", "Duration (s)", "Score", "Provider", "Created At"];
-  const rows = calls.map(c => [
-    c.id,
-    agentMap[c.project_id] || "Unknown",
-    c.campaign_id ? (campaignMap[c.campaign_id] || "") : "",
-    c.direction,
-    c.outcome || "",
-    c.duration_seconds ?? "",
-    c.evaluation?.overall_score ?? "",
-    c.voice_provider === "retell" ? "Append" : "Voz",
-    c.created_at,
-  ]);
+  const headers = ["ID", "Agent", "Campaign", "Direction", "Outcome", "Duration (s)", "Score", "Provider", "Created At", "Transcript", "Summary", "Extracted Data"];
+  const rows = calls.map(c => {
+    const summaryStr = c.summary ? (typeof c.summary === "string" ? c.summary : JSON.stringify(c.summary)) : "";
+    const extractedStr = c.extracted_data ? Object.entries(c.extracted_data).map(([k, v]) => `${k}: ${v}`).join("; ") : "";
+    return [
+      c.id,
+      agentMap[c.project_id] || "Unknown",
+      c.campaign_id ? (campaignMap[c.campaign_id] || "") : "",
+      c.direction,
+      c.outcome || "",
+      c.duration_seconds ?? "",
+      c.evaluation?.overall_score ?? "",
+      c.voice_provider === "retell" ? "Append" : "Voz",
+      c.created_at,
+      (c.transcript || "").replace(/"/g, '""'),
+      summaryStr.replace(/"/g, '""'),
+      extractedStr.replace(/"/g, '""'),
+    ];
+  });
   const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
