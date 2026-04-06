@@ -129,6 +129,10 @@ export default function CampaignDetailPage() {
   const [editForm, setEditForm] = useState<any>({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [allAgents, setAllAgents] = useState<any[]>([]);
+  const [editingAgent, setEditingAgent] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [savingAgent, setSavingAgent] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user || !id) return;
