@@ -8,6 +8,7 @@ import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save, Fil
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 import { downloadRecordingMp3 } from "@/lib/recordingDownload";
 import LiveCallMonitor from "@/components/LiveCallMonitor";
+import CampaignScheduleEditor from "@/components/CampaignScheduleEditor";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
