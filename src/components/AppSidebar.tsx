@@ -26,6 +26,7 @@ const iconMap: Record<string, LucideIcon> = {
   "/lists": FileSpreadsheet,
   "/inbound": PhoneIncoming,
   "/calls": Phone,
+  "/reports": BarChart3,
   "/crm": ContactRound,
   "/test": GraduationCap,
   "/settings": Settings,
