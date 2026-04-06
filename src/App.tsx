@@ -84,5 +84,6 @@ const App = () => (
   </QueryClientProvider>
   </AuthProvider>
   </ThemeProvider>
+);
 
 export default App;
