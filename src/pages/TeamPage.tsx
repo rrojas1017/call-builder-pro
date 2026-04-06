@@ -189,6 +189,30 @@ export default function TeamPage() {
           </h1>
           <p className="text-muted-foreground mt-1">Manage your organization's members and roles.</p>
         </div>
+        <div className="flex items-center gap-3">
+          {/* Join Code Badge */}
+          {isAdmin && joinCode && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="font-mono tracking-widest gap-2"
+                  onClick={() => {
+                    navigator.clipboard.writeText(joinCode);
+                    setCodeCopied(true);
+                    setTimeout(() => setCodeCopied(false), 2000);
+                    toast({ title: "Join code copied", description: `Share "${joinCode}" with new users to let them request access.` });
+                  }}
+                >
+                  <Key className="h-3.5 w-3.5" />
+                  {joinCode}
+                  {codeCopied ? <CheckCircle className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Click to copy company join code</TooltipContent>
+            </Tooltip>
+          )}
         {isAdmin && (
           <div className="flex gap-2">
             <Button onClick={() => setCreateUserOpen(true)}>
