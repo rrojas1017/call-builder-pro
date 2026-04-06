@@ -304,6 +304,7 @@ export default function CampaignDetailPage() {
       hipaa_enabled: campaign.hipaa_enabled,
       is_test: campaign.is_test,
       voicemail_message: campaign.voicemail_message || "",
+      webhook_url: campaign.webhook_url || "",
     });
     setIsEditing(true);
   };
