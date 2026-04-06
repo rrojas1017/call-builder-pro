@@ -8,6 +8,7 @@ import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save, Fil
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 import { downloadRecordingMp3 } from "@/lib/recordingDownload";
 import LiveCallMonitor from "@/components/LiveCallMonitor";
+import CampaignScheduleEditor from "@/components/CampaignScheduleEditor";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -343,6 +344,12 @@ export default function CampaignDetailPage() {
       is_test: campaign.is_test,
       voicemail_message: campaign.voicemail_message || "",
       webhook_url: campaign.webhook_url || "",
+      schedule_enabled: campaign.schedule_enabled || false,
+      schedule_days: campaign.schedule_days || ["mon", "tue", "wed", "thu", "fri"],
+      schedule_start_time: campaign.schedule_start_time || "09:00",
+      schedule_end_time: campaign.schedule_end_time || "17:00",
+      schedule_timezone: campaign.schedule_timezone || "America/New_York",
+      schedule_day_overrides: campaign.schedule_day_overrides || {},
     });
     setIsEditing(true);
   };
@@ -362,6 +369,12 @@ export default function CampaignDetailPage() {
           is_test: editForm.is_test,
           voicemail_message: editForm.voicemail_message || null,
           webhook_url: editForm.webhook_url || null,
+          schedule_enabled: editForm.schedule_enabled,
+          schedule_days: editForm.schedule_days,
+          schedule_start_time: editForm.schedule_start_time,
+          schedule_end_time: editForm.schedule_end_time,
+          schedule_timezone: editForm.schedule_timezone,
+          schedule_day_overrides: editForm.schedule_day_overrides,
         } as any)
         .eq("id", id);
       if (error) throw error;
@@ -916,6 +929,17 @@ export default function CampaignDetailPage() {
               />
               <p className="text-xs text-muted-foreground">Successful calls (qualified, transferred, completed) will be POSTed here automatically.</p>
             </div>
+            <CampaignScheduleEditor
+              value={{
+                schedule_enabled: editForm.schedule_enabled,
+                schedule_days: editForm.schedule_days,
+                schedule_start_time: editForm.schedule_start_time,
+                schedule_end_time: editForm.schedule_end_time,
+                schedule_timezone: editForm.schedule_timezone,
+                schedule_day_overrides: editForm.schedule_day_overrides,
+              }}
+              onChange={(sched) => setEditForm((f: any) => ({ ...f, ...sched }))}
+            />
           </CardContent>
         </Card>
       )}

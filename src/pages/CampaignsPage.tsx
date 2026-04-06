@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "react-router-dom";
 import AgentProfileCard from "@/components/AgentProfileCard";
+import CampaignScheduleEditor, { defaultSchedule } from "@/components/CampaignScheduleEditor";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -72,6 +73,7 @@ export default function CampaignsPage() {
   const [voicemailMessage, setVoicemailMessage] = useState("");
   const [generatingVoicemail, setGeneratingVoicemail] = useState(false);
   const [isTest, setIsTest] = useState(false);
+  const [schedule, setSchedule] = useState(defaultSchedule);
 
   const load = async () => {
     const [campRes, agentRes, listRes] = await Promise.all([
@@ -113,6 +115,12 @@ export default function CampaignsPage() {
           hipaa_enabled: hipaaEnabled,
           is_test: isTest,
           voicemail_message: voicemailEnabled ? voicemailMessage || null : null,
+          schedule_enabled: schedule.schedule_enabled,
+          schedule_days: schedule.schedule_days,
+          schedule_start_time: schedule.schedule_start_time,
+          schedule_end_time: schedule.schedule_end_time,
+          schedule_timezone: schedule.schedule_timezone,
+          schedule_day_overrides: schedule.schedule_day_overrides,
         } as any)
         .select()
         .single();
@@ -216,6 +224,7 @@ export default function CampaignsPage() {
       setIsTest(false);
       setVoicemailEnabled(false);
       setVoicemailMessage("");
+      setSchedule(defaultSchedule);
       setShowCreate(false);
       load();
     } catch (err: any) {
@@ -465,6 +474,9 @@ export default function CampaignsPage() {
                 <p className="text-xs text-muted-foreground">Keep it under 30 seconds when spoken aloud (~60 words).</p>
               </div>
             )}
+
+
+            <CampaignScheduleEditor value={schedule} onChange={setSchedule} />
 
             <div className="space-y-2">
               <Label>Select Lists</Label>
