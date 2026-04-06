@@ -475,6 +475,9 @@ export default function CampaignsPage() {
               </div>
             )}
 
+
+            <CampaignScheduleEditor value={schedule} onChange={setSchedule} />
+
             <div className="space-y-2">
               <Label>Select Lists</Label>
               {dialLists.length === 0 ? (
