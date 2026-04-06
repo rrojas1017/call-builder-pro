@@ -60,37 +60,28 @@ export default function TeamPage() {
     if (!user || !activeOrgId) return;
 
     // Get all profiles in the org
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name, org_id")
-      .eq("org_id", activeOrgId);
-
-    // Get roles for those users
-    const { data: roles } = await supabase
-      .from("user_roles")
-      .select("user_id, role");
+    const [profilesRes, rolesRes, invsRes, orgRes, joinReqRes] = await Promise.all([
+      supabase.from("profiles").select("id, full_name, org_id").eq("org_id", activeOrgId),
+      supabase.from("user_roles").select("user_id, role"),
+      supabase.from("org_invitations").select("*").eq("org_id", activeOrgId).eq("status", "pending").order("created_at", { ascending: false }),
+      supabase.from("organizations").select("join_code").eq("id", activeOrgId).single(),
+      supabase.from("join_requests").select("*").eq("org_id", activeOrgId).eq("status", "pending").order("created_at", { ascending: false }),
+    ]);
 
     const roleMap: Record<string, string> = {};
-    (roles || []).forEach((r: any) => {
+    (rolesRes.data || []).forEach((r: any) => {
       roleMap[r.user_id] = r.role;
     });
 
-    const teamMembers = (profiles || []).map((p: any) => ({
+    const teamMembers = (profilesRes.data || []).map((p: any) => ({
       ...p,
       role: roleMap[p.id] || "viewer",
     }));
 
     setMembers(teamMembers);
-
-    // Load invitations
-    const { data: invs } = await supabase
-      .from("org_invitations")
-      .select("*")
-      .eq("org_id", activeOrgId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
-
-    setInvitations((invs || []) as Invitation[]);
+    setInvitations((invsRes.data || []) as Invitation[]);
+    setJoinCode((orgRes.data as any)?.join_code ?? null);
+    setJoinRequests((joinReqRes.data || []) as JoinRequest[]);
     setLoading(false);
   };
 
