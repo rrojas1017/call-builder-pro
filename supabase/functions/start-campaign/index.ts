@@ -197,6 +197,39 @@ serve(async (req) => {
       console.warn("No llm_id found on Retell agent – cannot inject task prompt");
     }
 
+    // ===== PRE-FLIGHT: Determine fromNumber and bind agent to it =====
+    const { data: trustedNumbers } = await supabase
+      .from("outbound_numbers").select("id, phone_number")
+      .eq("org_id", campaign.agent_projects.org_id).eq("status", "trusted")
+      .order("last_used_at", { ascending: true, nullsFirst: true });
+
+    let fromNumber = spec.from_number || null;
+    if (!fromNumber && trustedNumbers && trustedNumbers.length > 0) {
+      fromNumber = trustedNumbers[0].phone_number;
+    }
+
+    if (!fromNumber) {
+      return new Response(JSON.stringify({
+        error: "No outbound number available. Please add a trusted phone number in Settings > Phone Numbers, or set a From Number on your agent.",
+      }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Bind the Retell agent to the outbound phone number
+    console.log(`[start-campaign] Binding agent ${retellAgentId} to outbound number ${fromNumber}`);
+    const bindRes = await fetch(`https://api.retellai.com/update-phone-number/${fromNumber}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${RETELL_API_KEY}` },
+      body: JSON.stringify({ outbound_agent_id: retellAgentId }),
+    });
+    if (!bindRes.ok) {
+      const bindErr = await bindRes.text();
+      console.error(`[start-campaign] Failed to bind agent to number: ${bindErr}`);
+      return new Response(JSON.stringify({
+        error: `Failed to bind agent to outbound number ${fromNumber}. Retell said: ${bindErr}`,
+      }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    console.log(`[start-campaign] Successfully bound agent to ${fromNumber}`);
+
     // Set campaign to running
     await supabase.from("campaigns").update({ status: "running" }).eq("id", campaign_id);
     console.log(`[start-campaign] Campaign ${campaign_id} set to running`);
