@@ -346,6 +346,81 @@ export default function TeamPage() {
           </div>
         </div>
       )}
+
+      {/* Join Requests */}
+      {isAdmin && joinRequests.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold text-foreground">Pending Join Requests</h2>
+          <div className="surface-elevated rounded-xl overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Requested</TableHead>
+                  <TableHead className="w-[160px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {joinRequests.map((jr) => (
+                  <TableRow key={jr.id}>
+                    <TableCell className="font-medium">{jr.user_full_name || "—"}</TableCell>
+                    <TableCell>{jr.user_email}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {new Date(jr.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={async () => {
+                            const { data, error } = await supabase.rpc("approve_join_request", {
+                              request_id: jr.id,
+                              approved: true,
+                            });
+                            if (error) {
+                              toast({ title: "Error", description: error.message, variant: "destructive" });
+                            } else {
+                              const r = data as any;
+                              if (r?.error) {
+                                toast({ title: "Error", description: r.error, variant: "destructive" });
+                              } else {
+                                toast({ title: "User approved", description: `${jr.user_email} has been added to the team.` });
+                                loadTeam();
+                              }
+                            }
+                          }}
+                        >
+                          <CheckCircle className="mr-1 h-3.5 w-3.5" /> Approve
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            const { data, error } = await supabase.rpc("approve_join_request", {
+                              request_id: jr.id,
+                              approved: false,
+                            });
+                            if (error) {
+                              toast({ title: "Error", description: error.message, variant: "destructive" });
+                            } else {
+                              toast({ title: "Request denied" });
+                              loadTeam();
+                            }
+                          }}
+                        >
+                          <XCircle className="mr-1 h-3.5 w-3.5" /> Deny
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
