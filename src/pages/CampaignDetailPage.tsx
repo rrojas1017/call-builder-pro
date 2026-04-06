@@ -368,6 +368,12 @@ export default function CampaignDetailPage() {
           is_test: editForm.is_test,
           voicemail_message: editForm.voicemail_message || null,
           webhook_url: editForm.webhook_url || null,
+          schedule_enabled: editForm.schedule_enabled,
+          schedule_days: editForm.schedule_days,
+          schedule_start_time: editForm.schedule_start_time,
+          schedule_end_time: editForm.schedule_end_time,
+          schedule_timezone: editForm.schedule_timezone,
+          schedule_day_overrides: editForm.schedule_day_overrides,
         } as any)
         .eq("id", id);
       if (error) throw error;
