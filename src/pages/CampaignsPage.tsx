@@ -73,6 +73,7 @@ export default function CampaignsPage() {
   const [voicemailMessage, setVoicemailMessage] = useState("");
   const [generatingVoicemail, setGeneratingVoicemail] = useState(false);
   const [isTest, setIsTest] = useState(false);
+  const [schedule, setSchedule] = useState(defaultSchedule);
 
   const load = async () => {
     const [campRes, agentRes, listRes] = await Promise.all([
