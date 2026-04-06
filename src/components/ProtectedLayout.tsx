@@ -64,7 +64,26 @@ export default function ProtectedLayout() {
 
   return (
     <OrgProvider>
-      <LayoutInner />
+      <OrgGate />
     </OrgProvider>
   );
+}
+
+function OrgGate() {
+  const { activeOrgId, loading } = useOrgContext();
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // If user has no org, they are pending approval
+  if (!activeOrgId) {
+    return <Navigate to="/pending" replace />;
+  }
+
+  return <LayoutInner />;
 }
