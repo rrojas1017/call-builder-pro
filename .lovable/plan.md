@@ -1,27 +1,22 @@
 
 
-# Fix: Bind Retell Agent to Outbound Phone Number Before Batch Dialing
+# Add Agent Reassignment on Campaign Detail Page
 
-## Problem
-Retell's batch call API requires the `from_number` to have an `outbound_agent_id` configured on the phone number itself. Currently, `start-campaign` syncs the agent prompt and settings but never links the agent to the outbound phone number, causing every batch call to fail with "No outbound agent id set up for phone number."
+## What's happening now
+- When creating a campaign, there's already an agent selector dropdown — that part works.
+- On the campaign detail page, the assigned agent shows as a read-only badge (line 516-519).
+- There's no way to change the agent after the campaign is created.
 
-## Solution
-Add a pre-flight step in `start-campaign` that binds the Retell agent to the selected outbound phone number via Retell's `update-phone-number` API before setting the campaign to running.
+## What we'll build
+Add an editable agent selector on the campaign detail page, similar to how concurrency is already editable (click to edit, save button).
 
 ## Changes
 
-**File: `supabase/functions/start-campaign/index.ts`**
+**File: `src/pages/CampaignDetailPage.tsx`**
 
-After the existing agent sync block (around where it syncs voice/speed/etc.) and before setting campaign to "running", add:
+1. Fetch the list of available agents (`agent_projects`) alongside the existing data load, so we have options to pick from.
+2. Replace the read-only agent badge (line 516-519) with a click-to-edit pattern: clicking the agent name opens a `Select` dropdown inline, with a save button — matching the existing concurrency edit UX.
+3. On save, update `campaigns.project_id` and `campaigns.agent_project_id` to the new agent ID, then refresh state.
 
-1. Determine the `fromNumber` using the same logic as `tick-campaign` (check `spec.from_number`, then fall back to trusted outbound numbers).
-2. Call Retell's `PATCH /update-phone-number/{phone_number}` with `{ outbound_agent_id: retellAgentId }` to bind the agent to that number.
-3. Log success/failure. If the binding fails, return a clear error to the user instead of proceeding.
-
-This is a single addition (~15 lines) to `start-campaign/index.ts`. No other files need changes.
-
-## Technical Detail
-- Retell API endpoint: `PATCH https://api.retellai.com/update-phone-number/{phone_number}` with body `{ "outbound_agent_id": "<agent_id>" }`
-- The phone number ID in Retell's API is the E.164 number itself (e.g., `+17864340190`)
-- This must happen before `tick-campaign` is invoked, so the batch call succeeds on first tick
+This is a small UI addition (~30 lines) confined to the campaign detail page header area.
 
