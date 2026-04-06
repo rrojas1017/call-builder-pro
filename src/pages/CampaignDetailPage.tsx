@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save, FileText, Phone, ExternalLink, AlertTriangle, Lightbulb, BookOpen, ShieldCheck, RotateCcw, Pencil, Download } from "lucide-react";
+import { Loader2, ArrowLeft, Play, Pause, RefreshCw, Trash2, PhoneOff, Save, FileText, Phone, ExternalLink, AlertTriangle, Lightbulb, BookOpen, ShieldCheck, RotateCcw, Pencil, Download, ChevronDown, Filter } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 import { downloadRecordingMp3 } from "@/lib/recordingDownload";
 import LiveCallMonitor from "@/components/LiveCallMonitor";
 import { Switch } from "@/components/ui/switch";
@@ -303,6 +304,7 @@ export default function CampaignDetailPage() {
       hipaa_enabled: campaign.hipaa_enabled,
       is_test: campaign.is_test,
       voicemail_message: campaign.voicemail_message || "",
+      webhook_url: campaign.webhook_url || "",
     });
     setIsEditing(true);
   };
@@ -321,7 +323,8 @@ export default function CampaignDetailPage() {
           hipaa_enabled: editForm.hipaa_enabled,
           is_test: editForm.is_test,
           voicemail_message: editForm.voicemail_message || null,
-        })
+          webhook_url: editForm.webhook_url || null,
+        } as any)
         .eq("id", id);
       if (error) throw error;
       setCampaign((prev: any) => ({ ...prev, ...editForm, voicemail_message: editForm.voicemail_message || null }));
@@ -386,6 +389,60 @@ export default function CampaignDetailPage() {
   };
 
   const liveCalls = contacts.filter((c) => c.status === "calling");
+
+  const exportContacts = (filter: string, outcomes?: string[], listId?: string) => {
+    let filtered = contacts;
+    if (filter === "successful") {
+      filtered = contacts.filter((c) => {
+        const call = calls.find((cl: any) => cl.contact_id === c.id);
+        const o = resolveOutcome(c, call);
+        return ["qualified", "transfer_completed", "completed"].includes(o || "");
+      });
+    } else if (filter === "outcome" && outcomes?.length) {
+      filtered = contacts.filter((c) => {
+        const call = calls.find((cl: any) => cl.contact_id === c.id);
+        const o = resolveOutcome(c, call);
+        return outcomes.includes(o || "");
+      });
+    } else if (filter === "list" && listId) {
+      filtered = contacts.filter((c) => c.list_id === listId);
+    }
+
+    // Collect all extracted_data keys dynamically
+    const allExtractedKeys = new Set<string>();
+    filtered.forEach((c) => {
+      const call = calls.find((cl: any) => cl.contact_id === c.id);
+      if (call?.extracted_data && typeof call.extracted_data === "object") {
+        Object.keys(call.extracted_data).forEach((k) => allExtractedKeys.add(k));
+      }
+    });
+    const extractedKeysArr = Array.from(allExtractedKeys);
+
+    const headers = ["Contact Name", "Phone", "Status", "Outcome", "Duration (s)", "Transcript", "Score", "Recording URL", "Called At", ...extractedKeysArr];
+    const rows = filtered.map((c: any) => {
+      const call = calls.find((cl: any) => cl.contact_id === c.id);
+      const outcome = resolveOutcome(c, call);
+      const extractedVals = extractedKeysArr.map((k) => {
+        const v = call?.extracted_data?.[k];
+        return v != null ? String(v).replace(/"/g, '""') : "";
+      });
+      return [
+        c.name, c.phone, c.status, outcome || "", call?.duration_seconds ?? "",
+        (call?.transcript || "").replace(/"/g, '""'),
+        call?.evaluation?.overall_score ?? "", call?.recording_url || "", c.called_at || "",
+        ...extractedVals,
+      ];
+    });
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${campaign.short_id || "campaign"}-${filter}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: `Exported ${filtered.length} contacts` });
+  };
 
   const handleStopAll = async () => {
     for (const c of liveCalls) {
@@ -609,30 +666,49 @@ export default function CampaignDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 bg-card/80 backdrop-blur-sm rounded-full px-2 py-1.5 border border-border/50">
-            <Button size="sm" variant="ghost" onClick={() => {
-              // Export all conversations as CSV
-              const headers = ["Contact Name", "Phone", "Status", "Outcome", "Duration (s)", "Transcript", "Extracted Data", "Score", "Recording URL", "Called At"];
-              const rows = contacts.map((c: any) => {
-                const call = calls.find((cl: any) => cl.contact_id === c.id);
-                const outcome = resolveOutcome(c, call);
-                const extractedStr = call?.extracted_data ? Object.entries(call.extracted_data).map(([k, v]) => `${k}: ${v}`).join("; ") : "";
-                return [
-                  c.name, c.phone, c.status, outcome || "", call?.duration_seconds ?? "",
-                  (call?.transcript || "").replace(/"/g, '""'), extractedStr.replace(/"/g, '""'),
-                  call?.evaluation?.overall_score ?? "", call?.recording_url || "", c.called_at || "",
-                ];
-              });
-              const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
-              const blob = new Blob([csv], { type: "text/csv" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `${campaign.short_id || "campaign"}-conversations-${new Date().toISOString().slice(0, 10)}.csv`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }} className="rounded-full h-8">
-              <Download className="h-4 w-4 mr-1" /> Export
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="ghost" className="rounded-full h-8">
+                  <Download className="h-4 w-4 mr-1" /> Export <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => exportContacts("all")}>
+                  <Download className="h-4 w-4 mr-2" /> All Contacts
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportContacts("successful")}>
+                  <CheckCircle className="h-4 w-4 mr-2" /> Successful Only
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Filter className="h-4 w-4 mr-2" /> By Outcome
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {["qualified", "disqualified", "completed", "voicemail", "no_answer", "busy", "dnc", "disconnected", "failed", "call_me_later"].map((o) => (
+                      <DropdownMenuItem key={o} onClick={() => exportContacts("outcome", [o])}>
+                        {o.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                {lists.length > 1 && (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <FileText className="h-4 w-4 mr-2" /> By List
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      {lists.map((l: any) => (
+                        <DropdownMenuItem key={l.id} onClick={() => exportContacts("list", [], l.id)}>
+                          {l.short_id && <span className="font-mono text-xs mr-1">{l.short_id}</span>}
+                          {l.name}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button size="sm" variant="ghost" onClick={fetchData} className="rounded-full h-8">
               <RefreshCw className="h-4 w-4 mr-1" /> Refresh
             </Button>
@@ -781,6 +857,16 @@ export default function CampaignDetailPage() {
                 placeholder="Leave empty to disable voicemail"
                 rows={3}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>CRM Webhook URL</Label>
+              <Input
+                value={editForm.webhook_url}
+                onChange={(e) => setEditForm((f: any) => ({ ...f, webhook_url: e.target.value }))}
+                placeholder="https://hooks.zapier.com/... or any webhook endpoint"
+                type="url"
+              />
+              <p className="text-xs text-muted-foreground">Successful calls (qualified, transferred, completed) will be POSTed here automatically.</p>
             </div>
           </CardContent>
         </Card>
