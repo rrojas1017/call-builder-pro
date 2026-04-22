@@ -26,6 +26,7 @@ import {
   Sparkles,
   Sun,
   Moon,
+  Check,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import appendifyLogo from "@/assets/appendify-logo.png";
