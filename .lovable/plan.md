@@ -1,53 +1,72 @@
 
 
-# Auth System Health Check + Two Fixes
+# Competitive Pricing Recommendation
 
-## Status: Working (with 2 risks)
+## Your cost basis (verified)
+- Wholesale (Retell + telephony + LLM): **$0.153/min**
+- Currently charging: **$0.153/min** → **$0 margin**
 
-The signup/login pipeline is **functional and reliable** today:
+## What competitors charge (retail per minute)
 
-- **8 users**, **8 profiles**, **8 roles** — perfect 1:1:1 ratio (no orphans, no duplicates, no missing roles)
-- All accounts have an `org_id` assigned and a role (`super_admin`, `admin`, or `viewer`)
-- The `on_auth_user_created` trigger on `auth.users` is installed and enabled — it correctly runs `handle_new_user()` on every signup
-- Recent login for `rrojas@vixicom.com` succeeded (auth log shows `login` + `token_revoked` events at 14:41 UTC, status 200)
-- Email/password, Google OAuth, invitation acceptance, and join-code flows are all wired
+| Platform | Retail $/min | Notes |
+|---|---|---|
+| Retell AI (direct) | $0.07–$0.10 | Their published wholesale-style rate |
+| Vapi AI | $0.14–$0.18 | Modular fees stack up |
+| Twilio Voice (DIY) | $0.14 | Requires dev work |
+| Bland AI | $0.09–$0.12 | Volume tiers |
+| Synthflow | $0.13–$0.20 | No-code tier |
+| Air AI / Euphonia | $0.35–$0.65 | Premium / managed |
+| Human BPO agent | $0.40–$1.50 | The real comparison for your buyers |
 
-## Risks found (would cause real failures)
+Most no-code / managed platforms (your category) sit at **$0.20–$0.35/min**. Anything below $0.15 is bare wholesale; anything above $0.40 is premium-managed.
 
-### Risk 1 — Signup confirmation message is misleading
-`AuthPage.tsx` line 74 tells users: *"Check your email — we sent you a confirmation link."*
+## Recommended pricing model for Appendify
 
-But Lovable Cloud auth has email auto-confirm enabled by default, so **no email is sent**. The user sees this message, waits forever, and never tries to log in. This explains a class of "I signed up but can't get in" reports.
+Three-tier pricing with a configurable per-org multiplier on wholesale cost:
 
-**Fix:** Change the toast to *"Account created — you can sign in now."* and optionally auto-sign-in after signup.
+### Tier 1 — Starter (self-serve)
+- **$0.25/min** (~63% gross margin)
+- Default for new signups
+- Includes: standard agents, 1 campaign, basic analytics
+- Positioning: "Half the cost of a human agent"
 
-### Risk 2 — Logged-in but unconfirmed users get stuck on `/auth`
-After successful login, `AuthPage` calls `navigate("/dashboard")`, but if the user has no org (pending join request), `ProtectedLayout`'s `OrgGate` redirects them to `/pending`. This works, but creates a brief flash of the dashboard route. More importantly, if a user signs up **without** a join code, they end up with `org_id = NULL` and `role = viewer`, and the only way to surface that to them is the `/pending` page showing "No Company Assigned" — but they have to manually log in first to see it.
+### Tier 2 — Pro
+- **$0.20/min** (~30% margin) + **$99/month base**
+- For customers doing 2,000+ min/month
+- Includes: HIPAA, multi-agent, priority support
+- Base fee guarantees minimum revenue per account
 
-**Fix:** After signup without a join code, automatically sign them in and route to `/pending` so they see the "No Company Assigned" state immediately instead of being told to check email.
+### Tier 3 — Enterprise / White-label
+- **$0.15/min** (~negative without base) + **$499–$2,000/month base**
+- Volume + white-label brand
+- Custom SLA, dedicated number pools
 
-### Risk 3 (minor) — Invitation auto-accept on login is fragile
-`AuthPage.tsx` lines 36–54 query `org_invitations` after login. If the user already has an `org_id`, accepting another invitation silently overwrites their org membership. Low likelihood, but worth a guard.
+### Add-ons (pure margin)
+- Voicemail drop: included
+- Phone number: $3/mo (Retell costs $2 → $1 margin)
+- Premium voices (ElevenLabs custom clone): +$0.05/min
+- HIPAA campaign: +$0.02/min on Starter (free on Pro+)
 
-**Fix:** Skip invitation acceptance if the user already has an `org_id`.
+## Why $0.25/min is the right anchor
+- Below Vapi/Synthflow retail → easy "we're cheaper" sales line
+- Above Retell direct → buyers who tried Retell and got stuck come to you for the no-code layer
+- 63% gross margin covers Stripe fees (2.9% + 30¢), failed-call write-offs, support, and infra
+- Round, memorable number for landing page
 
-## Files to change
+## Technical implementation
+Two small changes to make this configurable instead of hardcoded:
 
-- `src/pages/AuthPage.tsx`
-  - Replace "Check your email" toast with a sign-in confirmation
-  - After signup, call `signInWithPassword` automatically and route to `/dashboard` (which will redirect to `/pending` if needed)
-  - Guard invitation acceptance behind a profile org check
+1. **Schema**: add `cost_multiplier numeric default 1.6` and `monthly_base_fee_usd numeric default 0` to `organizations` table.
+2. **`receive-retell-webhook/index.ts`** and **`backfill-call-costs/index.ts`** — multiply `combined_cost` by the org's `cost_multiplier` before deducting from `credits_balance` and writing to `credit_transactions`. Show wholesale cost separately in `extracted_data` for audit.
+3. **`BillingPage.tsx`** — display effective rate ("$0.25/min") to customers, not the raw wholesale.
+4. **Admin UI** (`AdminCompanyDetailPage.tsx`) — let super_admin override `cost_multiplier` per org for enterprise deals.
+5. **Monthly base fee** — new edge function `charge-monthly-base` triggered by pg_cron on the 1st of each month, deducts `monthly_base_fee_usd` from `credits_balance`.
 
-## What I'm NOT changing
-
-- Database trigger, profile creation logic, role assignment, RLS policies — all working correctly
-- Google OAuth flow — working
-- The `handle_new_user` function — already handles all 4 paths (invitation, admin-created, join-code, self-signup) correctly
-- `ProtectedLayout` / `OrgGate` routing logic — working as designed
+## What I'd ship first
+Just step 1 + 2 with `cost_multiplier = 1.6` (→ $0.245/min retail). That instantly turns every minute profitable. Tiers, base fees, and the admin override can come in a follow-up.
 
 ## Expected outcome
-
-- New signups see accurate messaging and land on the correct page immediately
-- No more "I signed up but nothing happened" confusion
-- Existing users with org membership stay protected from accidental invitation overwrites
+- Gross margin goes from 0% → ~38% on day one
+- At current 110 min/month per active org you'd net ~$10/org — small now, but scales linearly
+- Gives you headroom to offer Stripe top-up bonuses ("Top up $250, get $275 in credits") as a growth lever
 
