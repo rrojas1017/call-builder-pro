@@ -1,60 +1,64 @@
 
 
-# Add Pricing Controls to UI
+# Add Public Pricing Section to Landing Page
 
 ## Problem
-The `cost_multiplier` and `monthly_base_fee_usd` columns now exist on `organizations`, but there's no way to view or edit them in the app. Customers can't see their effective rate, and super admins can't override pricing for enterprise deals.
+You're viewing the public marketing site (`/#how-it-works`) and there's **no pricing visible anywhere**. The pricing UI we built earlier lives inside the authenticated app at `/billing` — invisible to prospects who haven't signed up yet.
 
-## Two surfaces to update
+The landing nav only shows: Guarantee · Features · How It Works · FAQ. No "Pricing" link, no pricing cards.
 
-### 1. Customer-facing rate display (`src/pages/BillingPage.tsx`)
-Add a small "Your rate" card next to the balance, showing the effective per-minute price. Read-only for customers.
+## What I'll add
 
-- Fetches `cost_multiplier` and `monthly_base_fee_usd` along with `credits_balance`.
-- Displays:
-  - **Effective rate**: `$0.245/min` (computed as `0.153 × cost_multiplier`)
-  - **Monthly base fee**: only shown if `> 0` (e.g. "$99/mo")
-- One-line explainer: *"Includes telephony, AI voice, and platform — no per-call fees."*
-
-### 2. Super-admin pricing override (`src/pages/AdminCompanyDetailPage.tsx`)
-Add a "Pricing" section to the Org Details card with two editable inputs (super_admin only):
-
-- **Cost Multiplier** — numeric input, default 1.6, shows live preview of effective $/min
-- **Monthly Base Fee (USD)** — numeric input, default 0
-- Save button writes both via a single `update` on `organizations`
-- Visible only when `isSuperAdmin === true` (read from `useOrgContext`)
-- Displays current vs. new effective rate inline so the admin sees the impact before saving
-
-## Layout sketch (admin page)
+### 1. New `#pricing` section on `LandingPage.tsx`
+Three-tier pricing matrix matching the strategy we approved earlier, placed between **Features** and **Smart Transfer callout**:
 
 ```text
-┌─ Org Details ────────────────────────────────┐
-│ Company Name: [______]   Balance: $889.84    │
-│                                              │
-│ ── Pricing (super admin only) ──             │
-│ Multiplier: [1.6 ]  → Effective $0.245/min   │
-│ Monthly base: [0   ] USD                     │
-│ [Save Pricing]                               │
-│                                              │
-│ [Agents] [Campaigns] [Calls]                 │
-└──────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│           Simple, transparent pricing                         │
+│      Pay only for what you use. No hidden fees.               │
+│                                                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
+│  │  STARTER    │  │  PRO ★      │  │ ENTERPRISE  │            │
+│  │             │  │ Most popular│  │             │            │
+│  │  $0.25/min  │  │  $0.20/min  │  │  $0.15/min  │            │
+│  │             │  │ + $99/mo    │  │ + $499+/mo  │            │
+│  │             │  │             │  │             │            │
+│  │ ✓ Standard  │  │ ✓ Everything│  │ ✓ Everything│            │
+│  │ ✓ 1 campaign│  │ ✓ HIPAA     │  │ ✓ White-label│           │
+│  │ ✓ Analytics │  │ ✓ Multi-agt │  │ ✓ Dedicated  │           │
+│  │ ✓ Email sup │  │ ✓ Priority  │  │ ✓ Custom SLA │           │
+│  │             │  │             │  │             │            │
+│  │ [Start free]│  │ [Start free]│  │ [Contact us] │           │
+│  └─────────────┘  └─────────────┘  └─────────────┘            │
+│                                                               │
+│  Compare to: Human BPO agent $0.40–$1.50/min                  │
+└───────────────────────────────────────────────────────────────┘
 ```
 
-## Files to change
+Visual treatment:
+- Three glass-card columns matching existing landing-page style
+- Pro tier highlighted with primary-colored border + "Most popular" badge
+- Each card: tier name, price (large), feature checklist, CTA button
+- Starter / Pro CTAs link to `/auth`; Enterprise links to `mailto:` or `/auth`
+- Subtle "Compare to" footnote anchoring against human-agent cost
 
-- `src/pages/BillingPage.tsx` — add read-only "Your rate" card; extend the org SELECT to include the two new columns
-- `src/pages/AdminCompanyDetailPage.tsx` — add editable pricing section gated by `isSuperAdmin`; extend the org SELECT and add a save handler
+### 2. Add "Pricing" to nav
+- Update `navLinks` array (line 134) → `["Guarantee", "Features", "Pricing", "How It Works", "FAQ"]`
+- Anchor scrolls smoothly to new `#pricing` section
+- Works on both desktop nav and mobile menu (already maps from the same array)
+
+## Files to change
+- `src/pages/LandingPage.tsx` — add pricing section + nav entry
 
 ## What I'm NOT changing
-
-- Database schema (already done)
-- Webhook/billing logic in `receive-retell-webhook` and `backfill-call-costs` (already applies multiplier)
-- The `cost_multiplier` default of 1.6 stays as-is
-- No new tiers, no preset buttons — just raw numeric controls so you can dial in any value per org
+- The in-app `/billing` page (already shows the customer's effective rate correctly)
+- The admin pricing override on `AdminCompanyDetailPage.tsx` (already works)
+- The pricing values themselves (Starter $0.25, Pro $0.20+$99, Enterprise $0.15+$499) — these are the numbers we already approved
+- No new database fields, no new edge functions
 
 ## Expected outcome
-
-- Customers see their per-minute rate on the Billing page
-- Super admins can change a single org's pricing in seconds without a migration or DB tool
-- All existing orgs continue at the 1.6× default until you override them
+- Visitors to `aivoz.app` see a clear pricing matrix before signing up
+- "Pricing" appears in the top nav, scrolls to the new section
+- Mobile nav picks it up automatically (same `navLinks` array)
+- Matches the visual language of existing landing-page sections (glass cards, fade-up motion, primary accent)
 
