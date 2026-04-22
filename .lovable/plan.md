@@ -1,49 +1,53 @@
 
 
-# Fix Campaign Stalling: Stale Call Recovery + Independent Tick Loop
+# Auth System Health Check + Two Fixes
 
-## Problem
-The campaign ticker only fires when a webhook comes back from a completed call. If Retell fails to send a webhook for even one call, the entire campaign stalls permanently. Right now, contact `+18632470817` has been stuck in "calling" for 1.5+ hours, blocking all 358 remaining contacts.
+## Status: Working (with 2 risks)
 
-## Two fixes needed
+The signup/login pipeline is **functional and reliable** today:
 
-### 1. Stale call timeout in `tick-campaign`
-Before checking available slots, scan for contacts stuck in "calling" for more than 10 minutes and mark them as `no_answer` (or a new `timeout` status). This frees the concurrency slot automatically.
+- **8 users**, **8 profiles**, **8 roles** — perfect 1:1:1 ratio (no orphans, no duplicates, no missing roles)
+- All accounts have an `org_id` assigned and a role (`super_admin`, `admin`, or `viewer`)
+- The `on_auth_user_created` trigger on `auth.users` is installed and enabled — it correctly runs `handle_new_user()` on every signup
+- Recent login for `rrojas@vixicom.com` succeeded (auth log shows `login` + `token_revoked` events at 14:41 UTC, status 200)
+- Email/password, Google OAuth, invitation acceptance, and join-code flows are all wired
 
-**File: `supabase/functions/tick-campaign/index.ts`**
-- After fetching the campaign and before counting active calls, add a query:
-  ```sql
-  UPDATE contacts SET status = 'no_answer', outcome = 'timeout'
-  WHERE campaign_id = ? AND status = 'calling'
-  AND called_at < now() - interval '10 minutes'
-  ```
-- Log how many stale contacts were recovered
-- This ensures even if a webhook is lost, the campaign self-heals on the next tick
+## Risks found (would cause real failures)
 
-### 2. Self-sustaining tick loop via `setInterval` in `start-campaign`
-Instead of relying solely on webhook-driven ticks, add a polling mechanism so the campaign keeps ticking independently.
+### Risk 1 — Signup confirmation message is misleading
+`AuthPage.tsx` line 74 tells users: *"Check your email — we sent you a confirmation link."*
 
-**File: `supabase/functions/start-campaign/index.ts`**
-- After the initial tick, fire a background polling loop: invoke `tick-campaign` every 30 seconds for the duration of the campaign
-- Use a simple approach: after `start-campaign` does its initial tick, schedule a Supabase `pg_cron` job or use a client-side polling approach
+But Lovable Cloud auth has email auto-confirm enabled by default, so **no email is sent**. The user sees this message, waits forever, and never tries to log in. This explains a class of "I signed up but can't get in" reports.
 
-**Better approach — client-side polling (simpler, no pg_cron needed):**
+**Fix:** Change the toast to *"Account created — you can sign in now."* and optionally auto-sign-in after signup.
 
-**File: `src/pages/CampaignDetailPage.tsx`**
-- When the campaign status is "running", set up a 30-second interval that calls `tick-campaign` via the edge function
-- This already partially exists (the page polls for contact status every 5 seconds) — add a tick invocation every 30 seconds alongside it
-- Stop the interval when campaign is paused/completed
+### Risk 2 — Logged-in but unconfirmed users get stuck on `/auth`
+After successful login, `AuthPage` calls `navigate("/dashboard")`, but if the user has no org (pending join request), `ProtectedLayout`'s `OrgGate` redirects them to `/pending`. This works, but creates a brief flash of the dashboard route. More importantly, if a user signs up **without** a join code, they end up with `org_id = NULL` and `role = viewer`, and the only way to surface that to them is the `/pending` page showing "No Company Assigned" — but they have to manually log in first to see it.
 
-### 3. Immediate fix for current stall
-- The stale-call timeout in the updated `tick-campaign` will automatically recover the stuck contact on the next invocation
-- The client-side polling will ensure that invocation happens within 30 seconds of deploying
+**Fix:** After signup without a join code, automatically sign them in and route to `/pending` so they see the "No Company Assigned" state immediately instead of being told to check email.
+
+### Risk 3 (minor) — Invitation auto-accept on login is fragile
+`AuthPage.tsx` lines 36–54 query `org_invitations` after login. If the user already has an `org_id`, accepting another invitation silently overwrites their org membership. Low likelihood, but worth a guard.
+
+**Fix:** Skip invitation acceptance if the user already has an `org_id`.
 
 ## Files to change
-- `supabase/functions/tick-campaign/index.ts` — add stale call recovery (10-min timeout)
-- `src/pages/CampaignDetailPage.tsx` — add 30-second tick polling for running campaigns
+
+- `src/pages/AuthPage.tsx`
+  - Replace "Check your email" toast with a sign-in confirmation
+  - After signup, call `signInWithPassword` automatically and route to `/dashboard` (which will redirect to `/pending` if needed)
+  - Guard invitation acceptance behind a profile org check
+
+## What I'm NOT changing
+
+- Database trigger, profile creation logic, role assignment, RLS policies — all working correctly
+- Google OAuth flow — working
+- The `handle_new_user` function — already handles all 4 paths (invitation, admin-created, join-code, self-signup) correctly
+- `ProtectedLayout` / `OrgGate` routing logic — working as designed
 
 ## Expected outcome
-- Campaigns never permanently stall from a missed webhook
-- Stuck "calling" contacts auto-recover after 10 minutes
-- The current campaign (CMP-0004) will resume dialing within 30 seconds of deployment
+
+- New signups see accurate messaging and land on the correct page immediately
+- No more "I signed up but nothing happened" confusion
+- Existing users with org membership stay protected from accidental invitation overwrites
 
