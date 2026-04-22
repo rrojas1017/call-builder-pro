@@ -123,7 +123,7 @@ serve(async (req) => {
               agent_name: spec.persona_name || "Appendify Agent",
               voice_id: spec.voice_id || undefined,
               language: spec.language || "en",
-              general_prompt: agentInstructionsText || spec.opening_line || undefined,
+              general_prompt: (buildTaskPrompt(spec, [], knowledgeBriefing, "") || testRun.agent_instructions_text || "Conduct a professional outbound call.").substring(0, 28000),
               opening_line: spec.opening_line || undefined,
               temperature: spec.temperature ?? undefined,
               speaking_speed: spec.speaking_speed ?? undefined,
