@@ -112,50 +112,52 @@ serve(async (req) => {
 
     let retellAgentId = spec?.retell_agent_id;
 
-    // Auto-provision if retell_agent_id is missing
+    // Auto-provision if retell_agent_id is missing — call Retell API directly
+    // (cannot invoke manage-retell-agent here because it requires a user JWT)
     if (!retellAgentId && spec) {
-      console.log(`retell_agent_id missing for spec ${spec.id} — auto-provisioning…`);
+      console.log(`retell_agent_id missing for spec ${spec.id} — auto-provisioning directly via Retell API…`);
       try {
-        const provisionRes = await supabase.functions.invoke("manage-retell-agent", {
-          body: {
-            action: "create",
-            config: {
-              agent_name: spec.persona_name || "Appendify Agent",
-              voice_id: spec.voice_id || undefined,
-              language: spec.language || "en",
-              general_prompt: (buildTaskPrompt(spec, [], knowledgeBriefing, "") || testRun.agent_instructions_text || "Conduct a professional outbound call.").substring(0, 28000),
-              opening_line: spec.opening_line || undefined,
-              temperature: spec.temperature ?? undefined,
-              speaking_speed: spec.speaking_speed ?? undefined,
-              interruption_threshold: spec.interruption_threshold ?? undefined,
-              voicemail_message: spec.voicemail_message || undefined,
-              pronunciation_guide: spec.pronunciation_guide || undefined,
-              transfer_required: spec.transfer_required ?? false,
-              transfer_phone_number: spec.transfer_phone_number || undefined,
-              must_collect_fields: spec.must_collect_fields || undefined,
-            },
-          },
+        const wsUrl = supabaseUrl.replace("https://", "wss://").replace("http://", "ws://");
+        // 1. Create LLM
+        const llmRes = await fetch("https://api.retellai.com/create-retell-llm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
+          body: JSON.stringify({
+            llm_websocket_url: `${wsUrl}/functions/v1/retell-llm-ws`,
+            general_prompt: "You are a helpful AI assistant. (Will be updated before the call.)",
+            begin_message: spec.opening_line || "Hello.",
+            general_tools: [{ type: "end_call", name: "end_call", description: "End the call when complete." }],
+          }),
         });
-        if (provisionRes.error) throw new Error(`Provisioning invoke error: ${provisionRes.error.message}`);
-        const provisionData = provisionRes.data as any;
-        if (provisionData?.error) throw new Error(`Provisioning returned error: ${provisionData.error}`);
-        const newAgentId = provisionData?.agent_id;
-        if (newAgentId) {
-          retellAgentId = newAgentId;
-          // Persist to spec so future runs don't re-provision
-          await supabase.from("agent_specs").update({ retell_agent_id: newAgentId }).eq("id", spec.id);
-          console.log(`✅ Auto-provisioned retell agent: ${retellAgentId}`);
-          // Update spec in-memory for the rest of this run
-          spec.retell_agent_id = retellAgentId;
-        } else {
-          throw new Error(provisionData?.error || "No agent_id returned from provisioning");
-        }
+        const llmData = await llmRes.json();
+        if (!llmRes.ok) throw new Error(`LLM create failed: ${llmData.error_message || JSON.stringify(llmData)}`);
+        const newLlmId = llmData.llm_id;
+
+        // 2. Create Agent
+        const agentRes = await fetch("https://api.retellai.com/create-agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${retellApiKey}` },
+          body: JSON.stringify({
+            agent_name: spec.persona_name || "Appendify Agent",
+            voice_id: spec.voice_id || "11labs-Adrian",
+            language: "en-US",
+            response_engine: { type: "retell-llm", llm_id: newLlmId },
+            webhook_url: `${supabaseUrl}/functions/v1/receive-retell-webhook`,
+            is_transfer_agent: false,
+          }),
+        });
+        const agentData = await agentRes.json();
+        if (!agentRes.ok) throw new Error(`Agent create failed: ${agentData.error_message || JSON.stringify(agentData)}`);
+
+        retellAgentId = agentData.agent_id;
+        console.log(`✅ Auto-provisioned retell agent: ${retellAgentId} (llm: ${newLlmId})`);
+        await supabase.from("agent_specs").update({ retell_agent_id: retellAgentId }).eq("id", spec.id);
+        spec.retell_agent_id = retellAgentId;
       } catch (provErr: any) {
         console.error("Auto-provisioning failed:", provErr.message);
         throw new Error(`Agent not provisioned and auto-provisioning failed: ${provErr.message}`);
       }
     }
-
     if (!retellAgentId) throw new Error("retell_agent_id not set on agent spec");
 
     const callIds: string[] = [];
