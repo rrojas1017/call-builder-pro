@@ -58,37 +58,41 @@ serve(async (req) => {
           continue;
         }
 
-        const costUsd = combinedCostCents / 100;
+        const wholesaleUsd = combinedCostCents / 100;
         const durationMin = call.duration_seconds ? (call.duration_seconds / 60).toFixed(1) : "0";
+
+        // Fetch org pricing config + balance
+        const { data: orgData } = await supabase
+          .from("organizations")
+          .select("credits_balance, cost_multiplier")
+          .eq("id", call.org_id)
+          .single();
+
+        const multiplier = Number(orgData?.cost_multiplier) || 1.6;
+        const retailUsd = Number((wholesaleUsd * multiplier).toFixed(4));
 
         // Update call record
         await supabase.from("calls")
-          .update({ cost_estimate_usd: costUsd })
+          .update({ cost_estimate_usd: retailUsd })
           .eq("id", call.id);
 
         // Insert credit transaction
         await supabase.from("credit_transactions").insert({
           org_id: call.org_id,
-          amount: -costUsd,
+          amount: -retailUsd,
           type: "call_charge",
-          description: `[Backfill] Call ${call.retell_call_id} (${durationMin} min) - $${costUsd.toFixed(2)}`,
+          description: `[Backfill] Call ${call.retell_call_id} (${durationMin} min) - $${retailUsd.toFixed(2)} (wholesale $${wholesaleUsd.toFixed(4)} × ${multiplier})`,
         });
 
         // Deduct from org balance
-        const { data: orgData } = await supabase
-          .from("organizations")
-          .select("credits_balance")
-          .eq("id", call.org_id)
-          .single();
-
         if (orgData) {
           await supabase.from("organizations")
-            .update({ credits_balance: (orgData.credits_balance || 0) - costUsd })
+            .update({ credits_balance: (orgData.credits_balance || 0) - retailUsd })
             .eq("id", call.org_id);
         }
 
         updated++;
-        console.log(`[backfill] Updated call ${call.retell_call_id}: $${costUsd.toFixed(2)}`);
+        console.log(`[backfill] Updated call ${call.retell_call_id}: retail=$${retailUsd.toFixed(4)} wholesale=$${wholesaleUsd.toFixed(4)} mult=${multiplier}`);
       } catch (e) {
         console.error(`[backfill] Error processing ${call.retell_call_id}:`, e);
         errors++;

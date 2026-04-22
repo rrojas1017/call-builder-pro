@@ -1114,28 +1114,34 @@ export type Database = {
       }
       organizations: {
         Row: {
+          cost_multiplier: number
           created_at: string
           credits_balance: number
           id: string
           join_code: string
+          monthly_base_fee_usd: number
           name: string
           stripe_customer_id: string | null
           webhook_url: string | null
         }
         Insert: {
+          cost_multiplier?: number
           created_at?: string
           credits_balance?: number
           id?: string
           join_code?: string
+          monthly_base_fee_usd?: number
           name: string
           stripe_customer_id?: string | null
           webhook_url?: string | null
         }
         Update: {
+          cost_multiplier?: number
           created_at?: string
           credits_balance?: number
           id?: string
           join_code?: string
+          monthly_base_fee_usd?: number
           name?: string
           stripe_customer_id?: string | null
           webhook_url?: string | null

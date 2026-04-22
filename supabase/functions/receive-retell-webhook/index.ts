@@ -167,32 +167,37 @@ async function trackCallCost(supabase: any, orgId: string, retellCallId: string,
     const combinedCostCents = costData?.call_cost?.combined_cost;
     if (combinedCostCents == null || combinedCostCents <= 0) return;
 
-    const costUsd = combinedCostCents / 100;
+    const wholesaleUsd = combinedCostCents / 100;
     const durationMin = duration ? (duration / 60).toFixed(1) : "0";
 
+    // Fetch org pricing config (multiplier applied to wholesale cost)
+    const { data: orgData } = await supabase
+      .from("organizations")
+      .select("credits_balance, cost_multiplier")
+      .eq("id", orgId)
+      .single();
+
+    const multiplier = Number(orgData?.cost_multiplier) || 1.6;
+    const retailUsd = Number((wholesaleUsd * multiplier).toFixed(4));
+
     await supabase.from("calls")
-      .update({ cost_estimate_usd: costUsd })
+      .update({ cost_estimate_usd: retailUsd })
       .eq("retell_call_id", retellCallId);
 
     await supabase.from("credit_transactions").insert({
       org_id: orgId,
-      amount: -costUsd,
+      amount: -retailUsd,
       type: "call_charge",
-      description: `Call to ${phoneLabel} (${durationMin} min) - $${costUsd.toFixed(2)}`,
+      description: `Call to ${phoneLabel} (${durationMin} min) - $${retailUsd.toFixed(2)} (wholesale $${wholesaleUsd.toFixed(4)} × ${multiplier})`,
     });
 
-    const { data: orgData } = await supabase
-      .from("organizations")
-      .select("credits_balance")
-      .eq("id", orgId)
-      .single();
     if (orgData) {
       await supabase.from("organizations")
-        .update({ credits_balance: (orgData.credits_balance || 0) - costUsd })
+        .update({ credits_balance: (orgData.credits_balance || 0) - retailUsd })
         .eq("id", orgId);
     }
 
-    console.log(`Cost tracked: $${costUsd.toFixed(2)} for call ${retellCallId}`);
+    console.log(`Cost tracked: retail=$${retailUsd.toFixed(4)} wholesale=$${wholesaleUsd.toFixed(4)} mult=${multiplier} for call ${retellCallId}`);
   } catch (costErr) {
     console.error("Error fetching/saving call cost:", costErr);
   }
