@@ -119,17 +119,31 @@ serve(async (req) => {
         const provisionRes = await supabase.functions.invoke("manage-retell-agent", {
           body: {
             action: "create",
-            spec_id: spec.id,
-            project_id: testRun.project_id,
-            voice_id: spec.voice_id || undefined,
-            language: spec.language || "en",
-            agent_name: spec.persona_name || "Appendify Agent",
+            config: {
+              agent_name: spec.persona_name || "Appendify Agent",
+              voice_id: spec.voice_id || undefined,
+              language: spec.language || "en",
+              general_prompt: agentInstructionsText || spec.opening_line || undefined,
+              opening_line: spec.opening_line || undefined,
+              temperature: spec.temperature ?? undefined,
+              speaking_speed: spec.speaking_speed ?? undefined,
+              interruption_threshold: spec.interruption_threshold ?? undefined,
+              voicemail_message: spec.voicemail_message || undefined,
+              pronunciation_guide: spec.pronunciation_guide || undefined,
+              transfer_required: spec.transfer_required ?? false,
+              transfer_phone_number: spec.transfer_phone_number || undefined,
+              must_collect_fields: spec.must_collect_fields || undefined,
+            },
           },
         });
         if (provisionRes.error) throw new Error(`Provisioning invoke error: ${provisionRes.error.message}`);
         const provisionData = provisionRes.data as any;
-        if (provisionData?.agent_id) {
-          retellAgentId = provisionData.agent_id;
+        if (provisionData?.error) throw new Error(`Provisioning returned error: ${provisionData.error}`);
+        const newAgentId = provisionData?.agent_id;
+        if (newAgentId) {
+          retellAgentId = newAgentId;
+          // Persist to spec so future runs don't re-provision
+          await supabase.from("agent_specs").update({ retell_agent_id: newAgentId }).eq("id", spec.id);
           console.log(`✅ Auto-provisioned retell agent: ${retellAgentId}`);
           // Update spec in-memory for the rest of this run
           spec.retell_agent_id = retellAgentId;
