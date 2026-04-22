@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, CreditCard, DollarSign, Plus, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Loader2, CreditCard, DollarSign, Plus, ArrowUpRight, ArrowDownRight, Gauge } from "lucide-react";
 import UsageSummary from "@/components/billing/UsageSummary";
+
+const WHOLESALE_PER_MIN = 0.153;
 
 interface CreditTransaction {
   id: string;
@@ -24,6 +26,8 @@ export default function BillingPage() {
   const { activeOrgId } = useOrgContext();
   const { toast } = useToast();
   const [balance, setBalance] = useState<number>(0);
+  const [costMultiplier, setCostMultiplier] = useState<number>(1.6);
+  const [monthlyBaseFee, setMonthlyBaseFee] = useState<number>(0);
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [topupLoading, setTopupLoading] = useState<number | null>(null);
@@ -34,11 +38,13 @@ export default function BillingPage() {
 
     const { data: org } = await supabase
       .from("organizations")
-      .select("credits_balance")
+      .select("credits_balance, cost_multiplier, monthly_base_fee_usd")
       .eq("id", activeOrgId)
       .single();
 
     setBalance(org?.credits_balance ?? 0);
+    setCostMultiplier(Number(org?.cost_multiplier) || 1.6);
+    setMonthlyBaseFee(Number(org?.monthly_base_fee_usd) || 0);
 
     const { data: txns } = await supabase
       .from("credit_transactions")
@@ -104,19 +110,39 @@ export default function BillingPage() {
         <p className="text-muted-foreground mt-1">Manage your organization's credit balance.</p>
       </div>
 
-      {/* Balance Card */}
-      <div className="surface-elevated rounded-xl p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground uppercase tracking-wide">Current Balance</p>
-            <p className="text-4xl font-bold text-foreground mt-1 flex items-center gap-1">
-              <DollarSign className="h-8 w-8 text-primary" />
-              {balance.toFixed(2)}
-            </p>
+      {/* Balance + Rate Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="surface-elevated rounded-xl p-8">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground uppercase tracking-wide">Current Balance</p>
+              <p className="text-4xl font-bold text-foreground mt-1 flex items-center gap-1">
+                <DollarSign className="h-8 w-8 text-primary" />
+                {balance.toFixed(2)}
+              </p>
+            </div>
+            <Button onClick={() => loadBilling()} variant="outline" size="sm">
+              Refresh
+            </Button>
           </div>
-          <Button onClick={() => loadBilling()} variant="outline" size="sm">
-            Refresh
-          </Button>
+        </div>
+
+        <div className="surface-elevated rounded-xl p-8">
+          <p className="text-sm text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+            <Gauge className="h-4 w-4" /> Your Rate
+          </p>
+          <p className="text-4xl font-bold text-foreground mt-1">
+            ${(WHOLESALE_PER_MIN * costMultiplier).toFixed(3)}
+            <span className="text-base font-normal text-muted-foreground">/min</span>
+          </p>
+          {monthlyBaseFee > 0 && (
+            <p className="text-sm text-foreground mt-2">
+              + <span className="font-semibold">${monthlyBaseFee.toFixed(2)}</span>/month base fee
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground mt-2">
+            Includes telephony, AI voice, and platform — no per-call fees.
+          </p>
         </div>
       </div>
 
