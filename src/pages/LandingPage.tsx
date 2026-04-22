@@ -132,7 +132,58 @@ const metrics = [
   { value: "<1s", label: "Response Latency" },
 ];
 
-const navLinks = ["Guarantee", "Features", "How It Works", "FAQ"];
+const pricingTiers = [
+  {
+    name: "Starter",
+    price: "$0.25",
+    priceUnit: "/min",
+    extra: null,
+    description: "Perfect for trying it out",
+    features: [
+      "Standard AI voice agents",
+      "1 active campaign",
+      "Performance analytics",
+      "Email support",
+    ],
+    cta: "Start Free",
+    ctaHref: "/auth",
+    highlighted: false,
+  },
+  {
+    name: "Pro",
+    price: "$0.20",
+    priceUnit: "/min",
+    extra: "+ $99/mo",
+    description: "For growing teams",
+    features: [
+      "Everything in Starter",
+      "HIPAA-compliant campaigns",
+      "Multi-agent orchestration",
+      "Priority support",
+    ],
+    cta: "Start Free",
+    ctaHref: "/auth",
+    highlighted: true,
+  },
+  {
+    name: "Enterprise",
+    price: "$0.15",
+    priceUnit: "/min",
+    extra: "+ $499+/mo",
+    description: "Custom-built for scale",
+    features: [
+      "Everything in Pro",
+      "White-label branding",
+      "Dedicated number pools",
+      "Custom SLA & onboarding",
+    ],
+    cta: "Contact Us",
+    ctaHref: "mailto:sales@aivoz.app",
+    highlighted: false,
+  },
+];
+
+const navLinks = ["Guarantee", "Features", "Pricing", "How It Works", "FAQ"];
 
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
