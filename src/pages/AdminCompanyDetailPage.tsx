@@ -26,9 +26,17 @@ export default function AdminCompanyDetailPage() {
 
   const [orgName, setOrgName] = useState("");
   const [balance, setBalance] = useState(0);
+  const [costMultiplier, setCostMultiplier] = useState<string>("1.6");
+  const [monthlyBaseFee, setMonthlyBaseFee] = useState<string>("0");
+  const [savedMultiplier, setSavedMultiplier] = useState<number>(1.6);
+  const [savedBaseFee, setSavedBaseFee] = useState<number>(0);
+  const [savingPricing, setSavingPricing] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const WHOLESALE_PER_MIN = 0.153;
+  const isSuperAdmin = useOrgContext().isSuperAdmin;
 
   // Add User dialog
   const [showAddUser, setShowAddUser] = useState(false);
@@ -41,13 +49,19 @@ export default function AdminCompanyDetailPage() {
   const loadMembers = async () => {
     if (!orgId) return;
     const [orgRes, profilesRes, rolesRes] = await Promise.all([
-      supabase.from("organizations").select("name, credits_balance").eq("id", orgId).single(),
+      supabase.from("organizations").select("name, credits_balance, cost_multiplier, monthly_base_fee_usd").eq("id", orgId).single(),
       supabase.from("profiles").select("id, full_name").eq("org_id", orgId),
       supabase.from("user_roles").select("user_id, role"),
     ]);
 
     setOrgName(orgRes.data?.name ?? "");
     setBalance(orgRes.data?.credits_balance ?? 0);
+    const mult = Number(orgRes.data?.cost_multiplier) || 1.6;
+    const base = Number(orgRes.data?.monthly_base_fee_usd) || 0;
+    setCostMultiplier(String(mult));
+    setMonthlyBaseFee(String(base));
+    setSavedMultiplier(mult);
+    setSavedBaseFee(base);
 
     const roleMap: Record<string, string> = {};
     (rolesRes.data ?? []).forEach((r: any) => { roleMap[r.user_id] = r.role; });
@@ -91,6 +105,35 @@ export default function AdminCompanyDetailPage() {
       setMembers((prev) => prev.map((m) => m.id === userId ? { ...m, role: newRole } : m));
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleSavePricing = async () => {
+    if (!orgId) return;
+    const mult = parseFloat(costMultiplier);
+    const base = parseFloat(monthlyBaseFee);
+    if (isNaN(mult) || mult <= 0) {
+      toast({ title: "Invalid multiplier", description: "Must be a positive number", variant: "destructive" });
+      return;
+    }
+    if (isNaN(base) || base < 0) {
+      toast({ title: "Invalid base fee", description: "Must be zero or positive", variant: "destructive" });
+      return;
+    }
+    setSavingPricing(true);
+    try {
+      const { error } = await supabase
+        .from("organizations")
+        .update({ cost_multiplier: mult, monthly_base_fee_usd: base })
+        .eq("id", orgId);
+      if (error) throw error;
+      setSavedMultiplier(mult);
+      setSavedBaseFee(base);
+      toast({ title: "Pricing updated", description: `Effective rate: $${(WHOLESALE_PER_MIN * mult).toFixed(3)}/min` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setSavingPricing(false);
     }
   };
 
@@ -167,6 +210,60 @@ export default function AdminCompanyDetailPage() {
             <p className="text-2xl font-bold font-mono text-foreground">${balance.toFixed(2)}</p>
           </div>
         </div>
+
+        {isSuperAdmin && (
+          <div className="border-t border-border pt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Pricing (Super Admin)</h3>
+              <p className="text-xs text-muted-foreground">
+                Current: <span className="font-mono text-foreground">${(WHOLESALE_PER_MIN * savedMultiplier).toFixed(3)}/min</span>
+                {savedBaseFee > 0 && <span> + ${savedBaseFee.toFixed(2)}/mo</span>}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Cost Multiplier</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={costMultiplier}
+                  onChange={(e) => setCostMultiplier(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Preview: <span className="font-mono text-foreground">
+                    ${(WHOLESALE_PER_MIN * (parseFloat(costMultiplier) || 0)).toFixed(3)}/min
+                  </span>{" "}
+                  (wholesale ${WHOLESALE_PER_MIN.toFixed(3)} × {costMultiplier || "0"})
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Monthly Base Fee (USD)</Label>
+                <Input
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={monthlyBaseFee}
+                  onChange={(e) => setMonthlyBaseFee(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Charged on the 1st of each month (0 = none)
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleSavePricing}
+              disabled={
+                savingPricing ||
+                (parseFloat(costMultiplier) === savedMultiplier && parseFloat(monthlyBaseFee) === savedBaseFee)
+              }
+            >
+              {savingPricing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+              Save Pricing
+            </Button>
+          </div>
+        )}
 
         <div className="flex gap-2 pt-2">
           <Button variant="secondary" size="sm" onClick={() => { switchOrg(orgId!, orgName); navigate("/agents"); }}>
