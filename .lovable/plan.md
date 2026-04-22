@@ -1,64 +1,44 @@
 
 
-# Add Public Pricing Section to Landing Page
+# Fix React forwardRef warning from Badge
 
-## Problem
-You're viewing the public marketing site (`/#how-it-works`) and there's **no pricing visible anywhere**. The pricing UI we built earlier lives inside the authenticated app at `/billing` — invisible to prospects who haven't signed up yet.
+## Root cause
+The console warning "Function components cannot be given refs" originates from `DashboardPage` (not `BillingPage`/`UsageSummary` — the trace was misread). The actual culprit:
 
-The landing nav only shows: Guarantee · Features · How It Works · FAQ. No "Pricing" link, no pricing cards.
+- `<Card>` wraps `<Badge>` inside a React Router `<Link>`.
+- `Link` forwards a ref to its child.
+- `Badge` (`src/components/ui/badge.tsx`) is a **plain function component** with no `forwardRef`, so React warns that the ref will be dropped.
 
-## What I'll add
+The second warning about `CartesianGrid` comes from recharts internals — not our code, can't be fixed without patching the library, and it's harmless.
 
-### 1. New `#pricing` section on `LandingPage.tsx`
-Three-tier pricing matrix matching the strategy we approved earlier, placed between **Features** and **Smart Transfer callout**:
+## The fix (one file)
 
-```text
-┌───────────────────────────────────────────────────────────────┐
-│           Simple, transparent pricing                         │
-│      Pay only for what you use. No hidden fees.               │
-│                                                               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
-│  │  STARTER    │  │  PRO ★      │  │ ENTERPRISE  │            │
-│  │             │  │ Most popular│  │             │            │
-│  │  $0.25/min  │  │  $0.20/min  │  │  $0.15/min  │            │
-│  │             │  │ + $99/mo    │  │ + $499+/mo  │            │
-│  │             │  │             │  │             │            │
-│  │ ✓ Standard  │  │ ✓ Everything│  │ ✓ Everything│            │
-│  │ ✓ 1 campaign│  │ ✓ HIPAA     │  │ ✓ White-label│           │
-│  │ ✓ Analytics │  │ ✓ Multi-agt │  │ ✓ Dedicated  │           │
-│  │ ✓ Email sup │  │ ✓ Priority  │  │ ✓ Custom SLA │           │
-│  │             │  │             │  │             │            │
-│  │ [Start free]│  │ [Start free]│  │ [Contact us] │           │
-│  └─────────────┘  └─────────────┘  └─────────────┘            │
-│                                                               │
-│  Compare to: Human BPO agent $0.40–$1.50/min                  │
-└───────────────────────────────────────────────────────────────┘
+**`src/components/ui/badge.tsx`** — convert `Badge` to a `React.forwardRef` component, matching the pattern used by every other shadcn/ui primitive in the project (Card, Button, etc.).
+
+Before:
+```tsx
+function Badge({ className, variant, ...props }: BadgeProps) {
+  return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
+}
 ```
 
-Visual treatment:
-- Three glass-card columns matching existing landing-page style
-- Pro tier highlighted with primary-colored border + "Most popular" badge
-- Each card: tier name, price (large), feature checklist, CTA button
-- Starter / Pro CTAs link to `/auth`; Enterprise links to `mailto:` or `/auth`
-- Subtle "Compare to" footnote anchoring against human-agent cost
-
-### 2. Add "Pricing" to nav
-- Update `navLinks` array (line 134) → `["Guarantee", "Features", "Pricing", "How It Works", "FAQ"]`
-- Anchor scrolls smoothly to new `#pricing` section
-- Works on both desktop nav and mobile menu (already maps from the same array)
-
-## Files to change
-- `src/pages/LandingPage.tsx` — add pricing section + nav entry
+After:
+```tsx
+const Badge = React.forwardRef<HTMLDivElement, BadgeProps>(
+  ({ className, variant, ...props }, ref) => (
+    <div ref={ref} className={cn(badgeVariants({ variant }), className)} {...props} />
+  )
+);
+Badge.displayName = "Badge";
+```
 
 ## What I'm NOT changing
-- The in-app `/billing` page (already shows the customer's effective rate correctly)
-- The admin pricing override on `AdminCompanyDetailPage.tsx` (already works)
-- The pricing values themselves (Starter $0.25, Pro $0.20+$99, Enterprise $0.15+$499) — these are the numbers we already approved
-- No new database fields, no new edge functions
+- No changes to `BillingPage.tsx`, `UsageSummary.tsx`, or `DashboardPage.tsx` — the Badge fix resolves the warning everywhere it's used.
+- No change to recharts (third-party warning, ignorable).
+- No API surface change — `Badge` exports stay identical, all existing usages keep working.
 
 ## Expected outcome
-- Visitors to `aivoz.app` see a clear pricing matrix before signing up
-- "Pricing" appears in the top nav, scrolls to the new section
-- Mobile nav picks it up automatically (same `navLinks` array)
-- Matches the visual language of existing landing-page sections (glass cards, fade-up motion, primary accent)
+- The "Function components cannot be given refs … Check the render method of `DashboardPage`" warning disappears from the console.
+- `Badge` now correctly forwards refs anywhere it's nested under `Link`, `Tooltip`, `Popover`, etc.
+- Zero behavioral or visual change.
 
