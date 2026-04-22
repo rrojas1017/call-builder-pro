@@ -33,22 +33,30 @@ export default function AuthPage() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
 
-        // Check for pending invitations after login
+        // Check for pending invitations after login (only if user has no org yet)
         const { data: { user: loggedInUser } } = await supabase.auth.getUser();
         if (loggedInUser) {
-          const { data: invitations } = await supabase
-            .from("org_invitations")
-            .select("id")
-            .eq("email", email.toLowerCase().trim())
-            .eq("status", "pending")
-            .limit(1);
-          if (invitations && invitations.length > 0) {
-            const { data: result } = await supabase.rpc("accept_invitation", {
-              invitation_id: invitations[0].id,
-            });
-            const r = result as any;
-            if (r?.success) {
-              toast({ title: "Invitation accepted", description: "You've joined the organization." });
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("org_id")
+            .eq("id", loggedInUser.id)
+            .maybeSingle();
+
+          if (!profile?.org_id) {
+            const { data: invitations } = await supabase
+              .from("org_invitations")
+              .select("id")
+              .eq("email", email.toLowerCase().trim())
+              .eq("status", "pending")
+              .limit(1);
+            if (invitations && invitations.length > 0) {
+              const { data: result } = await supabase.rpc("accept_invitation", {
+                invitation_id: invitations[0].id,
+              });
+              const r = result as any;
+              if (r?.success) {
+                toast({ title: "Invitation accepted", description: "You've joined the organization." });
+              }
             }
           }
         }
@@ -59,20 +67,31 @@ export default function AuthPage() {
         if (joinCode.trim()) {
           metadata.join_code = joinCode.trim().toUpperCase();
         }
-        const { error } = await supabase.auth.signUp({
+        const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: metadata },
+          options: { data: metadata, emailRedirectTo: `${window.location.origin}/dashboard` },
         });
-        if (error) throw error;
+        if (signUpError) throw signUpError;
+
+        // Email auto-confirm is enabled — sign the user in immediately
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInError) {
+          // Fallback: account exists but couldn't auto-sign-in
+          toast({ title: "Account created", description: "You can sign in now." });
+          setIsLogin(true);
+          return;
+        }
+
         if (joinCode.trim()) {
           toast({
-            title: "Account created",
+            title: "Request submitted",
             description: "Your request to join the company has been submitted. An admin will review and approve your access.",
           });
         } else {
-          toast({ title: "Check your email", description: "We sent you a confirmation link." });
+          toast({ title: "Welcome!", description: "Your account has been created." });
         }
+        navigate("/dashboard");
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
