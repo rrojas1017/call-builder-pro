@@ -26,6 +26,7 @@ import {
   Sparkles,
   Sun,
   Moon,
+  Check,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import appendifyLogo from "@/assets/appendify-logo.png";
@@ -131,7 +132,58 @@ const metrics = [
   { value: "<1s", label: "Response Latency" },
 ];
 
-const navLinks = ["Guarantee", "Features", "How It Works", "FAQ"];
+const pricingTiers = [
+  {
+    name: "Starter",
+    price: "$0.25",
+    priceUnit: "/min",
+    extra: null,
+    description: "Perfect for trying it out",
+    features: [
+      "Standard AI voice agents",
+      "1 active campaign",
+      "Performance analytics",
+      "Email support",
+    ],
+    cta: "Start Free",
+    ctaHref: "/auth",
+    highlighted: false,
+  },
+  {
+    name: "Pro",
+    price: "$0.20",
+    priceUnit: "/min",
+    extra: "+ $99/mo",
+    description: "For growing teams",
+    features: [
+      "Everything in Starter",
+      "HIPAA-compliant campaigns",
+      "Multi-agent orchestration",
+      "Priority support",
+    ],
+    cta: "Start Free",
+    ctaHref: "/auth",
+    highlighted: true,
+  },
+  {
+    name: "Enterprise",
+    price: "$0.15",
+    priceUnit: "/min",
+    extra: "+ $499+/mo",
+    description: "Custom-built for scale",
+    features: [
+      "Everything in Pro",
+      "White-label branding",
+      "Dedicated number pools",
+      "Custom SLA & onboarding",
+    ],
+    cta: "Contact Us",
+    ctaHref: "mailto:sales@aivoz.app",
+    highlighted: false,
+  },
+];
+
+const navLinks = ["Guarantee", "Features", "Pricing", "How It Works", "FAQ"];
 
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
@@ -441,6 +493,103 @@ export default function LandingPage() {
               </motion.div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section id="pricing" className="py-24 sm:py-32 px-4">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <motion.h2
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              variants={fadeUp}
+              custom={0}
+              className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight"
+            >
+              Simple, Transparent Pricing
+            </motion.h2>
+            <motion.p
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              variants={fadeUp}
+              custom={1}
+              className="mt-5 text-muted-foreground max-w-xl mx-auto text-lg"
+            >
+              Pay only for what you use. No hidden fees, no per-call charges.
+            </motion.p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {pricingTiers.map((tier, i) => (
+              <motion.div
+                key={tier.name}
+                custom={i}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, margin: "-50px" }}
+                variants={fadeUp}
+                className={`relative rounded-2xl p-8 flex flex-col ${
+                  tier.highlighted
+                    ? "gradient-border bg-card shadow-xl scale-[1.02]"
+                    : "glass-card"
+                }`}
+              >
+                {tier.highlighted && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-primary text-primary-foreground text-xs font-semibold tracking-wide">
+                    Most Popular
+                  </div>
+                )}
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold tracking-tight">{tier.name}</h3>
+                  <p className="text-sm text-muted-foreground mt-1">{tier.description}</p>
+                </div>
+                <div className="mb-6">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl sm:text-5xl font-extrabold tracking-tight">
+                      {tier.price}
+                    </span>
+                    <span className="text-muted-foreground text-base">{tier.priceUnit}</span>
+                  </div>
+                  {tier.extra && (
+                    <p className="text-sm text-muted-foreground mt-1.5">{tier.extra}</p>
+                  )}
+                </div>
+                <ul className="space-y-3 mb-8 flex-1">
+                  {tier.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2.5 text-sm">
+                      <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                      <span className="text-foreground/90">{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  asChild
+                  size="lg"
+                  variant={tier.highlighted ? "default" : "outline"}
+                  className="rounded-full w-full"
+                >
+                  <Link to={tier.ctaHref}>
+                    {tier.cta}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </motion.div>
+            ))}
+          </div>
+
+          <motion.p
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            variants={fadeUp}
+            custom={3}
+            className="text-center text-sm text-muted-foreground mt-10"
+          >
+            Compare to: Human BPO agent costs <span className="text-foreground font-medium">$0.40–$1.50/min</span>
+          </motion.p>
         </div>
       </section>
 
