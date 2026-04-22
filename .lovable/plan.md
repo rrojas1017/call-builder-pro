@@ -1,72 +1,60 @@
 
 
-# Competitive Pricing Recommendation
+# Add Pricing Controls to UI
 
-## Your cost basis (verified)
-- Wholesale (Retell + telephony + LLM): **$0.153/min**
-- Currently charging: **$0.153/min** → **$0 margin**
+## Problem
+The `cost_multiplier` and `monthly_base_fee_usd` columns now exist on `organizations`, but there's no way to view or edit them in the app. Customers can't see their effective rate, and super admins can't override pricing for enterprise deals.
 
-## What competitors charge (retail per minute)
+## Two surfaces to update
 
-| Platform | Retail $/min | Notes |
-|---|---|---|
-| Retell AI (direct) | $0.07–$0.10 | Their published wholesale-style rate |
-| Vapi AI | $0.14–$0.18 | Modular fees stack up |
-| Twilio Voice (DIY) | $0.14 | Requires dev work |
-| Bland AI | $0.09–$0.12 | Volume tiers |
-| Synthflow | $0.13–$0.20 | No-code tier |
-| Air AI / Euphonia | $0.35–$0.65 | Premium / managed |
-| Human BPO agent | $0.40–$1.50 | The real comparison for your buyers |
+### 1. Customer-facing rate display (`src/pages/BillingPage.tsx`)
+Add a small "Your rate" card next to the balance, showing the effective per-minute price. Read-only for customers.
 
-Most no-code / managed platforms (your category) sit at **$0.20–$0.35/min**. Anything below $0.15 is bare wholesale; anything above $0.40 is premium-managed.
+- Fetches `cost_multiplier` and `monthly_base_fee_usd` along with `credits_balance`.
+- Displays:
+  - **Effective rate**: `$0.245/min` (computed as `0.153 × cost_multiplier`)
+  - **Monthly base fee**: only shown if `> 0` (e.g. "$99/mo")
+- One-line explainer: *"Includes telephony, AI voice, and platform — no per-call fees."*
 
-## Recommended pricing model for Appendify
+### 2. Super-admin pricing override (`src/pages/AdminCompanyDetailPage.tsx`)
+Add a "Pricing" section to the Org Details card with two editable inputs (super_admin only):
 
-Three-tier pricing with a configurable per-org multiplier on wholesale cost:
+- **Cost Multiplier** — numeric input, default 1.6, shows live preview of effective $/min
+- **Monthly Base Fee (USD)** — numeric input, default 0
+- Save button writes both via a single `update` on `organizations`
+- Visible only when `isSuperAdmin === true` (read from `useOrgContext`)
+- Displays current vs. new effective rate inline so the admin sees the impact before saving
 
-### Tier 1 — Starter (self-serve)
-- **$0.25/min** (~63% gross margin)
-- Default for new signups
-- Includes: standard agents, 1 campaign, basic analytics
-- Positioning: "Half the cost of a human agent"
+## Layout sketch (admin page)
 
-### Tier 2 — Pro
-- **$0.20/min** (~30% margin) + **$99/month base**
-- For customers doing 2,000+ min/month
-- Includes: HIPAA, multi-agent, priority support
-- Base fee guarantees minimum revenue per account
+```text
+┌─ Org Details ────────────────────────────────┐
+│ Company Name: [______]   Balance: $889.84    │
+│                                              │
+│ ── Pricing (super admin only) ──             │
+│ Multiplier: [1.6 ]  → Effective $0.245/min   │
+│ Monthly base: [0   ] USD                     │
+│ [Save Pricing]                               │
+│                                              │
+│ [Agents] [Campaigns] [Calls]                 │
+└──────────────────────────────────────────────┘
+```
 
-### Tier 3 — Enterprise / White-label
-- **$0.15/min** (~negative without base) + **$499–$2,000/month base**
-- Volume + white-label brand
-- Custom SLA, dedicated number pools
+## Files to change
 
-### Add-ons (pure margin)
-- Voicemail drop: included
-- Phone number: $3/mo (Retell costs $2 → $1 margin)
-- Premium voices (ElevenLabs custom clone): +$0.05/min
-- HIPAA campaign: +$0.02/min on Starter (free on Pro+)
+- `src/pages/BillingPage.tsx` — add read-only "Your rate" card; extend the org SELECT to include the two new columns
+- `src/pages/AdminCompanyDetailPage.tsx` — add editable pricing section gated by `isSuperAdmin`; extend the org SELECT and add a save handler
 
-## Why $0.25/min is the right anchor
-- Below Vapi/Synthflow retail → easy "we're cheaper" sales line
-- Above Retell direct → buyers who tried Retell and got stuck come to you for the no-code layer
-- 63% gross margin covers Stripe fees (2.9% + 30¢), failed-call write-offs, support, and infra
-- Round, memorable number for landing page
+## What I'm NOT changing
 
-## Technical implementation
-Two small changes to make this configurable instead of hardcoded:
-
-1. **Schema**: add `cost_multiplier numeric default 1.6` and `monthly_base_fee_usd numeric default 0` to `organizations` table.
-2. **`receive-retell-webhook/index.ts`** and **`backfill-call-costs/index.ts`** — multiply `combined_cost` by the org's `cost_multiplier` before deducting from `credits_balance` and writing to `credit_transactions`. Show wholesale cost separately in `extracted_data` for audit.
-3. **`BillingPage.tsx`** — display effective rate ("$0.25/min") to customers, not the raw wholesale.
-4. **Admin UI** (`AdminCompanyDetailPage.tsx`) — let super_admin override `cost_multiplier` per org for enterprise deals.
-5. **Monthly base fee** — new edge function `charge-monthly-base` triggered by pg_cron on the 1st of each month, deducts `monthly_base_fee_usd` from `credits_balance`.
-
-## What I'd ship first
-Just step 1 + 2 with `cost_multiplier = 1.6` (→ $0.245/min retail). That instantly turns every minute profitable. Tiers, base fees, and the admin override can come in a follow-up.
+- Database schema (already done)
+- Webhook/billing logic in `receive-retell-webhook` and `backfill-call-costs` (already applies multiplier)
+- The `cost_multiplier` default of 1.6 stays as-is
+- No new tiers, no preset buttons — just raw numeric controls so you can dial in any value per org
 
 ## Expected outcome
-- Gross margin goes from 0% → ~38% on day one
-- At current 110 min/month per active org you'd net ~$10/org — small now, but scales linearly
-- Gives you headroom to offer Stripe top-up bonuses ("Top up $250, get $275 in credits") as a growth lever
+
+- Customers see their per-minute rate on the Billing page
+- Super admins can change a single org's pricing in seconds without a migration or DB tool
+- All existing orgs continue at the 1.6× default until you override them
 
