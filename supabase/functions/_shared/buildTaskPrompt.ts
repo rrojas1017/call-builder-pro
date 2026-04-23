@@ -10,6 +10,7 @@ export interface AgentSpec {
   tone_style?: string | null;
   language?: string | null;
   opening_line?: string | null;
+  verbatim_script?: string | null;
   persona_name?: string | null;
   transfer_required?: boolean | null;
   mode?: string | null;
@@ -259,7 +260,16 @@ RULES:
     }
   }
 
-  if (resolvedOpeningLine) {
+  // Verbatim script takes precedence over opening_line guide
+  const rawVerbatim = (spec as any).verbatim_script?.trim?.() || "";
+  if (rawVerbatim) {
+    const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "";
+    const filledScript = rawVerbatim
+      .replace(/\{\{agent_name\}\}/gi, personaName || "")
+      .replace(/\[Agent Name\]/gi, personaName || "")
+      .replace(/\{\{first_name\}\}/gi, nameHint);
+    prompt += `\n\nVERBATIM OPENING SCRIPT (HIGHEST PRIORITY — deliver this EXACTLY as written, word-for-word, before doing anything else. Do NOT paraphrase, summarize, or skip any part. After delivering it, continue naturally into the conversation):\n"""\n${filledScript}\n"""`;
+  } else if (resolvedOpeningLine) {
     const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "(caller's name — ask if unknown)";
     const filledGuide = resolvedOpeningLine.replace(/\{\{first_name\}\}/gi, nameHint);
     prompt += `\n\nOPENING GUIDE: Start with something like the line below, but adapt it naturally — do NOT read it word-for-word as a script.\nOpening guide: "${filledGuide}"`;

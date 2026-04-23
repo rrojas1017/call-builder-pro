@@ -94,7 +94,12 @@ function buildLlmBody(config: Record<string, any>): Record<string, unknown> {
       : config.general_prompt;
     llmBody.general_prompt = trimmedPrompt;
   }
-  if (config.opening_line) llmBody.begin_message = config.opening_line;
+  // Verbatim script overrides opening_line as the begin_message
+  if (config.verbatim_script) {
+    llmBody.begin_message = config.verbatim_script;
+  } else if (config.opening_line) {
+    llmBody.begin_message = config.opening_line;
+  }
   if (config.temperature != null) llmBody.model_temperature = Number(config.temperature);
   if (config.llm_model) llmBody.model = config.llm_model;
 
@@ -266,7 +271,7 @@ serve(async (req) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error_message || data.message || JSON.stringify(data));
 
-      if (config?.opening_line || config?.temperature != null || config?.transfer_required != null) {
+      if (config?.opening_line || config?.verbatim_script || config?.temperature != null || config?.transfer_required != null) {
         const llmId = data.response_engine?.llm_id;
         if (llmId) {
           const llmBody = buildLlmBody(config);
