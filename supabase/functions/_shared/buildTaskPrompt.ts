@@ -212,7 +212,9 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
 
   // Caller name awareness — explicit instruction so AI never guesses
   const trimmedCallerName = callerName?.trim() || "";
-  if (trimmedCallerName) {
+  if (useDynamicCallerName) {
+    prompt += `\n\nCALLER: The person you are calling is {{contact_name}} (first name: {{first_name}}). Use their first name naturally during the conversation. You ALREADY HAVE their name from your call list — do NOT ask for it, do NOT ask them to confirm it, do NOT spell it back. Skip any "may I have your name" step entirely.`;
+  } else if (trimmedCallerName) {
     prompt += `\n\nCALLER: The person you are calling is ${trimmedCallerName}. Use their name naturally during the conversation — but do NOT ask for it again, you already have it.`;
   } else {
     prompt += `\n\nCALLER: You do NOT have this person's name yet. Ask for their name early and naturally in the conversation — do NOT skip this step.`;
