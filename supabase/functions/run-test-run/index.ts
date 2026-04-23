@@ -258,7 +258,7 @@ serve(async (req) => {
 
     // Build the task prompt — always rebuild from latest spec so feedback-driven changes are picked up
     const retellTaskPrompt = spec
-      ? buildTaskPrompt(spec, [], knowledgeBriefing, "")
+      ? buildTaskPrompt(spec, [], knowledgeBriefing, "", true)
       : (testRun.agent_instructions_text || "Conduct a professional outbound call.");
     const trimmedRetellPrompt = retellTaskPrompt.length > 28000
       ? retellTaskPrompt.substring(0, 28000) + "\n\n[Trimmed for length]"
