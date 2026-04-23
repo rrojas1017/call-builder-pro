@@ -132,7 +132,7 @@ export function buildCompactStyle(notes: string[]): string {
   return condensed.join(". ") + ".";
 }
 
-export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], knowledgeBriefing?: string, callerName?: string): string {
+export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], knowledgeBriefing?: string, callerName?: string, useDynamicCallerName: boolean = false): string {
   const purpose = spec.use_case || spec.success_definition || "Conduct a professional outbound call.";
   const discl = spec.disclosure_text || "";
   const tone = spec.tone_style || "Friendly, professional, empathetic";
