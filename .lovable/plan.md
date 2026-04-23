@@ -1,73 +1,66 @@
 
 
-# Stop asking for the name when we already have it
+# Make the verbatim script the spine of the call
 
 ## What's wrong today
+When you paste a script into **Verbatim Script**, the system currently treats it as just one section of the prompt — labeled "HIGHEST PRIORITY," yes, but it still sits *alongside*:
+- A generic RULES block ("vary sentence length", "one question per turn", "pause and acknowledge")
+- The COLLECT list (must-collect fields injected automatically)
+- The FPL table (for health agents)
+- An OPENING GUIDE block (only suppressed if a script exists — good)
+- A long BUSINESS RULES block at the end labeled "HIGHEST PRIORITY" too
 
-When you launch a campaign or test run, every contact has a name (it came from your uploaded list). Retell already passes that name into the system prompt at call time as `{{first_name}}` and `{{contact_name}}`. But the prompt builder doesn't take advantage of it for real outbound calls:
+Two things labeled "HIGHEST PRIORITY" cancel each other out. The model ends up balancing the script against generic pacing rules and the field-collection list, which is why your Hello Nation script gets diluted — the agent delivers the opening, then drops back into a generic interview cadence instead of "circling around" the script's intent.
 
-1. **`run-test-run`, `start-campaign`, `retell-llm-ws`** all call `buildTaskPrompt(spec, …, "")` — passing an **empty** `callerName`. The prompt then says *"You do NOT have this person's name yet. Ask for their name early…"* even though we do have it.
-2. The "Can I confirm your full name?" field gets injected into the COLLECT list whenever `must_collect_fields` doesn't already mention name — regardless of whether we actually have the name.
-3. Net effect: agent re-asks for the name the moment the caller picks up, wasting the first 30 seconds of every call and ignoring data you already uploaded.
+## The fix — reorganize the prompt around the script
 
-(Simulations are unaffected — they pass a randomized caller name and already work correctly.)
+When `verbatim_script` is present, `buildTaskPrompt` switches to **Script-Anchored Mode**:
 
-## The fix
+### 1. Script becomes the lead, not a side block
+- The verbatim script is moved to the **top** of the prompt, immediately after PERSONA and CALLER blocks — before RULES, before PURPOSE, before COLLECT.
+- New framing language: *"This call REVOLVES around the script below. Your job is to deliver it, then steer the conversation back to its goal whenever the caller drifts. Everything else in this prompt is supporting context for that script — not competing instructions."*
 
-### 1. Use Retell dynamic variables in the prompt
+### 2. COLLECT list becomes "AFTER THE SCRIPT, gather:"
+- Currently labeled `COLLECT (in order):` — sounds like an interview checklist that competes with the script.
+- When a script exists, relabel to: *"AFTER you've delivered the script and the caller is engaged, weave these data points into the natural conversation flow (do NOT switch into interview mode):"*
+- Stops the agent from abandoning the script's narrative to start firing field questions.
 
-Instead of asking the prompt builder to bake a literal name into the text (impossible — the same prompt is shared across all contacts in a campaign), reference the variables Retell already substitutes at call time:
+### 3. Suppress the generic pacing/RULES paragraph
+- The current RULES block ("vary sentence length", "use casual transitions", "one question per turn") is generic and often contradicts a tightly-written script.
+- In script-anchored mode, replace it with a tighter block:
+  - Stay in the script's voice and rhythm
+  - Acknowledge answers briefly, then return to the script's next beat
+  - If the caller objects or asks something off-script, answer it, then bridge back: *"Anyway, as I was saying…"*
 
-- New mode in `buildTaskPrompt`: when a new flag `useDynamicCallerName: true` is passed (used by `run-test-run`, `start-campaign`, `retell-llm-ws`), the CALLER block becomes:
+### 4. FPL/health blocks become reference, not directives
+- Today the FPL table is injected as primary instructions for health agents.
+- When a script is present, prepend it with: *"REFERENCE ONLY — use this data to answer questions if asked, but do NOT pivot the call into an FPL calculation unless the script asks you to."*
 
-  > *CALLER: The person you are calling is {{contact_name}} (first name: {{first_name}}). Use their first name naturally during the conversation. You ALREADY HAVE their name from your call list — do NOT ask for it, do NOT ask them to confirm it, do NOT spell it back. Skip any "may I have your name" step entirely.*
+### 5. Single source of "HIGHEST PRIORITY"
+- Remove the "HIGHEST PRIORITY" label from the BUSINESS RULES block when a script is present (business rules still get appended last, but framed as *"BUSINESS RULES — apply these while delivering the script, never in conflict with it"*).
+- The script keeps the sole HIGHEST PRIORITY designation.
 
-- Retell replaces `{{contact_name}}` / `{{first_name}}` per call from the dynamic variables we already send (lines 331-335 of `run-test-run`, lines 198-201 of `tick-campaign`).
-
-### 2. Suppress the "Can I confirm your full name?" auto-inject
-
-In `buildTaskPrompt`, the block at lines 180-193 currently always adds a name-confirmation field. Change it so:
-
-- When `useDynamicCallerName` is true → never inject any name-collection field (we already have it).
-- When `useDynamicCallerName` is false AND `callerName` is provided (simulations) → don't inject either.
-- Only inject the "ask for name" field when neither is true (the rare case of a cold call with no list data).
-
-### 3. Pass the flag from real outbound call sites
-
-Update three call sites to use the new mode:
-
-- `supabase/functions/run-test-run/index.ts` line 261
-- `supabase/functions/start-campaign/index.ts` line 143
-- `supabase/functions/retell-llm-ws/index.ts` line 144 (inbound — flag false here, names truly unknown)
-- `supabase/functions/apply-audit-recommendation/index.ts` line 453 (rebuild — flag true)
-
-`simulate-call`, `simulate-turn`, `verify-feedback` keep passing a real `callerName` string and stay as-is.
-
-### 4. Verbatim script gets the same treatment
-
-In the verbatim-script block (lines 263-271), the `{{first_name}}` placeholder is currently replaced at prompt-build time with `trimmedCallerName.split(" ")[0]` — which is empty for real campaigns. Change it to **leave `{{first_name}}` and `{{contact_name}}` intact** when `useDynamicCallerName` is true, so Retell substitutes them per call.
-
-This means your Hello Nation script can now say *"Hi {{first_name}}, Matt right here with Hello Nation…"* and each call will get the actual contact's first name.
+### 6. New explicit "circle back" instruction
+- After the script body, append: *"CIRCLE-BACK BEHAVIOR: The caller will interrupt, ask questions, or go on tangents. Handle each one briefly and warmly, then ALWAYS bring the conversation back to the script's purpose: [auto-derived from `success_definition` or first sentence of script]. The call is not over until either (a) the script's goal is achieved, or (b) the caller clearly declines."*
 
 ## Files changed
 
-- `supabase/functions/_shared/buildTaskPrompt.ts` — add 4th param `useDynamicCallerName`, branch CALLER block, branch name-field injection, branch verbatim placeholder substitution
-- `supabase/functions/run-test-run/index.ts` — pass `true`
-- `supabase/functions/start-campaign/index.ts` — pass `true`
-- `supabase/functions/apply-audit-recommendation/index.ts` — pass `true`
-- `supabase/functions/retell-llm-ws/index.ts` — explicit `false` (inbound, no list)
-- No DB changes, no UI changes, no Retell API surface change
+- `supabase/functions/_shared/buildTaskPrompt.ts` — branch the entire prompt assembly when `rawVerbatim` is non-empty: reorder sections, swap RULES block, relabel COLLECT, demote FPL, demote business-rules priority label, append circle-back footer
+
+That's the only file. No DB changes, no UI changes, no edge function call-site changes — every existing caller (`run-test-run`, `start-campaign`, `retell-llm-ws`, `apply-audit-recommendation`, simulations) automatically picks up the new behavior because they all flow through `buildTaskPrompt`.
 
 ## What I'm NOT changing
 
-- Simulation flows (`simulate-call`, `simulate-turn`, `verify-feedback`) — they keep their fake-name behavior
-- The `must_collect_fields` UI — users can still manually add a name field if they want explicit confirmation for some agent
-- Existing `opening_line` `{{first_name}}` substitution at the Retell `begin_message` level (already works via `resolveBeginMessage` stripping placeholders for the static field, while Retell substitutes them in the live LLM prompt)
+- Agents WITHOUT a verbatim script keep the exact prompt structure they have today — zero regression risk
+- The script's word-for-word delivery instruction stays
+- Retell's `begin_message` source-switch (script over opening_line) already works — no change there
+- `must_collect_fields` UI — admins can still configure them; they just get framed differently when a script is in play
+- Business rules content — still injected, just with friendlier framing relative to the script
 
-## Expected outcome
+## Expected outcome on your Hello Nation agent
 
-- Hello Nation calls open with *"Hi Dave, Matt right here…"* — using the real uploaded name, never re-asking
-- All campaign and test-run calls skip the "Can I confirm your full name?" step
-- Inbound calls (no list) still ask for the name as today
-- Simulations still randomize names as today
+- "Matt" delivers the full Asheville/U.S. Conference of Mayors intro verbatim
+- After the close ("Would you be open to a quick chat this afternoon or tomorrow morning?"), Matt stays in *that* conversation — booking the meeting, handling objections, looping back to the "final three candidates" framing
+- He doesn't suddenly pivot to *"Can I get your zip code?"* or start an FPL conversation
+- If the caller goes off-topic, Matt answers briefly and bridges back to the script's purpose
 
