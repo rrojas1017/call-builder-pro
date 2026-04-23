@@ -220,7 +220,51 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
     prompt += `\n\nCALLER: You do NOT have this person's name yet. Ask for their name early and naturally in the conversation — do NOT skip this step.`;
   }
 
-  prompt += `\n\nINTERACTION STYLE: ${styleGuide}
+  // Detect script-anchored mode early so we can reorganize the prompt around it.
+  const rawVerbatim = (spec as any).verbatim_script?.trim?.() || "";
+  const scriptMode = !!rawVerbatim;
+
+  // ── SCRIPT-ANCHORED MODE: script becomes the spine of the call ──
+  if (scriptMode) {
+    let filledScript = rawVerbatim
+      .replace(/\{\{agent_name\}\}/gi, personaName || "")
+      .replace(/\[Agent Name\]/gi, personaName || "");
+    if (!useDynamicCallerName) {
+      const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "";
+      filledScript = filledScript
+        .replace(/\{\{first_name\}\}/gi, nameHint)
+        .replace(/\{\{contact_name\}\}/gi, trimmedCallerName);
+    }
+    // else: leave {{first_name}}/{{contact_name}} intact — Retell substitutes per call.
+
+    // Derive the call's purpose for the circle-back instruction.
+    const scriptPurpose = (spec.success_definition?.trim()
+      || rawVerbatim.split(/[.!?\n]/)[0]?.trim()
+      || purpose).slice(0, 240);
+
+    prompt += `\n\n══════════════════════════════════════════════
+SCRIPT-ANCHORED CALL (HIGHEST PRIORITY)
+══════════════════════════════════════════════
+This call REVOLVES around the script below. Your job is to deliver it word-for-word, then steer the conversation back to its goal whenever the caller drifts. Everything else in this prompt is supporting context for that script — not competing instructions.
+
+VERBATIM SCRIPT — deliver EXACTLY as written, word-for-word, before doing anything else. Do NOT paraphrase, summarize, or skip any part:
+"""
+${filledScript}
+"""
+
+CIRCLE-BACK BEHAVIOR: The caller will interrupt, ask questions, or go on tangents. Handle each one briefly and warmly, then ALWAYS bring the conversation back to the script's purpose: ${scriptPurpose}. The call is not over until either (a) the script's goal is achieved, or (b) the caller clearly declines.`;
+
+    prompt += `\n\nDELIVERY STYLE (script-anchored):
+- Tone: ${tone}
+- Stay in the script's voice and rhythm — do not flatten it into a generic interview.
+- Acknowledge answers briefly ("Got it", "Makes sense"), then return to the script's next beat.
+- If the caller objects or asks something off-script, answer it concisely, then bridge back: "Anyway, as I was saying…" or similar.
+- One question per turn — wait for the answer before continuing.
+- NEVER re-introduce yourself or re-state company name after the script's opening.
+- NEVER re-ask for information the caller already provided.`;
+  } else {
+    // ── STANDARD MODE: original prompt structure ──
+    prompt += `\n\nINTERACTION STYLE: ${styleGuide}
 
 PURPOSE: ${purpose}
 
@@ -235,8 +279,9 @@ RULES:
 - PACING: Do NOT rapid-fire through questions. After each answer, pause and acknowledge naturally ("Got it", "That helps", "Okay, great") before moving to the next question. When shifting topics (e.g., from personal info to income), use a brief transition like "Alright, just a couple more things..." to signal the change.
 - If the caller gives a detailed answer or shares something personal, react to it briefly before continuing — do not immediately jump to the next field.
 - ONE QUESTION PER TURN: Never ask more than one question in a single response. Ask one thing, then STOP and wait for the caller to answer before continuing.`;
+  }
 
-  // Build business rules text (injected at end of prompt for highest priority)
+  // Build business rules text
   let businessRulesBlock = "";
   let businessRulesCoverFpl = false;
   const rawBr = spec.business_rules;
@@ -264,26 +309,10 @@ RULES:
     }
   }
 
-  // Verbatim script takes precedence over opening_line guide
-  const rawVerbatim = (spec as any).verbatim_script?.trim?.() || "";
-  if (rawVerbatim) {
-    let filledScript = rawVerbatim
-      .replace(/\{\{agent_name\}\}/gi, personaName || "")
-      .replace(/\[Agent Name\]/gi, personaName || "");
-    if (useDynamicCallerName) {
-      // Leave {{first_name}} and {{contact_name}} intact so Retell substitutes them per call.
-    } else {
-      const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "";
-      filledScript = filledScript
-        .replace(/\{\{first_name\}\}/gi, nameHint)
-        .replace(/\{\{contact_name\}\}/gi, trimmedCallerName);
-    }
-    prompt += `\n\nVERBATIM OPENING SCRIPT (HIGHEST PRIORITY — deliver this EXACTLY as written, word-for-word, before doing anything else. Do NOT paraphrase, summarize, or skip any part. After delivering it, continue naturally into the conversation):\n"""\n${filledScript}\n"""`;
-  } else if (resolvedOpeningLine) {
+  // Opening guide — only when no verbatim script is present
+  if (!scriptMode && resolvedOpeningLine) {
     let filledGuide = resolvedOpeningLine;
-    if (useDynamicCallerName) {
-      // Keep {{first_name}} placeholder so Retell substitutes per call.
-    } else {
+    if (!useDynamicCallerName) {
       const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "(caller's name — ask if unknown)";
       filledGuide = filledGuide.replace(/\{\{first_name\}\}/gi, nameHint);
     }
@@ -306,7 +335,10 @@ RULES:
   }
 
   if (fields.length > 0) {
-    prompt += `\n\nCOLLECT (in order):\n${fields.map((f, i) => `${i + 1}. ${f}`).join("\n")}`;
+    const collectHeader = scriptMode
+      ? `AFTER you've delivered the script and the caller is engaged, weave these data points into the natural conversation flow (do NOT switch into interview mode, do NOT abandon the script's narrative to fire questions):`
+      : `COLLECT (in order):`;
+    prompt += `\n\n${collectHeader}\n${fields.map((f, i) => `${i + 1}. ${f}`).join("\n")}`;
     // Only inject ZIP code validation for US English agents
     if (isEnglish && fields.some((f: string) => f.toLowerCase().includes('zip'))) {
       prompt += `\nZIP CODE: Must be exactly 5 digits. After caller says it, repeat it back: "Just to confirm, that's [zip], correct?" If unclear or fewer/more than 5 digits, ask again: "I want to make sure I have that right -- could you repeat your zip code?"`;
@@ -315,8 +347,11 @@ RULES:
 
   // Health-specific compact rules — skip if business rules already cover FPL
   if (isHealthAgent(spec) && !businessRulesCoverFpl) {
-    prompt += `\n\n${buildCompactFplSep()}`;
-    if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('life event') || f.toLowerCase().includes('qle'))) {
+    const fplPrefix = scriptMode
+      ? `REFERENCE ONLY — use this data to answer questions if asked, but do NOT pivot the call into an FPL calculation unless the script asks you to.\n\n`
+      : ``;
+    prompt += `\n\n${fplPrefix}${buildCompactFplSep()}`;
+    if (!scriptMode && fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('life event') || f.toLowerCase().includes('qle'))) {
       prompt += `\nASK: "Have you recently had any life changes like losing coverage, marriage, baby, or moving?"`;
     }
   }
@@ -329,9 +364,12 @@ RULES:
     prompt += `\n\nTRANSFER: If qualified, confirm the transfer CLEARLY and COMPLETELY before initiating. Say something like "Great news, you qualify! I'm going to connect you with a specialist now." WAIT for the sentence to finish — do NOT start the transfer mid-sentence. Then transfer to ${formatted}. Never cut off your own confirmation.`;
   }
 
-  // Business rules injected LAST for highest LLM priority ("last instruction wins")
+  // Business rules — framing depends on whether a script anchors the call
   if (businessRulesBlock) {
-    prompt += `\n\nBUSINESS RULES (HIGHEST PRIORITY — these override ANY conflicting instruction above, including qualification rules, field collection, and default behaviors):\n${businessRulesBlock}`;
+    const brHeader = scriptMode
+      ? `BUSINESS RULES — apply these while delivering the script, never in conflict with it:`
+      : `BUSINESS RULES (HIGHEST PRIORITY — these override ANY conflicting instruction above, including qualification rules, field collection, and default behaviors):`;
+    prompt += `\n\n${brHeader}\n${businessRulesBlock}`;
   }
 
   prompt += `\n\nFALLBACK: After 2 failed attempts to collect info, end politely.`;
