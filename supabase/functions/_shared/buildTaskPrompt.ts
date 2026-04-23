@@ -178,11 +178,13 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
     : false;
 
   if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('name'))) {
-    if (openingAsksForName) {
+    if (useDynamicCallerName) {
+      // We already have the contact's name from the dial list — never inject a name-collection field.
+    } else if (openingAsksForName) {
       const consentIdx = fields.findIndex((f: string) => f.toLowerCase().includes('consent'));
       const insertAt = consentIdx >= 0 ? consentIdx + 1 : 0;
       fields.splice(insertAt, 0, "(Caller's name should already be known from the opening — confirm naturally only if still unclear, do NOT re-ask)");
-    } else {
+    } else if (!callerName?.trim()) {
       const consentIdx = fields.findIndex((f: string) => f.toLowerCase().includes('consent'));
       if (consentIdx >= 0) {
         fields.splice(consentIdx + 1, 0, "Can I confirm your full name?");
