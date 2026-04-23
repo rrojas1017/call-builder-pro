@@ -145,6 +145,19 @@ serve(async (req) => {
     const patch: Record<string, any> = {};
 
     const TEXT_FIELDS = ["tone_style", "opening_line", "disclosure_text", "success_definition", "transfer_phone_number", "language", "use_case", "mode", "voice_id", "background_track", "from_number", "voice_provider", "retell_agent_id"];
+    // Fields that should NEVER be auto-rewritten by the training loop (manually-crafted by the user).
+    const PROTECTED_FIELDS = new Set(["verbatim_script"]);
+    const isManualEdit = typeof improvement.original_key === "string" && improvement.original_key.startsWith("manual::");
+    if (PROTECTED_FIELDS.has(field) && !isManualEdit) {
+      console.log(`[apply-improvement] Refusing to auto-modify protected field "${field}" (no manual override)`);
+      return new Response(JSON.stringify({ skipped: true, reason: "protected_field" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (field === "verbatim_script") {
+      // Treat verbatim_script as a text field on manual saves
+      TEXT_FIELDS.push("verbatim_script");
+    }
     const JSON_FIELDS = ["must_collect_fields", "qualification_logic", "disqualification_logic", "escalation_rules", "business_rules", "retry_policy", "qualification_rules", "disqualification_rules", "humanization_notes", "research_sources", "business_hours", "pronunciation_guide"];
     const BOOL_FIELDS = ["consent_required", "disclosure_required", "transfer_required", "sms_enabled"];
     const NUM_FIELDS = ["temperature", "interruption_threshold", "speaking_speed"];

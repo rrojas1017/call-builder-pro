@@ -77,6 +77,7 @@ export default function EditAgentPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [openingLine, setOpeningLine] = useState("");
+  const [verbatimScript, setVerbatimScript] = useState("");
   const [toneStyle, setToneStyle] = useState("");
   const [personaName, setPersonaName] = useState("");
   const [selectedVoice, setSelectedVoice] = useState("");
@@ -155,6 +156,7 @@ export default function EditAgentPage() {
       if (spec) {
         setSelectedVoice(spec.voice_id || "");
         setOpeningLine(spec.opening_line || "");
+        setVerbatimScript((spec as any).verbatim_script || "");
         setToneStyle(spec.tone_style || "");
         setPersonaName(spec.persona_name || "");
         setTransferEnabled(!!spec.transfer_required);
@@ -289,9 +291,11 @@ export default function EditAgentPage() {
         ? (phoneDigits.startsWith("1") ? `+${phoneDigits}` : `+1${phoneDigits}`)
         : null;
 
-      // Guard: advisory warning for name mismatch (never auto-rewrite user input)
+      // Guard: advisory warning for name mismatch — skip when verbatim_script is in use
+      // (the persona name lives inside the script body, not via {{agent_name}})
       const finalOpeningLine = openingLine;
-      if (openingLine && personaName.trim()) {
+      const finalVerbatimScript = verbatimScript.trim();
+      if (!finalVerbatimScript && openingLine && personaName.trim()) {
         const guard = guardOpeningLine(openingLine, personaName.trim());
         if (guard.wasFixed && guard.oldName) {
           toast({ title: "Heads up", description: `Your opening line contains "${guard.oldName}" which doesn't match your persona name "${personaName.trim()}". You may want to use {{agent_name}} instead.`, variant: "default" });
@@ -311,6 +315,7 @@ export default function EditAgentPage() {
         supabase.from("agent_specs").update({
           voice_id: selectedVoice || null,
           opening_line: finalOpeningLine || null,
+          verbatim_script: finalVerbatimScript || null,
           tone_style: toneStyle || null,
           persona_name: personaName.trim() || null,
           transfer_required: transferEnabled,
@@ -356,6 +361,7 @@ export default function EditAgentPage() {
                 voice_id: selectedVoice || undefined,
                 language: langMap[language] || "en-US",
                 opening_line: finalOpeningLine || undefined,
+                verbatim_script: finalVerbatimScript || undefined,
                 temperature,
                 transfer_required: transferEnabled,
                 transfer_phone_number: formattedPhone || undefined,
@@ -664,6 +670,18 @@ export default function EditAgentPage() {
           <Label>Opening Line Template</Label>
           <Textarea value={openingLine} onChange={(e) => setOpeningLine(e.target.value)} rows={2} placeholder='e.g. "Hey {{first_name}}, this is {{agent_name}} calling — do you have a quick second?"' />
           <p className="text-xs text-muted-foreground">Use <code className="bg-muted px-1 rounded">{"{{first_name}}"}</code> and <code className="bg-muted px-1 rounded">{"{{agent_name}}"}</code> as placeholders.</p>
+        </div>
+        <div className="space-y-2">
+          <Label>Verbatim Script (optional)</Label>
+          <Textarea
+            value={verbatimScript}
+            onChange={(e) => setVerbatimScript(e.target.value)}
+            rows={8}
+            placeholder={'Paste a word-for-word talk track here. Example:\n\nHi {{first_name}}, {{agent_name}} here with Hello Nation. I\'m calling regarding the upcoming HelloAsheville rollout...\n\nWe aren\'t looking for sponsors; we are looking for a verified voice...\n\nWould you be open to a quick chat this afternoon or tomorrow morning?'}
+          />
+          <p className="text-xs text-muted-foreground">
+            When set, this <strong>overrides the opening line</strong> and becomes the agent's first message — delivered exactly as written. Supports <code className="bg-muted px-1 rounded">{"{{first_name}}"}</code> and <code className="bg-muted px-1 rounded">{"{{agent_name}}"}</code>. Auto-training will not rewrite this field.
+          </p>
         </div>
         <div className="space-y-2">
           <Label>Tone / Style</Label>
