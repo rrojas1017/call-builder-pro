@@ -450,7 +450,7 @@ serve(async (req) => {
             .order("usage_count", { ascending: false })
             .limit(20);
           const knowledgeBriefing = (kEntries || []).map((e: any) => e.content).join("\n\n");
-          const newPrompt = buildTaskPrompt(updatedSpec, [], knowledgeBriefing, "");
+          const newPrompt = buildTaskPrompt(updatedSpec, [], knowledgeBriefing, "", true);
           const trimmedPrompt = newPrompt.length > 28000
             ? newPrompt.substring(0, 28000) + "\n\n[Trimmed for length]"
             : newPrompt;

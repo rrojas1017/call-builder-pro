@@ -132,7 +132,7 @@ export function buildCompactStyle(notes: string[]): string {
   return condensed.join(". ") + ".";
 }
 
-export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], knowledgeBriefing?: string, callerName?: string): string {
+export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], knowledgeBriefing?: string, callerName?: string, useDynamicCallerName: boolean = false): string {
   const purpose = spec.use_case || spec.success_definition || "Conduct a professional outbound call.";
   const discl = spec.disclosure_text || "";
   const tone = spec.tone_style || "Friendly, professional, empathetic";
@@ -178,11 +178,13 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
     : false;
 
   if (fields.length > 0 && !fields.some((f: string) => f.toLowerCase().includes('name'))) {
-    if (openingAsksForName) {
+    if (useDynamicCallerName) {
+      // We already have the contact's name from the dial list — never inject a name-collection field.
+    } else if (openingAsksForName) {
       const consentIdx = fields.findIndex((f: string) => f.toLowerCase().includes('consent'));
       const insertAt = consentIdx >= 0 ? consentIdx + 1 : 0;
       fields.splice(insertAt, 0, "(Caller's name should already be known from the opening — confirm naturally only if still unclear, do NOT re-ask)");
-    } else {
+    } else if (!callerName?.trim()) {
       const consentIdx = fields.findIndex((f: string) => f.toLowerCase().includes('consent'));
       if (consentIdx >= 0) {
         fields.splice(consentIdx + 1, 0, "Can I confirm your full name?");
@@ -210,7 +212,9 @@ export function buildTaskPrompt(spec: AgentSpec, knowledge: KnowledgeEntry[], kn
 
   // Caller name awareness — explicit instruction so AI never guesses
   const trimmedCallerName = callerName?.trim() || "";
-  if (trimmedCallerName) {
+  if (useDynamicCallerName) {
+    prompt += `\n\nCALLER: The person you are calling is {{contact_name}} (first name: {{first_name}}). Use their first name naturally during the conversation. You ALREADY HAVE their name from your call list — do NOT ask for it, do NOT ask them to confirm it, do NOT spell it back. Skip any "may I have your name" step entirely.`;
+  } else if (trimmedCallerName) {
     prompt += `\n\nCALLER: The person you are calling is ${trimmedCallerName}. Use their name naturally during the conversation — but do NOT ask for it again, you already have it.`;
   } else {
     prompt += `\n\nCALLER: You do NOT have this person's name yet. Ask for their name early and naturally in the conversation — do NOT skip this step.`;
@@ -263,15 +267,26 @@ RULES:
   // Verbatim script takes precedence over opening_line guide
   const rawVerbatim = (spec as any).verbatim_script?.trim?.() || "";
   if (rawVerbatim) {
-    const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "";
-    const filledScript = rawVerbatim
+    let filledScript = rawVerbatim
       .replace(/\{\{agent_name\}\}/gi, personaName || "")
-      .replace(/\[Agent Name\]/gi, personaName || "")
-      .replace(/\{\{first_name\}\}/gi, nameHint);
+      .replace(/\[Agent Name\]/gi, personaName || "");
+    if (useDynamicCallerName) {
+      // Leave {{first_name}} and {{contact_name}} intact so Retell substitutes them per call.
+    } else {
+      const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "";
+      filledScript = filledScript
+        .replace(/\{\{first_name\}\}/gi, nameHint)
+        .replace(/\{\{contact_name\}\}/gi, trimmedCallerName);
+    }
     prompt += `\n\nVERBATIM OPENING SCRIPT (HIGHEST PRIORITY — deliver this EXACTLY as written, word-for-word, before doing anything else. Do NOT paraphrase, summarize, or skip any part. After delivering it, continue naturally into the conversation):\n"""\n${filledScript}\n"""`;
   } else if (resolvedOpeningLine) {
-    const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "(caller's name — ask if unknown)";
-    const filledGuide = resolvedOpeningLine.replace(/\{\{first_name\}\}/gi, nameHint);
+    let filledGuide = resolvedOpeningLine;
+    if (useDynamicCallerName) {
+      // Keep {{first_name}} placeholder so Retell substitutes per call.
+    } else {
+      const nameHint = trimmedCallerName ? trimmedCallerName.split(" ")[0] : "(caller's name — ask if unknown)";
+      filledGuide = filledGuide.replace(/\{\{first_name\}\}/gi, nameHint);
+    }
     prompt += `\n\nOPENING GUIDE: Start with something like the line below, but adapt it naturally — do NOT read it word-for-word as a script.\nOpening guide: "${filledGuide}"`;
     prompt += `\nAFTER THE OPENING: Once you deliver your opening line, proceed DIRECTLY into your first question or field collection. Do NOT pause and wait for a response unless your opening line ends with a direct question. Flow naturally from the introduction into the conversation.`;
   }

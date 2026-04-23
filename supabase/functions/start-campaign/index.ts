@@ -140,7 +140,7 @@ serve(async (req) => {
 
     // ===== PRE-FLIGHT: Inject task prompt into Retell LLM =====
     if (agentLlmId) {
-      let taskPrompt = buildTaskPrompt(spec, [], knowledgeBriefing, "") + hipaaAppendix;
+      let taskPrompt = buildTaskPrompt(spec, [], knowledgeBriefing, "", true) + hipaaAppendix;
       if (taskPrompt.length > 28000) taskPrompt = taskPrompt.substring(0, 28000) + "\n\n[Trimmed for length]";
       const agentName = spec.persona_name || campaign.agent_projects?.name || "Agent";
       const resolvedOpening = spec.opening_line
