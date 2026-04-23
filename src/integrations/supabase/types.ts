@@ -141,6 +141,7 @@ export type Database = {
           transfer_required: boolean | null
           updated_at: string
           use_case: string
+          verbatim_script: string | null
           version: number
           voice_id: string | null
           voice_provider: string
@@ -181,6 +182,7 @@ export type Database = {
           transfer_required?: boolean | null
           updated_at?: string
           use_case?: string
+          verbatim_script?: string | null
           version?: number
           voice_id?: string | null
           voice_provider?: string
@@ -221,6 +223,7 @@ export type Database = {
           transfer_required?: boolean | null
           updated_at?: string
           use_case?: string
+          verbatim_script?: string | null
           version?: number
           voice_id?: string | null
           voice_provider?: string
