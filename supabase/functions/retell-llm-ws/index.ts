@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
                 }));
 
                 // Build the full prompt — same as outbound calls
-                systemPrompt = buildTaskPrompt(spec as any, knowledge, undefined, undefined);
+                systemPrompt = buildTaskPrompt(spec as any, knowledge, undefined, undefined, false);
               }
             }
           } catch (e) {
